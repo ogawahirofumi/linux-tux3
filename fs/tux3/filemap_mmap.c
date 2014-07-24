@@ -167,7 +167,7 @@ retry:
 	 */
 	change_begin_atomic_nested(sb, &ptr);
 
-	clone = pagefork_for_blockdirty(page, tux3_get_current_delta());
+	clone = pagefork_for_blockdirty(vma, page, tux3_get_current_delta());
 	if (IS_ERR(clone)) {
 		/* Someone did page fork */
 		pgoff_t index = page->index;

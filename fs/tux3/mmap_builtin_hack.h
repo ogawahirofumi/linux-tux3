@@ -30,9 +30,11 @@ static inline void mlock_migrate_page(struct page *newpage, struct page *page)
 }
 
 #ifdef CONFIG_TUX3_MMAP
-int page_cow_file(struct page *oldpage, struct page *newpage);
+int page_cow_file(struct vm_area_struct *orig_vma, struct page *oldpage,
+		  struct page *newpage);
 #else
-static inline int page_cow_file(struct page *oldpage, struct page *newpage)
+static inline int page_cow_file(struct vm_area_struct *orig_vma,
+				struct page *oldpage, struct page *newpage)
 {
 	return 0;
 }

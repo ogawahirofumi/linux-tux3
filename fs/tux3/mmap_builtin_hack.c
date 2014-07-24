@@ -37,13 +37,13 @@ static int page_cow_one(struct page *oldpage, struct page *newpage,
 	 * be occurred immediately after returned from this page fault
 	 * again. And second time of page fault will be resolved with
 	 * forked page was set here.
-	 *
-	 * FIXME: we should resolve page fault with one page
-	 * fault. Maybe, we will have to modify callers of
-	 * ->page_mkwrite().
 	 */
 	ptval = mk_pte(newpage, vma->vm_page_prot);
 #if 0
+	/* FIXME: we should check following too? Otherwise, we would
+	 * get additional read-only => write fault at least */
+	if (pte_write)
+		ptval = pte_mkwrite(ptval);
 	if (pte_dirty(oldptval))
 		ptval = pte_mkdirty(ptval);
 	if (pte_young(oldptval))
@@ -69,7 +69,9 @@ out:
 	return ret;
 }
 
-int page_cow_file(struct page *oldpage, struct page *newpage)
+/* Change old page in PTEs to new page exclude orig_vma */
+int page_cow_file(struct vm_area_struct *orig_vma, struct page *oldpage,
+		  struct page *newpage)
 {
 	struct address_space *mapping = page_mapping(oldpage);
 	pgoff_t pgoff = oldpage->index << (PAGE_CACHE_SHIFT - PAGE_SHIFT);
@@ -84,10 +86,11 @@ int page_cow_file(struct page *oldpage, struct page *newpage)
 	mutex_lock(&mapping->i_mmap_mutex);
 	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
 		/*
-		 * FIXME: we should not modify PTE which is going to
-		 * modify on page fault of caller. Instead, caller
-		 * should switch to newpage in PTE.
+		 * The orig_vma's PTE is handled by caller.
+		 * (e.g. ->page_mkwrite)
 		 */
+		if (vma == orig_vma)
+			continue;
 
 		if (vma->vm_flags & VM_SHARED) {
 			unsigned long address = vma_address(oldpage, vma);
