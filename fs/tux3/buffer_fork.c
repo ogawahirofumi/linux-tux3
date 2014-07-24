@@ -236,89 +236,6 @@ static void prepare_clone_page(struct page *page)
 }
 
 /*
- * This replaces the oldpage on radix-tree with newpage atomically.
- *
- * Similar to migrate_pages(), but the oldpage is for writeout.
- * FIXME: we would have to add mmap handling (e.g. replace PTE)
- */
-static int tux3_replace_page_cache(struct page *oldpage, struct page *newpage)
-{
-	struct address_space *mapping = oldpage->mapping;
-	void **pslot;
-
-	/* Get refcount for radix-tree */
-	page_cache_get(newpage);
-
-	/* Replace page in radix tree. */
-	spin_lock_irq(&mapping->tree_lock);
-	/* PAGECACHE_TAG_DIRTY represents the view of frontend. Clear it. */
-	if (PageDirty(oldpage))
-		radix_tree_tag_clear(&mapping->page_tree, page_index(oldpage),
-				     PAGECACHE_TAG_DIRTY);
-	/* The refcount to newpage is used for radix tree. */
-	pslot = radix_tree_lookup_slot(&mapping->page_tree, oldpage->index);
-	radix_tree_replace_slot(pslot, newpage);
-	__inc_zone_page_state(newpage, NR_FILE_PAGES);
-	__dec_zone_page_state(oldpage, NR_FILE_PAGES);
-	spin_unlock_irq(&mapping->tree_lock);
-
-#if 0 /* FIXME */
-	/* mem_cgroup codes must not be called under tree_lock */
-	mem_cgroup_replace_page_cache(oldpage, newpage);
-#endif
-	/* Release refcount for radix-tree */
-	page_cache_release(oldpage);
-
-	return 0;
-}
-
-/*
- * This delete the page from radix-tree. But leave page->mapping as is.
- *
- * Similar to truncate_inode_page(), but the oldpage is for writeout.
- * FIXME: we would have to add mmap handling (e.g. replace PTE)
- */
-static void tux3_delete_from_page_cache(struct page *page)
-{
-	struct address_space *mapping = page->mapping;
-
-	/* Delete page from radix tree. */
-	spin_lock_irq(&mapping->tree_lock);
-	/*
-	 * if we're uptodate, flush out into the cleancache, otherwise
-	 * invalidate any existing cleancache entries.  We can't leave
-	 * stale data around in the cleancache once our page is gone
-	 */
-	if (PageUptodate(page) && PageMappedToDisk(page))
-		cleancache_put_page(page);
-	else
-		cleancache_invalidate_page(mapping, page);
-
-	radix_tree_delete(&mapping->page_tree, page->index);
-#if 0 /* FIXME: backend is assuming page->mapping is available */
-	page->mapping = NULL;
-#endif
-	/* Leave page->index set: truncation lookup relies upon it */
-	mapping->nrpages--;
-	__dec_zone_page_state(page, NR_FILE_PAGES);
-	BUG_ON(page_mapped(page));
-
-	/*
-	 * The following dirty accounting is done by writeback
-	 * path. So, we don't need to do here.
-	 *
-	 * dec_zone_page_state(page, NR_FILE_DIRTY);
-	 * dec_bdi_stat(mapping->backing_dev_info, BDI_RECLAIMABLE);
-	 */
-	spin_unlock_irq(&mapping->tree_lock);
-
-#if 0 /* FIXME */
-	mem_cgroup_uncharge_cache_page(page);
-#endif
-	page_cache_release(page);
-}
-
-/*
  * Clone buffers. But cloned buffer represents the buffer state after
  * flushing buffer.
  */
@@ -352,54 +269,19 @@ static void clone_buffers(struct page *oldpage, struct page *newpage)
 	} while (newbuf != head);
 }
 
-/* Based on migrate_page_copy() */
-static struct page *clone_page(struct page *oldpage, unsigned blocksize)
+/* Copy newpage from oldpage for page forking. */
+static struct page *tux3_clone_page(struct page *oldpage, unsigned blocksize)
 {
-	struct address_space *mapping = oldpage->mapping;
-	gfp_t gfp_mask = mapping_gfp_mask(mapping) & ~__GFP_FS;
-	struct page *newpage = __page_cache_alloc(gfp_mask);
-
-	newpage->mapping = oldpage->mapping;
-	newpage->index = oldpage->index;
-	copy_highpage(newpage, oldpage);
+	struct page *newpage;
 
 	/* oldpage should be forked page */
 	BUG_ON(PageForked(oldpage));
 
-	/* FIXME: right? */
-	BUG_ON(PageSwapCache(oldpage));
-	BUG_ON(PageSwapBacked(oldpage));
-	BUG_ON(PageHuge(oldpage));
-	if (PageError(oldpage))
-		SetPageError(newpage);
-	if (PageReferenced(oldpage))
-		SetPageReferenced(newpage);
-	if (PageUptodate(oldpage))
-		SetPageUptodate(newpage);
-	if (PageActive(oldpage))
-		SetPageActive(newpage);
-	if (PageMappedToDisk(oldpage))
-		SetPageMappedToDisk(newpage);
-
-#if 0	/* FIXME: need? */
-	/*
-	 * Copy NUMA information to the new page, to prevent over-eager
-	 * future migrations of this same page.
-	 */
-	cpupid = page_cpupid_xchg_last(oldpage, -1);
-	page_cpupid_xchg_last(newpage, cpupid);
-#endif
-	mlock_migrate_page(newpage, oldpage);
-#if 0
-	ksm_migrate_page(newpage, oldpage);
-#endif
-
-	/* Lock newpage before visible via radix tree */
-	assert(!PageLocked(newpage));
-	__set_page_locked(newpage);
-
-	create_empty_buffers(newpage, blocksize, 0);
-	clone_buffers(oldpage, newpage);
+	newpage = cow_clone_page(oldpage);
+	if (!IS_ERR(newpage)) {
+		create_empty_buffers(newpage, blocksize, 0);
+		clone_buffers(oldpage, newpage);
+	}
 
 	return newpage;
 }
@@ -533,7 +415,7 @@ struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta)
 	/*
 	 * We need to buffer fork. Start to clone the oldpage.
 	 */
-	newpage = clone_page(oldpage, sb->blocksize);
+	newpage = tux3_clone_page(oldpage, sb->blocksize);
 	if (IS_ERR(newpage)) {
 		buffer = ERR_CAST(newpage);
 		goto out;
@@ -548,7 +430,7 @@ struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta)
 	page_cache_get(oldpage);
 
 	/* Replace oldpage on radix-tree with newpage */
-	err = tux3_replace_page_cache(oldpage, newpage);
+	err = cow_replace_page_cache(oldpage, newpage);
 
 	newpage_add_lru(newpage);
 
@@ -648,7 +530,7 @@ struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
 	/*
 	 * We need to buffer fork. Start to clone the oldpage.
 	 */
-	newpage = clone_page(oldpage, sb->blocksize);
+	newpage = tux3_clone_page(oldpage, sb->blocksize);
 	if (IS_ERR(newpage))
 		goto out;
 
@@ -659,7 +541,7 @@ struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
 	/*page_cache_get(oldpage);*/
 
 	/* Replace oldpage on radix-tree with newpage */
-	err = tux3_replace_page_cache(oldpage, newpage);
+	err = cow_replace_page_cache(oldpage, newpage);
 
 	newpage_add_lru(newpage);
 
@@ -735,7 +617,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 	/* FIXME: need this? */
 	ClearPageMappedToDisk(page);
 	/* Delete page from radix-tree */
-	tux3_delete_from_page_cache(page);
+	cow_delete_from_page_cache(page);
 
 	/*
 	 * Referencer are dummy radix-tree + ->private (plus other
