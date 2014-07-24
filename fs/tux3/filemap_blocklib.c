@@ -186,9 +186,10 @@ retry:
 	 * tux3_write_begin().
 	 */
 	if (tux3_flags & TUX3_F_PAGEFORK) {
+		unsigned delta = tux3_get_current_delta();
 		struct page *tmp;
 
-		tmp = pagefork_for_blockdirty(page, tux3_get_current_delta());
+		tmp = pagefork_for_blockdirty(NULL, page, delta);
 		if (IS_ERR(tmp)) {
 			int err;
 			unlock_page(page);
@@ -483,7 +484,7 @@ static int __tux3_truncate_partial_block(struct address_space *mapping,
 retry_find:
 		page = find_lock_page(mapping, index);
 		if (page) {
-			tmp = pagefork_for_blockdirty(page, delta);
+			tmp = pagefork_for_blockdirty(NULL, page, delta);
 			if (IS_ERR(tmp)) {
 				unlock_page(page);
 				page_cache_release(page);
@@ -524,7 +525,7 @@ retry_grab:
 	if (!page)
 		goto out;
 
-	tmp = pagefork_for_blockdirty(page, delta);
+	tmp = pagefork_for_blockdirty(NULL, page, delta);
 	if (IS_ERR(tmp)) {
 		unlock_page(page);
 		page_cache_release(page);
@@ -612,223 +613,45 @@ int tux3_truncate_partial_block(struct inode *inode, loff_t newsize)
 					     tux3_get_block);
 }
 
-/*
- * Based on truncate_inode_page()
- *
- * Unmap page under lock_page(). Without lock_page(), mmap can
- * recreate page by page fault.
- *
- * So, this unmap page, then fork page to truncate if need. With this,
- * we can prevent to recreate page by page fault.
- */
-static int tux3_truncate_inode_page(struct address_space *mapping,
-				    struct page *page)
+/* Handler for ->truncatepage() */
+static void tux3_truncatepage(struct address_space *mapping, struct page *page,
+			      unsigned start, unsigned len, int wait)
 {
+	/*
+	 * Partial truncate. This is handled by tux3_truncate_partial_block().
+	 * Just call generic.
+	 */
+	if (start != 0 || len != PAGE_CACHE_SIZE) {
+		generic_truncate_partial_page(mapping, page, start, len);
+		return;
+	}
+
+	/*
+	 * Fully truncate. If page was stabled already, we have to do
+	 * page fork.
+	 */
+
+	/* If no wait just return, caller will call this with wait later */
+	if (!wait && PageWriteback(page))
+		return;
+
+	/*
+	 * Unmap page under lock_page(). Without lock_page(), mmap can
+	 * recreate page by page fault.
+	 *
+	 * So, this unmap page, then fork page to truncate if need. With this,
+	 * we can prevent to recreate page by page fault.
+	 */
 	if (page_mapped(page)) {
 		unmap_mapping_range(mapping,
 				   (loff_t)page->index << PAGE_CACHE_SHIFT,
 				   PAGE_CACHE_SIZE, 0);
 	}
-	return bufferfork_to_invalidate(mapping, page);
-}
-
-/*
- * Copy of truncate_inode_pages_range()
- *
- * Changes:
- * - to call bufferfork_to_invalidate() before invalidate buffers
- * - remove to wait the page under I/O (we do buffer fork instead)
- *
- * FIXME: some functions are not exported to implement own
- * truncate_inode_pages_page() fully. So this just do the buffer fork,
- * without invalidate. This way is inefficient, and we would want to merge
- * tux3_truncate_inode_pages_page() and truncate_inode_pages_range().
- */
-static void tux3_truncate_inode_pages_range(struct address_space *mapping,
-					    loff_t lstart, loff_t lend)
-{
-	pgoff_t		start;		/* inclusive */
-	pgoff_t		end;		/* exclusive */
-	unsigned int	partial_start;	/* inclusive */
-	unsigned int	partial_end;	/* exclusive */
-	struct pagevec	pvec;
-	pgoff_t		index;
-	int		i;
-
-#if 0 /* FIXME */
-	cleancache_invalidate_inode(mapping);
-#endif
-	if (mapping->nrpages == 0)
+	if (bufferfork_to_invalidate(mapping, page)) {
+		/* Page forked, so truncate page was done */
 		return;
-
-	/* FIXME: should use MAX_LFS_FILESIZE, instead of -1 */
-	if (lend == -1 || lend > MAX_LFS_FILESIZE)
-		lend = MAX_LFS_FILESIZE;
-	/* Caller must check maximum size, otherwrite pgoff_t can overflow */
-	BUG_ON(lstart > MAX_LFS_FILESIZE);
-
-	/* Offsets within partial pages */
-	partial_start = lstart & (PAGE_CACHE_SIZE - 1);
-	partial_end = (lend + 1) & (PAGE_CACHE_SIZE - 1);
-
-	/*
-	 * 'start' and 'end' always covers the range of pages to be fully
-	 * truncated. Partial pages are covered with 'partial_start' at the
-	 * start of the range and 'partial_end' at the end of the range.
-	 * Note that 'end' is exclusive while 'lend' is inclusive.
-	 */
-	start = ((u64)lstart + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
-	end = ((u64)lend + 1) >> PAGE_CACHE_SHIFT;
-
-	pagevec_init(&pvec, 0);
-	index = start;
-	while (index < end && pagevec_lookup(&pvec, mapping, index,
-			min(end - index, (pgoff_t)PAGEVEC_SIZE))) {
-#if 0 /* FIXME */
-		mem_cgroup_uncharge_start();
-#endif
-		for (i = 0; i < pagevec_count(&pvec); i++) {
-			struct page *page = pvec.pages[i];
-
-			/* We rely upon deletion not changing page->index */
-			index = page->index;
-			if (index >= end)
-				break;
-
-			if (!trylock_page(page))
-				continue;
-			WARN_ON(page->index != index);
-#if 0
-			if (PageWriteback(page)) {
-				unlock_page(page);
-				continue;
-			}
-#endif
-			tux3_truncate_inode_page(mapping, page);
-			unlock_page(page);
-		}
-		pagevec_release(&pvec);
-#if 0 /* FIXME */
-		mem_cgroup_uncharge_end();
-#endif
-		cond_resched();
-		index++;
 	}
-#if 0
-	/* Partial page is handled on tux3_truncate_page() */
-	if (partial_start) {
-		struct page *page = find_lock_page(mapping, start - 1);
-		if (page) {
-			unsigned int top = PAGE_CACHE_SIZE;
-			if (start > end) {
-				/* Truncation within a single page */
-				top = partial_end;
-				partial_end = 0;
-			}
-			wait_on_page_writeback(page);
-			tux3_truncate_partial_page(page, partial_start, top);
-			unlock_page(page);
-			page_cache_release(page);
-		}
-	}
-	if (partial_end) {
-		struct page *page = find_lock_page(mapping, end);
-		if (page) {
-			wait_on_page_writeback(page);
-			tux3_truncate_partial_page(page, 0, partial_end);
-			unlock_page(page);
-			page_cache_release(page);
-		}
-	}
-#endif
-	/*
-	 * If the truncation happened within a single page no pages
-	 * will be released, just zeroed, so we can bail out now.
-	 */
-	if (start >= end)
-		return;
 
-	index = start;
-	for ( ; ; ) {
-		cond_resched();
-		if (!pagevec_lookup(&pvec, mapping, index,
-			min(end - index, (pgoff_t)PAGEVEC_SIZE))) {
-#if 0
-			if (index == start)
-				break;
-			index = start;
-			continue;
-#else
-			/*
-			 * We leave the pages as is if it can be invalidated.
-			 * And we don't need check the same page repeatedly.
-			 */
-			break;
-#endif
-		}
-		if (index == start && pvec.pages[0]->index >= end) {
-			pagevec_release(&pvec);
-			break;
-		}
-#if 0 /* FIXME */
-		mem_cgroup_uncharge_start();
-#endif
-		for (i = 0; i < pagevec_count(&pvec); i++) {
-			struct page *page = pvec.pages[i];
-
-			/* We rely upon deletion not changing page->index */
-			index = page->index;
-			if (index >= end)
-				break;
-
-			lock_page(page);
-			WARN_ON(page->index != index);
-#if 0
-			wait_on_page_writeback(page);
-#endif
-			tux3_truncate_inode_page(mapping, page);
-			unlock_page(page);
-		}
-		pagevec_release(&pvec);
-#if 0 /* FIXME */
-		mem_cgroup_uncharge_end();
-#endif
-		index++;
-	}
-#if 0 /* FIXME */
-	cleancache_invalidate_inode(mapping);
-#endif
-}
-
-/*
- * Copy of truncate_pagecache()
- *
- * Changes:
- * - to call tux3_truncate_inode_pages_range() additionally.
- *
- * FIXME: merge tux3_truncate_inode_pages_range() and
- * truncate_inode_pages_range(), then remove this.
- */
-void tux3_truncate_pagecache(struct inode *inode, loff_t newsize)
-{
-	struct address_space *mapping = inode->i_mapping;
-	loff_t holebegin = round_up(newsize, PAGE_SIZE);
-
-	/*
-	 * unmap_mapping_range is called twice, first simply for
-	 * efficiency so that truncate_inode_pages does fewer
-	 * single-page unmaps.  However after this first call, and
-	 * before truncate_inode_pages finishes, it is possible for
-	 * private pages to be COWed, which remain after
-	 * truncate_inode_pages finishes, hence the second
-	 * unmap_mapping_range call must be made for correctness.
-	 */
-	if (newsize <= holebegin)	/* Check overflow */
-		unmap_mapping_range(mapping, holebegin, 0, 1);
-	/* FIXME: The buffer fork before invalidate. We should merge to
-	 * truncate_inode_pages_range() */
-	tux3_truncate_inode_pages_range(mapping, newsize, MAX_LFS_FILESIZE);
-	truncate_inode_pages(mapping, newsize);
-	if (newsize <= holebegin)	/* Check overflow */
-		unmap_mapping_range(mapping, holebegin, 0, 1);
+	/* No need page fork, we can truncate this page */
+	generic_truncate_full_page(mapping, page, wait);
 }

@@ -141,13 +141,15 @@ static int tux3_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct inode *inode = file_inode(vma->vm_file);
 	struct sb *sb = tux_sb(inode->i_sb);
-	struct page *clone, *page = vmf->page;
+	struct page *clone, *page;
 	void *ptr;
 	int ret;
 
 	sb_start_pagefault(inode->i_sb);
 
 retry:
+	page = vmf->page;
+
 	down_read(&tux_inode(inode)->truncate_lock);
 	lock_page(page);
 	if (page->mapping != mapping(inode)) {
@@ -165,14 +167,7 @@ retry:
 	 */
 	change_begin_atomic_nested(sb, &ptr);
 
-	/*
-	 * FIXME: Caller releases vmf->page (old_page) unconditionally.
-	 * So, this takes additional refcount to workaround it.
-	 */
-	if (vmf->page == page)
-		page_cache_get(page);
-
-	clone = pagefork_for_blockdirty(page, tux3_get_current_delta());
+	clone = pagefork_for_blockdirty(vma, page, tux3_get_current_delta());
 	if (IS_ERR(clone)) {
 		/* Someone did page fork */
 		pgoff_t index = page->index;
@@ -184,8 +179,8 @@ retry:
 
 		switch (PTR_ERR(clone)) {
 		case -EAGAIN:
-			page = find_get_page(inode->i_mapping, index);
-			assert(page);
+			vmf->page = find_get_page(inode->i_mapping, index);
+			assert(vmf->page);
 			goto retry;
 		case -ENOMEM:
 			ret = VM_FAULT_OOM;
@@ -210,17 +205,11 @@ retry:
 	 * see the dirty page and writeprotect it again.
 	 */
 	tux3_set_page_dirty(clone);
-#if 1
-	/* FIXME: Caller doesn't see the changed vmf->page */
-	vmf->page = clone;
 
 	change_end_atomic_nested(sb, ptr);
-	/* FIXME: caller doesn't know about pagefork */
-	unlock_page(clone);
-	page_cache_release(clone);
-	ret = 0;
-//	ret = VM_FAULT_LOCKED;
-#endif
+	vmf->page = clone;
+	ret = VM_FAULT_LOCKED;
+
 out:
 	up_read(&tux_inode(inode)->truncate_lock);
 	sb_end_pagefault(inode->i_sb);
@@ -237,7 +226,6 @@ static const struct vm_operations_struct tux3_file_vm_ops = {
 
 int tux3_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
-#ifdef CONFIG_TUX3_MMAP
 	struct address_space *mapping = file->f_mapping;
 
 	if (!mapping->a_ops->readpage)
@@ -247,7 +235,4 @@ int tux3_file_mmap(struct file *file, struct vm_area_struct *vma)
 	vma->vm_ops = &tux3_file_vm_ops;
 
 	return 0;
-#else
-	return -EOPNOTSUPP;
-#endif
 }

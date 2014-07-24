@@ -814,7 +814,6 @@ int dtree_chop(struct btree *btree, tuxkey_t start, u64 len);
 int tux3_filemap_overwrite_io(int rw, struct bufvec *bufvec);
 int tux3_filemap_redirect_io(int rw, struct bufvec *bufvec);
 int tux3_truncate_partial_block(struct inode *inode, loff_t newsize);
-void tux3_truncate_pagecache(struct inode *inode, loff_t newsize);
 
 /* iattr.c */
 void dump_attrs(struct inode *inode);

@@ -29,13 +29,4 @@ static inline void mlock_migrate_page(struct page *newpage, struct page *page)
 	}
 }
 
-#ifdef CONFIG_TUX3_MMAP
-int page_cow_file(struct page *oldpage, struct page *newpage);
-#else
-static inline int page_cow_file(struct page *oldpage, struct page *newpage)
-{
-	return 0;
-}
-#endif
-
 #endif /* !_MMAP_HACK_H */

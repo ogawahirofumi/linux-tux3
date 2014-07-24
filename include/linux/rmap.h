@@ -228,6 +228,12 @@ unsigned long page_address_in_vma(struct page *, struct vm_area_struct *);
 int page_mkclean(struct page *);
 
 /*
+ * Changes the PTES of shared mappings except the PTE in orig_vma.
+ */
+int page_cow_file(struct vm_area_struct *orig_vma, struct page *oldpage,
+		  struct page *newpage);
+
+/*
  * called in munlock()/munmap() path to check for other vmas holding
  * the page mlocked.
  */

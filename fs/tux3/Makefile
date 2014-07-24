@@ -12,6 +12,4 @@ tux3-objs += balloc.o btree.o buffer.o commit.o dir.o dleaf.o \
 	replay.o super.o utility.o writeback.o xattr.o
 EXTRA_CFLAGS += -Werror -std=gnu99 -Wno-declaration-after-statement
 #EXTRA_CFLAGS += -DTUX3_FLUSHER_SYNC
-
-obj-$(CONFIG_TUX3_MMAP) += mmap_builtin_hack.o
 endif

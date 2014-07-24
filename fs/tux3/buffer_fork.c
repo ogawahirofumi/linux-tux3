@@ -599,7 +599,8 @@ out:
  *
  * Caller must hold refcount of oldpage and hold lock_page(oldpage)
  */
-struct page *pagefork_for_blockdirty(struct page *oldpage, unsigned newdelta)
+struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
+				     struct page *oldpage, unsigned newdelta)
 {
 	struct page *newpage = oldpage;
 	struct sb *sb;
@@ -684,7 +685,7 @@ struct page *pagefork_for_blockdirty(struct page *oldpage, unsigned newdelta)
 	/*
 	 * Update PTEs for forked page.
 	 */
-	page_cow_file(oldpage, newpage);
+	page_cow_file(vma, oldpage, newpage);
 	unlock_page(oldpage);
 
 	/* Register forked buffer to free forked page later */
