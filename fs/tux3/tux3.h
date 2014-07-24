@@ -217,13 +217,6 @@ struct cursor {
 
 struct stash { struct flink_head head; u64 *pos, *top; };
 
-/* Flush synchronously */
-#define TUX3_FLUSHER_SYNC		1
-/* Flush asynchronously by own timing */
-#define TUX3_FLUSHER_ASYNC_OWN		2
-/* Flush asynchronously by kernel normal timing (by hackish way) */
-#define TUX3_FLUSHER_ASYNC_HACK		3
-
 /* Refcount for delta */
 struct delta_ref {
 	atomic_t refcount;
@@ -251,7 +244,7 @@ struct sb {
 		char thisbig[SB_LEN];
 	};
 
-#if TUX3_FLUSHER == TUX3_FLUSHER_SYNC
+#ifdef TUX3_FLUSHER_SYNC
 	struct rw_semaphore delta_lock;		/* delta transition exclusive */
 #endif
 	struct delta_ref __rcu *current_delta;	/* current delta */
@@ -268,12 +261,6 @@ struct sb {
 	unsigned staging_delta;			/* staging delta */
 	unsigned committed_delta;		/* committed delta */
 	wait_queue_head_t delta_event_wq;	/* wait queue for delta event */
-#if TUX3_FLUSHER == TUX3_FLUSHER_ASYNC_OWN
-	struct task_struct *flush_task;		/* work to flush delta */
-#endif
-#if TUX3_FLUSHER == TUX3_FLUSHER_ASYNC_HACK
-	struct backing_dev_info bdi;
-#endif
 
 	struct btree itree;	/* Inode btree */
 	struct btree otree;	/* Orphan btree */
@@ -666,6 +653,10 @@ static inline block_t bufindex(struct buffer_head *buffer)
 #endif
 }
 
+/* commit.c */
+long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
+		    struct wb_writeback_work *work);
+
 /* dir.c */
 extern const struct file_operations tux_dir_fops;
 extern const struct inode_operations tux_dir_iops;
@@ -793,9 +784,6 @@ void change_begin(struct sb *sb);
 int change_end(struct sb *sb);
 void change_begin_if_needed(struct sb *sb, int need_sep);
 void change_end_if_needed(struct sb *sb);
-
-/* commit_flusher.c */
-#include "commit_flusher.h"
 
 /* dir.c */
 void tux_set_entry(struct buffer_head *buffer, struct tux3_dirent *entry,

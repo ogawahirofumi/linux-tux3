@@ -36,7 +36,7 @@ static int init_sb(struct sb *sb)
 	for (i = 0; i < ARRAY_SIZE(sb->delta_refs); i++)
 		atomic_set(&sb->delta_refs[0].refcount, 0);
 
-#if TUX3_FLUSHER == TUX3_FLUSHER_SYNC
+#ifdef TUX3_FLUSHER_SYNC
 	init_rwsem(&sb->delta_lock);
 #endif
 	init_waitqueue_head(&sb->delta_event_wq);
@@ -626,7 +626,7 @@ static void delta_transition(struct sb *sb)
 	/* Wake up waiters for delta transition */
 	wake_up_all(&sb->delta_event_wq);
 
-#if TUX3_FLUSHER == TUX3_FLUSHER_SYNC
+#ifdef TUX3_FLUSHER_SYNC
 	wait_event(sb->delta_event_wq,
 		   test_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state));
 #endif
@@ -638,7 +638,6 @@ static void delta_transition(struct sb *sb)
 	 ((int)(a) - (int)(b) >= 0))
 
 #include "commit_flusher.c"
-#include "commit_flusher_hack.c"
 
 int force_unify(struct sb *sb)
 {
@@ -741,7 +740,7 @@ static int need_delta(struct sb *sb)
  */
 void change_begin(struct sb *sb)
 {
-#if TUX3_FLUSHER == TUX3_FLUSHER_SYNC
+#ifdef TUX3_FLUSHER_SYNC
 	down_read(&sb->delta_lock);
 #endif
 	change_begin_atomic(sb);
@@ -752,7 +751,7 @@ int change_end(struct sb *sb)
 	int err = 0;
 
 	change_end_atomic(sb);
-#if TUX3_FLUSHER == TUX3_FLUSHER_SYNC
+#ifdef TUX3_FLUSHER_SYNC
 	up_read(&sb->delta_lock);
 
 	down_write(&sb->delta_lock);
@@ -760,7 +759,7 @@ int change_end(struct sb *sb)
 	if (need_delta(sb))
 		try_delta_transition(sb);
 
-#if TUX3_FLUSHER == TUX3_FLUSHER_SYNC
+#ifdef TUX3_FLUSHER_SYNC
 	err = flush_pending_delta(sb);
 	up_write(&sb->delta_lock);
 #endif

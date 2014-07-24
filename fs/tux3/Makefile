@@ -11,9 +11,7 @@ tux3-objs += balloc.o btree.o buffer.o commit.o dir.o dleaf.o \
 	filemap.o iattr.o ileaf.o inode.o log.o namei.o orphan.o policy.o \
 	replay.o super.o utility.o writeback.o xattr.o
 EXTRA_CFLAGS += -Werror -std=gnu99 -Wno-declaration-after-statement
-#EXTRA_CFLAGS += -DTUX3_FLUSHER=TUX3_FLUSHER_SYNC
-#EXTRA_CFLAGS += -DTUX3_FLUSHER=TUX3_FLUSHER_ASYNC_OWN
-EXTRA_CFLAGS += -DTUX3_FLUSHER=TUX3_FLUSHER_ASYNC_HACK
+#EXTRA_CFLAGS += -DTUX3_FLUSHER_SYNC
 
 obj-$(CONFIG_TUX3_MMAP) += mmap_builtin_hack.o
 endif
