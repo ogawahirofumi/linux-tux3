@@ -186,9 +186,10 @@ retry:
 	 * tux3_write_begin().
 	 */
 	if (tux3_flags & TUX3_F_PAGEFORK) {
+		unsigned delta = tux3_get_current_delta();
 		struct page *tmp;
 
-		tmp = pagefork_for_blockdirty(page, tux3_get_current_delta());
+		tmp = pagefork_for_blockdirty(page, delta);
 		if (IS_ERR(tmp)) {
 			int err;
 			unlock_page(page);

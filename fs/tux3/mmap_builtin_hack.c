@@ -83,6 +83,12 @@ int page_cow_file(struct page *oldpage, struct page *newpage)
 
 	mutex_lock(&mapping->i_mmap_mutex);
 	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
+		/*
+		 * FIXME: we should not modify PTE which is going to
+		 * modify on page fault of caller. Instead, caller
+		 * should switch to newpage in PTE.
+		 */
+
 		if (vma->vm_flags & VM_SHARED) {
 			unsigned long address = vma_address(oldpage, vma);
 			ret += page_cow_one(oldpage, newpage, vma, address);
