@@ -33,11 +33,6 @@ int tux3_truncate_partial_block(struct inode *inode, loff_t newsize)
 	return 0;
 }
 
-void tux3_truncate_pagecache(struct inode *inode, loff_t newsize)
-{
-	truncate_pagecache(inode, newsize);
-}
-
 #include "../filemap.c"
 
 static int filemap_bufvec_check(struct bufvec *bufvec, enum map_mode mode)
