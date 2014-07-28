@@ -768,7 +768,6 @@ int replay_bnode_adjust(struct replay *rp, block_t bnode, tuxkey_t from, tuxkey_
 /* commit.c */
 int setup_sb(struct sb *sb, struct disksuper *super);
 int load_sb(struct sb *sb);
-int save_sb(struct sb *sb);
 void tux3_start_backend(struct sb *sb);
 void tux3_end_backend(void);
 int tux3_under_backend(struct sb *sb);

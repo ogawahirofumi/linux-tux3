@@ -167,7 +167,7 @@ int load_sb(struct sb *sb)
 	return 0;
 }
 
-int save_sb(struct sb *sb)
+static int save_sb(struct sb *sb)
 {
 	struct disksuper *super = &sb->super;
 
