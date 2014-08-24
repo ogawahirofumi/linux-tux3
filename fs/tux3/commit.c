@@ -156,7 +156,7 @@ int load_sb(struct sb *sb)
 	if (err)
 		return err;
 
-	err = devio(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
+	err = devio_sync(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
 	if (err)
 		return err;
 	if (memcmp(super->magic, TUX3_MAGIC_STR, sizeof(super->magic)))
@@ -167,7 +167,7 @@ int load_sb(struct sb *sb)
 	return 0;
 }
 
-int save_sb(struct sb *sb)
+static int save_sb(struct sb *sb)
 {
 	struct disksuper *super = &sb->super;
 
@@ -183,7 +183,8 @@ int save_sb(struct sb *sb)
 	super->atomgen = cpu_to_be32(sb->atomgen);
 	/* logchain and logcount are written to super directly */
 
-	return devio(WRITE_SYNC | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
+	/* Don't add REQ_SYNC to avoid CFQ's idle_slice_timer. */
+	return devio_sync(WRITE | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
 }
 
 /* Delta transition */

@@ -9,28 +9,38 @@
 #include "tux3.h"
 #include "kcompat.h"
 
-int vecio(int rw, struct block_device *dev, loff_t offset, unsigned vecs, struct bio_vec *vec,
-	bio_end_io_t endio, void *info)
+static int vecio(int rw, struct block_device *dev, loff_t offset,
+		 unsigned vecs, struct bio_vec *vec,
+		 bio_end_io_t endio, void *bio_private)
 {
+	struct bio *bio;
+
 	BUG_ON(vecs > bio_get_nr_vecs(dev));
-	struct bio *bio = bio_alloc(GFP_NOIO, vecs);
+
+	bio = bio_alloc(GFP_NOIO, vecs);
 	if (!bio)
 		return -ENOMEM;
+
 	bio->bi_bdev = dev;
 	bio_bi_sector(bio) = offset >> 9;
 	bio->bi_end_io = endio;
-	bio->bi_private = info;
+	bio->bi_private = bio_private;
 	bio->bi_vcnt = vecs;
 	memcpy(bio->bi_io_vec, vec, sizeof(*vec) * vecs);
 	while (vecs--)
 		bio_bi_size(bio) += bio->bi_io_vec[vecs].bv_len;
+
 	submit_bio(rw, bio);
+
 	return 0;
 }
 
-struct biosync { struct completion done; int err; };
+struct biosync {
+	struct completion done;
+	int err;
+};
 
-static void biosync_endio(struct bio *bio, int err)
+static void syncio_end_io(struct bio *bio, int err)
 {
 	struct biosync *sync = bio->bi_private;
 	bio_put(bio);
@@ -38,26 +48,45 @@ static void biosync_endio(struct bio *bio, int err)
 	complete(&sync->done);
 }
 
-int syncio(int rw, struct block_device *dev, loff_t offset, unsigned vecs, struct bio_vec *vec)
+static int syncio(int rw, struct block_device *dev, loff_t offset,
+		  unsigned vecs, struct bio_vec *vec)
 {
 	struct biosync sync = {
 		.done = COMPLETION_INITIALIZER_ONSTACK(sync.done)
 	};
-	sync.err = vecio(rw, dev, offset, vecs, vec, biosync_endio, &sync);
+	sync.err = vecio(rw, dev, offset, vecs, vec, syncio_end_io, &sync);
 	if (!sync.err)
 		wait_for_completion(&sync.done);
 	return sync.err;
 }
 
-int devio(int rw, struct block_device *dev, loff_t offset, void *data, unsigned len)
+int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
+	       unsigned len)
 {
-	return syncio(rw, dev, offset, 1, &(struct bio_vec){
-		.bv_page = virt_to_page(data),
-		.bv_offset = offset_in_page(data),
-		.bv_len = len });
+	struct bio_vec vec = {
+		.bv_page	= virt_to_page(data),
+		.bv_offset	= offset_in_page(data),
+		.bv_len		= len,
+	};
+
+	return syncio(rw, dev, offset, 1, &vec);
 }
 
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block)
+int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
+	    bio_end_io_t endio, void *info)
+{
+	struct bio_vec vec = {
+		.bv_page	= buffer->b_page,
+		.bv_offset	= bh_offset(buffer),
+		.bv_len		= sb->blocksize,
+	};
+
+	return vecio(rw, sb_dev(sb), block << sb->blockbits, 1,
+		     &vec, endio, info);
+}
+
+int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
+		 block_t block)
 {
 	struct bio_vec vec = {
 		.bv_page	= buffer->b_page,

@@ -124,7 +124,7 @@ static struct address_space *bufvec_bio_mapping(struct bio *bio)
 
 static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 				    block_t physical,
-				    void (*end_io)(struct bio *, int))
+				    bio_end_io_t *end_io)
 {
 	gfp_t gfp_flags = GFP_NOFS;
 	struct bio *bio;

@@ -717,7 +717,14 @@ struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 	assert(buffer_uptodate(bh));
 
 out:
-	touch_buffer(bh);
+	/*
+	 * FIXME: trace_block_touch_buffer() assuming buffer_mapped()
+	 * (use bh->b_bdev). But, for now, this function is used for
+	 * bitmap etc too. So, buffer can be not buffer_mapped().
+	 * So, now use mark_page_accessed() directly.
+	 */
+	/* touch_buffer(bh); */
+	mark_page_accessed(bh->b_page);
 
 	return bh;
 
@@ -792,7 +799,14 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 	unlock_page(page);
 	page_cache_release(page);
 
-	touch_buffer(bh);
+	/*
+	 * FIXME: trace_block_touch_buffer() assuming buffer_mapped()
+	 * (use bh->b_bdev). But, for now, this function is used for
+	 * bitmap etc too. So, buffer can be not buffer_mapped().
+	 * So, now use mark_page_accessed() directly.
+	 */
+	/* touch_buffer(bh); */
+	mark_page_accessed(bh->b_page);
 
 	return bh;
 }

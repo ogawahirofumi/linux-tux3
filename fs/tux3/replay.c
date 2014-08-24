@@ -141,7 +141,7 @@ static struct replay *replay_prepare(struct sb *sb)
 			goto error;
 		}
 		assert(bufindex(buffer) == i);
-		err = blockio(READ, sb, buffer, logchain);
+		err = blockio_sync(READ, sb, buffer, logchain);
 		if (err)
 			goto error;
 

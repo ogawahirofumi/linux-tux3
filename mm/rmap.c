@@ -923,6 +923,56 @@ int page_mkclean(struct page *page)
 }
 EXPORT_SYMBOL_GPL(page_mkclean);
 
+/*
+ * Make clone page for page forking. (Based on migrate_page_copy())
+ *
+ * Note: only clones page state so other state such as buffer_heads
+ * must be cloned by caller.
+ */
+struct page *cow_clone_page(struct page *oldpage)
+{
+	struct address_space *mapping = oldpage->mapping;
+	gfp_t gfp_mask = mapping_gfp_mask(mapping) & ~__GFP_FS;
+	struct page *newpage = __page_cache_alloc(gfp_mask);
+	int cpupid;
+
+	newpage->mapping = oldpage->mapping;
+	newpage->index = oldpage->index;
+	copy_highpage(newpage, oldpage);
+
+	/* FIXME: right? */
+	BUG_ON(PageSwapCache(oldpage));
+	BUG_ON(PageSwapBacked(oldpage));
+	BUG_ON(PageHuge(oldpage));
+	if (PageError(oldpage))
+		SetPageError(newpage);
+	if (PageReferenced(oldpage))
+		SetPageReferenced(newpage);
+	if (PageUptodate(oldpage))
+		SetPageUptodate(newpage);
+	if (PageActive(oldpage))
+		SetPageActive(newpage);
+	if (PageMappedToDisk(oldpage))
+		SetPageMappedToDisk(newpage);
+
+	/*
+	 * Copy NUMA information to the new page, to prevent over-eager
+	 * future migrations of this same page.
+	 */
+	cpupid = page_cpupid_xchg_last(oldpage, -1);
+	page_cpupid_xchg_last(newpage, cpupid);
+
+	mlock_migrate_page(newpage, oldpage);
+	ksm_migrate_page(newpage, oldpage);
+
+	/* Lock newpage before visible via radix tree */
+	BUG_ON(PageLocked(newpage));
+	__set_page_locked(newpage);
+
+	return newpage;
+}
+EXPORT_SYMBOL_GPL(cow_clone_page);
+
 static int page_cow_one(struct page *oldpage, struct page *newpage,
 			struct vm_area_struct *vma, unsigned long address)
 {
