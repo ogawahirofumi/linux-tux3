@@ -10,7 +10,7 @@
 
 #include "../utility.c"
 
-int devio(int rw, struct dev *dev, loff_t offset, void *data, unsigned len)
+int devio_sync(int rw, struct dev *dev, loff_t offset, void *data, unsigned len)
 {
 	return ioabs(dev->fd, data, len, rw, offset);
 }
@@ -21,12 +21,22 @@ int devio_vec(int rw, struct dev *dev, loff_t offset, struct iovec *iov,
 	return iovabs(dev->fd, iov, iovcnt, rw, offset);
 }
 
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block)
+int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
+	    void *endio, void *info)
 {
 	trace("%s: buffer %p, block %Lx",
 	      (rw & WRITE) ? "write" : "read", buffer, block);
-	return devio(rw, sb_dev(sb), block << sb->blockbits, bufdata(buffer),
-		     sb->blocksize);
+	return devio_sync(rw, sb_dev(sb), block << sb->blockbits,
+			  bufdata(buffer), sb->blocksize);
+}
+
+int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
+		 block_t block)
+{
+	trace("%s: buffer %p, block %Lx",
+	      (rw & WRITE) ? "write" : "read", buffer, block);
+	return devio_sync(rw, sb_dev(sb), block << sb->blockbits,
+			  bufdata(buffer), sb->blocksize);
 }
 
 int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count)
