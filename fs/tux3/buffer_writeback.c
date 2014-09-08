@@ -892,6 +892,53 @@ int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
 	return err;
 }
 
+static void bufvec_end_io_early(struct bio *bio, int err)
+{
+	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
+	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
+	struct address_space *mapping;
+
+	trace("bio %p, err %d", bio, err);
+
+	/* FIXME: inode is still guaranteed to be available? */
+	mapping = bufvec_bio_mapping(bio);
+
+	/* Remove buffer from bio, then unlock buffer */
+	while (1) {
+		struct buffer_head *buffer = bufvec_bio_del_buffer(bio);
+		if (!buffer)
+			break;
+
+		bufvec_buffer_end_io(buffer, uptodate, quiet);
+	}
+
+	iowait_inflight_dec(tux_sb(mapping->host->i_sb)->iowait);
+	bio_put(bio);
+}
+
+static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
+				 struct buffer_head *buffer, block_t physical)
+{
+	/* FIXME: inode is still guaranteed to be available? */
+	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
+	unsigned int length = bufsize(buffer);
+	unsigned int offset = bh_offset(buffer);
+
+	if (bufvec->bio) {
+		if (bio_add_page(bufvec->bio, buffer->b_page, length, offset))
+			return;
+		/* Couldn't add buffer, submit current bio */
+		bufvec_submit_bio(rw, bufvec);
+	}
+
+	bufvec->bio = bufvec_bio_alloc(sb, bufvec_contig_count(bufvec) + 1,
+				       physical, bufvec_end_io_early);
+
+	if (!bio_add_page(bufvec->bio, buffer->b_page, length, offset))
+		assert(0);	/* why? */
+	bufvec_bio_add_buffer(bufvec, buffer);
+}
+
 /* 1st phase I/O for volmap by sequential order */
 int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 {
@@ -912,14 +959,11 @@ int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 		/* FIXME: this can be replaced by list_splice() */
 		list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
-		iowait_inflight_inc(sb->iowait);
-		err = blockio(rw, sb, buffer, physical + i, vol_early_end_io,
-			      buffer);
-		if (err) {
-			iowait_inflight_dec(sb->iowait);
-			break;
-		}
+		bufvec_bio_add_early(rw, bufvec, buffer, physical + i);
 	}
+	/* Submit the pending bio */
+	if (bufvec->bio)
+		bufvec_submit_bio(rw, bufvec);
 
 	return err;
 }
