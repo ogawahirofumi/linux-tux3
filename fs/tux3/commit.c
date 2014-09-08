@@ -45,6 +45,7 @@ static int init_sb(struct sb *sb)
 	stash_init(&sb->defree);
 	stash_init(&sb->deunify);
 	INIT_LIST_HEAD(&sb->unify_buffers);
+	INIT_LIST_HEAD(&sb->phase2_buffers);
 
 	INIT_LIST_HEAD(&sb->alloc_inodes);
 	spin_lock_init(&sb->countmap_lock);
@@ -394,6 +395,7 @@ static void post_commit(struct sb *sb, unsigned delta)
 	 */
 	free_forked_buffers(sb, NULL, 0);
 
+	tux3_volmap_clean_io(sb->volmap);
 	tux3_clear_dirty_inodes(sb, delta);
 }
 
