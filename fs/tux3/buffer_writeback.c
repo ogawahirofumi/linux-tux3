@@ -170,33 +170,28 @@ static void bufvec_submit_bio(int rw, struct bufvec *bufvec)
  * the page still has the dirty buffer, we should still keep the page
  * dirty for "unify".
  */
-static int keep_page_dirty(struct bufvec *bufvec, struct page *page)
+static int keep_page_dirty(struct page *page, int on_page_idx)
 {
 	struct buffer_head *first = page_buffers(page);
-	struct inode *inode = bufvec_inode(bufvec);
-
-	if (tux_inode(inode)->inum == TUX_VOLMAP_INO) {
-		struct buffer_head *tmp = first;
-		unsigned count = 0;
-		do {
-			if (buffer_dirty(tmp)) {
-				count++;
-				/* dirty buffers > flushing buffers? */
-				if (count > bufvec->on_page_idx)
-					return 1;
-			}
-			tmp = tmp->b_this_page;
-		} while (tmp != first);
-	}
+	struct buffer_head *tmp = first;
+	unsigned count = 0;
+	do {
+		if (buffer_dirty(tmp)) {
+			count++;
+			/* dirty buffers > flushing buffers? */
+			if (count > on_page_idx)
+				return 1;
+		}
+		tmp = tmp->b_this_page;
+	} while (tmp != first);
 
 	return 0;
 }
 
 /* Preparation and lock page for I/O */
-static void
-bufvec_prepare_and_lock_page(struct bufvec *bufvec, struct page *page)
+static void prepare_and_lock_page(struct page *page, int on_page_idx,
+				  loff_t i_size, int is_volmap)
 {
-	struct tux3_iattr_data *idata = bufvec->idata;
 	pgoff_t last_index;
 	unsigned offset;
 	int old_flag, old_writeback;
@@ -227,11 +222,11 @@ bufvec_prepare_and_lock_page(struct bufvec *bufvec, struct page *page)
 	 *     // this lost dirty of [B]
 	 *     clear_dirty_for_io()
 	 */
-	if (!keep_page_dirty(bufvec, page)) {
+	if (!is_volmap || !keep_page_dirty(page, on_page_idx)) {
 		/* FIXME: remove outside hack */
 		int outside;
-		offset = idata->i_size & (PAGE_CACHE_SIZE - 1);
-		last_index = idata->i_size >> PAGE_CACHE_SHIFT;
+		offset = i_size & (PAGE_CACHE_SIZE - 1);
+		last_index = i_size >> PAGE_CACHE_SHIFT;
 		outside = offset && last_index == page->index;
 
 		old_flag = tux3_clear_page_dirty_for_io(page, outside);
@@ -256,13 +251,13 @@ bufvec_prepare_and_lock_page(struct bufvec *bufvec, struct page *page)
 	 * the  page size, the remaining memory is zeroed when mapped, and
 	 * writes to that region are not written out to the file."
 	 */
-	offset = idata->i_size & (PAGE_CACHE_SIZE - 1);
-	last_index = idata->i_size >> PAGE_CACHE_SHIFT;
+	offset = i_size & (PAGE_CACHE_SIZE - 1);
+	last_index = i_size >> PAGE_CACHE_SHIFT;
 	if (offset && last_index == page->index)
 		zero_user_segment(page, offset, PAGE_CACHE_SIZE);
 }
 
-static void bufvec_prepare_and_unlock_page(struct page *page)
+static void prepare_and_unlock_page(struct page *page)
 {
 	unlock_page(page);
 }
@@ -377,6 +372,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 {
 	/* FIXME: inode is still guaranteed to be available? */
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
+	struct tux3_iattr_data *idata = bufvec->idata;
 	struct page *page;
 	unsigned int i;
 
@@ -387,7 +383,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 	page = bufvec->on_page[0].buffer->b_page;
 
 	/* Prepare the page and buffers on the page for I/O */
-	bufvec_prepare_and_lock_page(bufvec, page);
+	prepare_and_lock_page(page, bufvec->on_page_idx, idata->i_size, 0);
 	/* Set buffer_async_write to all buffers at first, then submit */
 	for (i = 0; i < bufvec->on_page_idx; i++) {
 		struct buffer_head *buffer = bufvec->on_page[i].buffer;
@@ -419,7 +415,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 
 		bufvec_submit_bio(rw, bufvec);
 	}
-	bufvec_prepare_and_unlock_page(page);
+	prepare_and_unlock_page(page);
 
 	bufvec->on_page_idx = 0;
 }
@@ -473,6 +469,7 @@ static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
 {
 	/* FIXME: inode is still guaranteed to be available? */
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
+	struct tux3_iattr_data *idata = bufvec->idata;
 	struct page *page;
 	block_t physical;
 	unsigned int i, length, offset;
@@ -501,7 +498,7 @@ static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
 	}
 
 	/* Prepare the page, and buffers on the page for I/O */
-	bufvec_prepare_and_lock_page(bufvec, page);
+	prepare_and_lock_page(page, bufvec->on_page_idx, idata->i_size, 0);
 	for (i = 0; i < bufvec->on_page_idx; i++) {
 		struct buffer_head *buffer = bufvec->on_page[i].buffer;
 		block_t physical = bufvec->on_page[i].block;
@@ -509,7 +506,7 @@ static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
 		tux3_clear_buffer_dirty_for_io(buffer, sb, physical);
 		bufvec_bio_add_buffer(bufvec, buffer);
 	}
-	bufvec_prepare_and_unlock_page(page);
+	prepare_and_unlock_page(page);
 
 	bufvec->on_page_idx = 0;
 }
@@ -927,53 +924,33 @@ int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 	return err;
 }
 
-static struct buffer_head *next_buf(struct list_head *head)
-{
-	return list_entry(head->next, struct buffer_head, b_assoc_buffers);
-}
-
-static int _keep_page_dirty(struct page *page, int on_page_idx)
-{
-	struct buffer_head *first = page_buffers(page);
-	struct buffer_head *tmp = first;
-	unsigned count = 0;
-	do {
-		if (buffer_dirty(tmp)) {
-			count++;
-			/* dirty buffers > flushing buffers? */
-			if (count > on_page_idx)
-				return 1;
-		}
-		tmp = tmp->b_this_page;
-	} while (tmp != first);
-
-	return 0;
-}
-
 static void clean_state(struct sb *sb, struct buffer_head *on_page[],
 			int on_page_idx)
 {
+	struct inode *volmap = sb->volmap;
 	struct page *page = on_page[0]->b_page;
-	int i, old_flag, old_writeback;
+	int i;
 
-	lock_page(page);
-
-	old_writeback = TestSetPageWriteback(page);
-	assert(!old_writeback);
-	if (!_keep_page_dirty(page, on_page_idx)) {
-		old_flag = tux3_clear_page_dirty_for_io(page, 0);
-		assert(old_flag);
-	}
-	__tux3_test_set_page_writeback(page, old_writeback);
+	/*
+	 * This is using volmap->i_size directly, however we may be
+	 * better to use idata->i_size. (e.g. idata->i_size may help
+	 * device resize?)
+	 */
+	prepare_and_lock_page(page, on_page_idx, volmap->i_size, 1);
 
 	for (i = 0; i < on_page_idx; i++) {
 		struct buffer_head *buffer = on_page[i];
 		tux3_clear_buffer_dirty_for_io(buffer, sb, bufindex(buffer));
 		tux3_clear_buffer_dirty_for_io_hack(buffer);
 	}
-	unlock_page(page);
+	prepare_and_unlock_page(page);
 
 	end_page_writeback(page);
+}
+
+static struct buffer_head *next_buf(struct list_head *head)
+{
+	return list_entry(head->next, struct buffer_head, b_assoc_buffers);
 }
 
 /* 2nd phase I/O for volmap (I.e. clean buffer/page state) */
