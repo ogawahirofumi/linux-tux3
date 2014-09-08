@@ -231,6 +231,8 @@ void bufvec_complete_without_io(struct bufvec *bufvec, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	struct list_head *head, int req_flag);
+int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer);
+int tux3_volmap_clean_io(struct inode *inode);
 
 /* block_fork.c */
 static inline int buffer_forked(struct buffer_head *buffer)

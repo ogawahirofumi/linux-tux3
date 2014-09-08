@@ -53,14 +53,20 @@ static inline void bufvec_buffer_move_to_contig(struct bufvec *bufvec,
 	bufvec->contig_count++;
 }
 
+static void buffer_io_done(struct buffer_head *buffer, int err,
+			   bufvec_end_io_t end_io)
+{
+	list_del_init(&buffer->link);
+	end_io(buffer, err);
+}
+
 static void bufvec_io_done(struct bufvec *bufvec, int err)
 {
 	struct list_head *head = &bufvec->for_io;
 
 	while (!list_empty(head)) {
 		struct buffer_head *buffer = buffers_entry(head->next);
-		list_del_init(&buffer->link);
-		bufvec->end_io(buffer, err);
+		buffer_io_done(buffer, err, bufvec->end_io);
 	}
 }
 
@@ -297,4 +303,21 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	bufvec_free(&bufvec);
 
 	return err;
+}
+
+/* 1st phase I/O for volmap by random order */
+int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
+{
+	int err;
+	assert(buffer_dirty(buffer));
+	err = blockio_sync(rw, sb, buffer, bufindex(buffer));
+	buffer_io_done(buffer, err, __clear_buffer_dirty_for_endio);
+	return err;
+}
+
+/* 2nd phase I/O for volmap (I.e. clean buffer/page state) */
+int tux3_volmap_clean_io(struct inode *inode)
+{
+	/* All is done at 1st phase. Nothing to do in userland */
+	return 0;
 }
