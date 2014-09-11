@@ -301,6 +301,7 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	}
 
 	bufvec_free(&bufvec);
+	remember_dleaf(tux_sb(inode->i_sb), NULL);
 
 	return err;
 }
