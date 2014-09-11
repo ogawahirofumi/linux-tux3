@@ -319,6 +319,7 @@ struct sb {
 	spinlock_t dirty_inodes_lock;	/* lock of dirty_inodes for frontend */
 	/* Per-delta dirty data for sb */
 	struct sb_delta_dirty s_ddc[TUX3_MAX_DELTA];
+	struct buffer_head *last_dleaf;
 #ifdef __KERNEL__
 	struct super_block *vfs_sb;	/* Generic kernel superblock */
 #else
@@ -809,6 +810,7 @@ int tux_dir_is_empty(struct inode *dir);
 extern struct btree_ops dtree_ops;
 
 /* filemap.c */
+void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf);
 int dtree_chop(struct btree *btree, tuxkey_t start, u64 len);
 int tux3_filemap_overwrite_io(int rw, struct bufvec *bufvec);
 int tux3_filemap_redirect_io(int rw, struct bufvec *bufvec);
