@@ -566,15 +566,18 @@ static int inode_inum_cmp(void *priv, struct list_head *a, struct list_head *b)
 	struct tux3_inode *ta, *tb;
 	struct inode_delta_dirty *i_ddc;
 	unsigned delta = *(unsigned *)priv;
+	inum_t inum_a, inum_b;
 
 	i_ddc = list_entry(a, struct inode_delta_dirty, dirty_list);
 	ta = i_ddc_to_inode(i_ddc, delta);
 	i_ddc = list_entry(b, struct inode_delta_dirty, dirty_list);
 	tb = i_ddc_to_inode(i_ddc, delta);
 
-	if (ta->inum < tb->inum)
+	inum_a = ((inum_t)!S_ISDIR(ta->vfs_inode.i_mode) << 63) | ta->inum;
+	inum_b = ((inum_t)!S_ISDIR(tb->vfs_inode.i_mode) << 63) | tb->inum;
+	if (inum_a < inum_b)
 		return -1;
-	else if (ta->inum > tb->inum)
+	else if (inum_a > inum_b)
 		return 1;
 	return 0;
 }
