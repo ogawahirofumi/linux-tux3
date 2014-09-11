@@ -41,6 +41,7 @@ static int d_filemap(struct inode *inode, block_t start, unsigned count,
 	/* this should be called with "mode != MAP_READ" */
 	assert(mode != MAP_READ);
 	segs = filemap(inode, start, count, seg, seg_max, mode);
+	tux_sb(inode->i_sb)->last_dleaf = NULL;
 	if (segs > 0)
 		add_maps(inode, start, seg, segs);
 	return segs;
