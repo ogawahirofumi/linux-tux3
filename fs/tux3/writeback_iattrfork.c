@@ -148,6 +148,13 @@ static loff_t tux3_iattr_read_i_size(struct inode *inode, unsigned delta)
 		i_size = idata->i_size;
 	}
 
+	/*
+	 * If inode was marked as dead, we don't need to flush data.
+	 * To skip to flush data, this return i_size=0.
+	 */
+	if (tux3_dead_read(flags, delta))
+		i_size = 0;
+
 	return i_size;
 }
 
