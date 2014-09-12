@@ -7,7 +7,7 @@
 
 #include "tux3.h"
 
-//#define POLICY_LINEAR
+#define POLICY_LINEAR
 
 #ifndef POLICY_LINEAR
 /*
