@@ -180,8 +180,8 @@ retry:
 	}
 
 	/*
-	 * FIXME: If TUX3_WRITE_PAGEFORK, caller handle buffer fork.
-	 * Unlike TUX3_WRITE_PAGEFORK hack, we are better to provide
+	 * FIXME: If not TUX3_F_PAGEFORK, caller handle buffer fork.
+	 * Unlike TUX3_F_PAGEFORK hack, we are better to provide
 	 * the different blockget() implementation doesn't use
 	 * tux3_write_begin().
 	 */
