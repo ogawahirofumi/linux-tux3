@@ -808,12 +808,8 @@ need_split:
 
 		/* If append write, split at sentinel */
 		*split_hint = get_logical(sentinel);
-		if (key->start >= *split_hint) {
-			tux3_dbg("key %Lu bottom %Lu, limit %Lu, hint %Lu",
-				 key->start, key_bottom, key_limit,
-				 *split_hint);
+		if (key->start >= *split_hint)
 			return BTREE_DO_SPLIT;
-		}
 	}
 
 	/* FIXME: use better split position */
