@@ -10,15 +10,19 @@
 
 #include "../utility.c"
 
-int devio_sync(int rw, struct dev *dev, loff_t offset, void *data, unsigned len)
-{
-	return ioabs(dev->fd, data, len, rw, offset);
-}
-
 int devio_vec(int rw, struct dev *dev, loff_t offset, struct iovec *iov,
 	      unsigned iovcnt)
 {
 	return iovabs(dev->fd, iov, iovcnt, rw, offset);
+}
+
+int devio_sync(int rw, struct dev *dev, loff_t offset, void *data, unsigned len)
+{
+	struct iovec iov = {
+		.iov_base	= data,
+		.iov_len	= len,
+	};
+	return devio_vec(rw, dev, offset, &iov, 1);
 }
 
 int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,

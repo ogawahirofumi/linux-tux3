@@ -141,10 +141,10 @@ void tux3_exit_mem(void);
 
 /* utility.c */
 void stacktrace(void);
-int devio_sync(int rw, struct dev *dev, loff_t offset, void *data,
-	       unsigned len);
 int devio_vec(int rw, struct dev *dev, loff_t offset, struct iovec *iov,
 	      unsigned iovcnt);
+int devio_sync(int rw, struct dev *dev, loff_t offset, void *data,
+	       unsigned len);
 int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
 		 block_t block);
 int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count);
