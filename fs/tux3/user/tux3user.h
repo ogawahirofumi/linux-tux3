@@ -24,6 +24,7 @@
 #include "libklib/mm.h"
 #include "libklib/slab.h"
 #include "libklib/fs.h"
+#include "libklib/parser.h"
 #include "writeback.h"
 
 #ifndef XATTR_CREATE
