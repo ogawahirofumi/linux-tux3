@@ -87,6 +87,15 @@ void tux3_mark_inode_to_delete(struct inode *inode)
 	change_end_atomic(sb);
 }
 
+/* Check whether flags was marked as dead. */
+static int tux3_dead_read(unsigned flags, unsigned delta)
+{
+	if (tux3_deadsta_has_delta(flags))
+		if (tux3_deadsta_get_delta(flags) == tux3_delta(delta))
+			return 1;
+	return 0;
+}
+
 /*
  * Check whether inode was dead. Then clear iattr dirty to tell no
  * need to iattrfork anymore if needed.
@@ -100,8 +109,7 @@ static void tux3_dead_read_and_clear(struct inode *inode,
 
 	*deleted = 0;
 
-	if (tux3_deadsta_has_delta(flags) &&
-	    tux3_deadsta_get_delta(flags) == tux3_delta(delta)) {
+	if (tux3_dead_read(flags, delta)) {
 		*deleted = 1;
 		flags |= TUX3_INODE_DEAD;
 		tuxnode->flags = tux3_deadsta_clear(flags);

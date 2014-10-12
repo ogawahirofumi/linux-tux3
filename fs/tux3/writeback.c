@@ -388,6 +388,19 @@ int tux3_inode_is_orphan(struct tux3_inode *tuxnode)
 	return !!(tuxnode->flags & TUX3_INODE_ORPHANED);
 }
 
+static loff_t tux3_state_read_i_size(struct inode *inode, unsigned delta)
+{
+	struct tux3_inode *tuxnode = tux_inode(inode);
+	loff_t i_size;
+
+	spin_lock(&tuxnode->lock);
+	/* Get iattr data */
+	i_size = tux3_iattr_read_i_size(inode, delta);
+	spin_unlock(&tuxnode->lock);
+
+	return i_size;
+}
+
 static void tux3_state_read_and_clear(struct inode *inode,
 				      struct tux3_iattr_data *idata,
 				      unsigned *orphaned, unsigned *deleted,
@@ -439,6 +452,16 @@ static inline int tux3_flush_buffers(struct inode *inode,
  * reclaim. Because we don't wait writeback on evict_inode(), and
  * instead we keeps the inode while writeback is running.
  */
+int tux3_flush_inode_data(struct inode *inode, unsigned delta, int req_flag)
+{
+	/* FIXME: linux writeback doesn't allow to control writeback
+	 * timing. */
+	struct tux3_iattr_data idata;
+
+	idata.i_size = tux3_state_read_i_size(inode, delta);
+	return tux3_flush_buffers(inode, &idata, delta, req_flag);
+}
+
 int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
 {
 	/* FIXME: linux writeback doesn't allow to control writeback
@@ -483,10 +506,6 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
 		if (err && !ret)
 			ret = err;
 	}
-
-	err = tux3_flush_buffers(inode, &idata, delta, req_flag);
-	if (err && !ret)
-		ret = err;
 
 	/*
 	 * Get flags after tux3_flush_buffers() to check TUX3_DIRTY_BTREE.
@@ -534,6 +553,7 @@ int tux3_flush_inode_internal(struct inode *inode, unsigned delta, int req_flag)
 	if (!(inode->i_state & I_DIRTY))
 		return 0;
 
+	err = tux3_flush_inode_data(inode, delta, req_flag);
 	err = tux3_flush_inode(inode, delta, req_flag);
 	/* FIXME: error handling */
 	__tux3_clear_dirty_inode(inode, delta);
@@ -546,15 +566,18 @@ static int inode_inum_cmp(void *priv, struct list_head *a, struct list_head *b)
 	struct tux3_inode *ta, *tb;
 	struct inode_delta_dirty *i_ddc;
 	unsigned delta = *(unsigned *)priv;
+	inum_t inum_a, inum_b;
 
 	i_ddc = list_entry(a, struct inode_delta_dirty, dirty_list);
 	ta = i_ddc_to_inode(i_ddc, delta);
 	i_ddc = list_entry(b, struct inode_delta_dirty, dirty_list);
 	tb = i_ddc_to_inode(i_ddc, delta);
 
-	if (ta->inum < tb->inum)
+	inum_a = ((inum_t)!S_ISDIR(ta->vfs_inode.i_mode) << 63) | ta->inum;
+	inum_b = ((inum_t)!S_ISDIR(tb->vfs_inode.i_mode) << 63) | tb->inum;
+	if (inum_a < inum_b)
 		return -1;
-	else if (ta->inum > tb->inum)
+	else if (inum_a > inum_b)
 		return 1;
 	return 0;
 }
@@ -578,6 +601,16 @@ int tux3_flush_inodes(struct sb *sb, unsigned delta)
 		struct inode *inode = &tuxnode->vfs_inode;
 
 		policy_inode(inode, &private);
+		assert(!tux3_is_inode_no_flush(inode));
+
+		err = tux3_flush_inode_data(inode, delta, 0);
+		if (err)
+			goto error;
+	}
+	list_for_each_entry_safe(i_ddc, safe, dirty_inodes, dirty_list) {
+		struct tux3_inode *tuxnode = i_ddc_to_inode(i_ddc, delta);
+		struct inode *inode = &tuxnode->vfs_inode;
+
 		assert(!tux3_is_inode_no_flush(inode));
 
 		err = tux3_flush_inode(inode, delta, 0);

@@ -236,6 +236,22 @@ struct countmap_pin {
 	struct buffer_head *buffer;
 };
 
+/* Mount options bits */
+enum {
+	TUX3_MOPT_BARRIER =	(1 << 0),
+};
+
+#define __TUX3_TEST_MOPT(m, f)	((m)->flags & f)
+#define TUX3_TEST_MOPT(s, n)	__TUX3_TEST_MOPT(&(s)->mopt, TUX3_MOPT_##n)
+#define __TUX3_SET_MOPT(m, f)	((m)->flags |= f)
+#define TUX3_SET_MOPT(s, n)	__TUX3_SET_MOPT(&(s)->mopt, TUX3_MOPT_##n)
+#define __TUX3_CLEAR_MOPT(m, f)	((m)->flags &= ~(f))
+#define TUX3_CLEAR_MOPT(s, n)	__TUX3_CLEAR_MOPT(&(s)->mopt, TUX3_MOPT_##n)
+
+struct tux3_mount_opt {
+	unsigned int flags;
+};
+
 struct tux3_idefer_map;
 /* Tux3-specific sb is a handle for the entire volume state */
 struct sb {
@@ -261,6 +277,8 @@ struct sb {
 	unsigned staging_delta;			/* staging delta */
 	unsigned committed_delta;		/* committed delta */
 	wait_queue_head_t delta_event_wq;	/* wait queue for delta event */
+
+	struct tux3_mount_opt mopt;		/* mount options */
 
 	struct btree itree;	/* Inode btree */
 	struct btree otree;	/* Orphan btree */
@@ -919,6 +937,7 @@ void replay_iput_orphan_inodes(struct sb *sb,
 int replay_load_orphan_inodes(struct replay *rp);
 
 /* super.c */
+extern const struct tux3_mount_opt tux3_default_mopt;
 struct replay *tux3_init_fs(struct sb *sbi);
 
 /* policy.c */

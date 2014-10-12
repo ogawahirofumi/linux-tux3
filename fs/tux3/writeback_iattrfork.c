@@ -120,6 +120,50 @@ static void tux3_iattr_clear_dirty(struct tux3_inode *tuxnode)
  *
  * Caller must hold tuxnode->lock.
  */
+static loff_t tux3_iattr_read_i_size(struct inode *inode, unsigned delta)
+{
+	struct tux3_inode *tuxnode = tux_inode(inode);
+	unsigned long flags;
+	loff_t i_size;
+
+	trace("inum %Lu, delta %u", tuxnode->inum, delta);
+
+	/*
+	 * If delta is same, iattrs are available in inode. If not,
+	 * iattrs were forked.
+	 */
+	flags = tuxnode->flags;
+	if (!tux3_iattrsta_has_delta(flags) ||
+	    tux3_iattrsta_get_delta(flags) == tux3_delta(delta)) {
+		/*
+		 * If btree is only dirtied, or if dirty and no fork,
+		 * use inode.
+		 */
+		i_size = i_size_read(inode);
+	} else {
+		/* If dirty and forked, use copy */
+		struct tux3_iattr_data *idata =
+			&tux3_inode_ddc(inode, delta)->idata;
+		assert(idata->present != TUX3_INVALID_PRESENT);
+		i_size = idata->i_size;
+	}
+
+	/*
+	 * If inode was marked as dead, we don't need to flush data.
+	 * To skip to flush data, this return i_size=0.
+	 */
+	if (tux3_dead_read(flags, delta))
+		i_size = 0;
+
+	return i_size;
+}
+
+/*
+ * Read iattrs, then clear iattr dirty to tell no need to iattrfork
+ * anymore if needed.
+ *
+ * Caller must hold tuxnode->lock.
+ */
 static void tux3_iattr_read_and_clear(struct inode *inode,
 				      struct tux3_iattr_data *result,
 				      unsigned delta)
