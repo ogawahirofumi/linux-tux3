@@ -9,6 +9,7 @@
  */
 
 #include "tux3user.h"
+#include <libklib/seq_file.h>
 
 #ifndef trace
 #define trace trace_off
@@ -200,6 +201,26 @@ error:
 int setup_mount_options(struct sb *sb, void *data)
 {
 	return parse_options(sb, &sb->mopt, data);
+}
+
+ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
+{
+	struct dentry dummy = {
+		.d_sb = sb,
+	};
+	struct seq_file seq = {
+		.buf = buf,
+		.size = size,
+	};
+	int err;
+
+	err = __tux3_show_options(&seq, &dummy, all);
+	if (seq_overflow(&seq))
+		err = -EOVERFLOW;
+	if (err)
+		return err;
+
+	return seq.count;
 }
 
 int tux3_init_mem(void)

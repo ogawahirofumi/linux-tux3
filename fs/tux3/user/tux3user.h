@@ -135,6 +135,7 @@ void free_inode_check(struct tux3_inode *tuxnode);
 int put_super(struct sb *sb);
 int make_tux3(struct sb *sb);
 int setup_mount_options(struct sb *sb, void *data);
+ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all);
 int tux3_init_mem(void);
 void tux3_exit_mem(void);
 

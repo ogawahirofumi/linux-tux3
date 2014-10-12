@@ -72,6 +72,7 @@ struct qstr {
 struct dentry {
 	struct qstr d_name;
 	struct inode *d_inode;
+	struct sb *d_sb;
 };
 
 void d_instantiate(struct dentry *dentry, struct inode *inode);

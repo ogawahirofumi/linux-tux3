@@ -448,6 +448,16 @@ int main(int argc, char *argv[])
 
 		free(mount_option);
 	}
+	if (verbose) {
+		char buf[4096];
+		ssize_t len;
+		len = get_mount_options(sb, buf, sizeof(buf), verbose >= 2);
+		if (len < 0) {
+			err = len;
+			goto error;
+		}
+		printf("mount options: %s\n", buf);
+	}
 
 	switch (cmd) {
 	case CMD_MKFS:
