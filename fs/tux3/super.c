@@ -10,6 +10,8 @@
 #ifdef __KERNEL__
 #include <linux/module.h>
 #include <linux/statfs.h>
+#include <linux/parser.h>
+#include <linux/seq_file.h>
 #include "kcompat.h"
 
 /* This will go to include/linux/magic.h */
@@ -23,6 +25,11 @@
 int tux3_trace;
 module_param(tux3_trace, int, 0644);
 #endif
+
+/* Default mount options */
+const struct tux3_mount_opt tux3_default_mopt = {
+	.flags		= TUX3_MOPT_BARRIER,
+};
 
 #ifdef __KERNEL__
 #define BUFFER_LINK	b_assoc_buffers
@@ -316,6 +323,148 @@ static void tux3_check_destroy_inode(struct inode *inode)
 	assert(i_ddc_is_clean(inode));
 }
 
+#define MOPT_SET	(1 << 0)
+#define MOPT_CLEAR	(1 << 1)
+#define MOPT_STRING	(1 << 2)
+#define MOPT_NOSUPPORT	(1 << 3)
+
+#define TUX3_MOUNT_OPTIONS					  	\
+	OPT(Opt_barrier, "barrier", TUX3_MOPT_BARRIER, MOPT_SET), 	\
+	OPT(Opt_nobarrier, "nobarrier", TUX3_MOPT_BARRIER, MOPT_CLEAR)
+
+enum {
+#define OPT(a, b, c, d)		a
+	TUX3_MOUNT_OPTIONS,
+#undef OPT
+	Opt_err,
+};
+
+static const match_table_t tux3_tokens = {
+#define OPT(a, b, c, d)		{ a, b }
+	TUX3_MOUNT_OPTIONS,
+#undef OPT
+	/* Alternative format of options */
+//	{ Opt_barrier, "barrier=%u" },
+	{ Opt_err, NULL },
+};
+
+static const struct tux3_mopt_op {
+	int	token;
+	int	mount_opt;
+	int	flags;
+} tux3_mopt_ops[] = {
+#define OPT(a, b, c, d)		{ a, c, d }
+	TUX3_MOUNT_OPTIONS,
+#undef OPT
+	{ Opt_err, 0, 0 },
+};
+
+static int handle_mopt(struct sb *sbi, struct tux3_mount_opt *mopt,
+		       char *opt, int token, substring_t *args)
+{
+	const struct tux3_mopt_op *m;
+	int arg = 0;
+
+	for (m = tux3_mopt_ops; m->token != Opt_err; m++)
+		if (token == m->token)
+			break;
+
+	if (m->token == Opt_err) {
+		tux3_msg(sbi, "Unrecognized mount option \"%s\" "
+			 "or missing value", opt);
+		return -EINVAL;
+	}
+
+	if (args->from && !(m->flags & MOPT_STRING) && match_int(args, &arg))
+		return -EINVAL;
+
+	if (m->flags & MOPT_NOSUPPORT)
+		tux3_msg(sbi, "%s option not supported", opt);
+	else {
+		if (!args->from)
+			arg = 1;
+		if (m->flags & MOPT_CLEAR)
+			arg = !arg;
+		else if (unlikely(!(m->flags & MOPT_SET))) {
+			tux3_err(sbi, "buggy handling of option %s", opt);
+			return -EINVAL;
+		}
+		if (arg != 0)
+			__TUX3_SET_MOPT(mopt, m->mount_opt);
+		else
+			__TUX3_CLEAR_MOPT(mopt, m->mount_opt);
+	}
+
+	return 0;
+}
+
+static int parse_options(struct sb *sbi, struct tux3_mount_opt *mopt,
+			 char *options)
+{
+	char *p;
+	substring_t args[MAX_OPT_ARGS];
+
+	if (!options)
+		return 0;
+
+	while ((p = strsep(&options, ",")) != NULL) {
+		int err, token;
+
+		if (!*p)
+			continue;
+		/*
+		 * Initialize args struct so we know whether arg was
+		 * found; some options take optional arguments.
+		 */
+		args[0].to = args[0].from = NULL;
+		token = match_token(p, tux3_tokens, args);
+		err = handle_mopt(sbi, mopt, p, token, args);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static const char *token2str(int token)
+{
+	const struct match_token *t;
+
+	for (t = tux3_tokens; t->token != Opt_err; t++)
+		if (t->token == token && !strchr(t->pattern, '='))
+			break;
+	return t->pattern;
+}
+
+static int __tux3_show_options(struct seq_file *seq, struct dentry *root,
+			       int all)
+{
+	struct sb *sbi = tux_sb(root->d_sb);
+	const struct tux3_mopt_op *m;
+	const unsigned int def_mopt_flags = tux3_default_mopt.flags;
+	const char sep = ',';
+
+#define SEQ_OPTS_PRINT(str, arg) seq_printf(seq, "%c" str, sep, arg)
+
+	for (m = tux3_mopt_ops; m->token != Opt_err; m++) {
+		int want_set = m->flags & MOPT_SET;
+
+		if ((m->flags & (MOPT_SET | MOPT_CLEAR)) == 0)
+			continue;
+		if (!all &&
+		    !(m->mount_opt & (sbi->mopt.flags ^ def_mopt_flags)))
+			continue; /* skip if same as the default */
+		if ((want_set &&
+		     (sbi->mopt.flags & m->mount_opt) != m->mount_opt) ||
+		    (!want_set && (sbi->mopt.flags & m->mount_opt)))
+			continue; /* select Opt_noFoo vs Opt_Foo */
+
+		SEQ_OPTS_PRINT("%s", token2str(m->token));
+	}
+
+	return 0;
+}
+
 #ifdef __KERNEL__
 static struct kmem_cache *tux_inode_cachep;
 
@@ -407,9 +556,30 @@ static int tux3_statfs(struct dentry *dentry, struct kstatfs *buf)
 
 static int tux3_remount(struct super_block *sb, int *flags, char *data)
 {
-	/* Flush all before read-only */
-	sync_filesystem(sb);
+	struct sb *sbi = tux_sb(sb);
+	struct tux3_mount_opt mopt = sbi->mopt;
+	int err, remount_ro;
+
+	/* Become read-only mount? */
+	remount_ro = (*flags & MS_RDONLY) && !(sb->s_flags & MS_RDONLY);
+
+	err = parse_options(sbi, &mopt, data);
+	if (err)
+		return err;
+
+	if (remount_ro) {
+		/* Flush all before read-only */
+		sync_filesystem(sb);
+	}
+
+	sbi->mopt = mopt;
+
 	return 0;
+}
+
+static int tux3_show_options(struct seq_file *seq, struct dentry *root)
+{
+	return __tux3_show_options(seq, root, 0);
 }
 
 static const struct super_operations tux3_super_ops = {
@@ -430,6 +600,7 @@ static const struct super_operations tux3_super_ops = {
 	.put_super	= tux3_put_super,
 	.statfs		= tux3_statfs,
 	.remount_fs	= tux3_remount,
+	.show_options	= tux3_show_options,
 };
 
 static int tux3_fill_super(struct super_block *sb, void *data, int silent)
@@ -451,6 +622,12 @@ static int tux3_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_magic = TUX3_SUPER_MAGIC;
 	sb->s_op = &tux3_super_ops;
 	sb->s_time_gran = 1;
+	/* Set default mount options */
+	sbi->mopt = tux3_default_mopt;
+
+	err = parse_options(sbi, &sbi->mopt, data);
+	if (err)
+		goto error_free;
 
 	err = -EIO;
 	blocksize = sb_min_blocksize(sb, BLOCK_SIZE);
