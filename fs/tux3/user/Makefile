@@ -97,7 +97,8 @@ TEST_LIB_OBJS	= tests/test.o
 
 # LIBKLIB objects
 LIBKLIB_OBJS	= libklib/find_next_bit.o libklib/fs.o libklib/list_sort.o \
-	libklib/parser.o libklib/slab.o libklib/time.o libklib/uidgid.o
+	libklib/parser.o libklib/seq_file.o libklib/slab.o libklib/time.o \
+	libklib/uidgid.o
 
 # binary objects
 OBJS		= tux3.o
