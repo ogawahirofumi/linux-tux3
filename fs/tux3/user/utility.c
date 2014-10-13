@@ -10,10 +10,38 @@
 
 #include "../utility.c"
 
+static int preflush(int rw, struct dev *dev)
+{
+	if (rw & REQ_FLUSH) {
+		if (fdatasync(dev->fd) < 0)
+			return -errno;
+	}
+	return 0;
+}
+
+static int postflush(int rw, struct dev *dev)
+{
+	if (rw & REQ_FUA) {
+		if (fdatasync(dev->fd) < 0)
+			return -errno;
+	}
+	return 0;
+}
+
 int devio_vec(int rw, struct dev *dev, loff_t offset, struct iovec *iov,
 	      unsigned iovcnt)
 {
-	return iovabs(dev->fd, iov, iovcnt, rw, offset);
+	int err;
+
+	err = preflush(rw, dev);
+	if (err)
+		return err;
+
+	err = iovabs(dev->fd, iov, iovcnt, rw, offset);
+	if (err)
+		return err;
+
+	return postflush(rw, dev);
 }
 
 int devio_sync(int rw, struct dev *dev, loff_t offset, void *data, unsigned len)
