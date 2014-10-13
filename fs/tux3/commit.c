@@ -168,7 +168,7 @@ int load_sb(struct sb *sb)
 	return 0;
 }
 
-static int save_sb(struct sb *sb)
+static int save_sb(struct sb *sb, int req_flag)
 {
 	struct disksuper *super = &sb->super;
 
@@ -184,8 +184,8 @@ static int save_sb(struct sb *sb)
 	super->atomgen = cpu_to_be32(sb->atomgen);
 	/* logchain and logcount are written to super directly */
 
-	/* Don't add REQ_SYNC to avoid CFQ's idle_slice_timer. */
-	return devio_sync(WRITE | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
+	return devio_sync(WRITE | REQ_META | req_flag,
+			  sb_dev(sb), SB_LOC, super, SB_LEN);
 }
 
 /* Delta transition */
@@ -376,10 +376,26 @@ static int apply_defered_bfree(struct sb *sb, u64 val)
 	return bfree(sb, val & ~(-1ULL << 48), val >> 48);
 }
 
-static int commit_delta(struct sb *sb)
+static int commit_delta(struct sb *sb, int req_flag)
 {
+	int err, barrier = TUX3_TEST_MOPT(sb, BARRIER);
+
 	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
-	int err = save_sb(sb);
+
+	/*
+	 * FIXME: we don't need REQ_FUA here actually. But deferred
+	 * free must be done after commit block was hit to media.
+	 *
+	 * We can optimize by delaying deferred free until after next
+	 * REQ_FLUSH in next delta. Therefore, if make it async, we
+	 * can start next delta more early.
+	 */
+	if (barrier) {
+		/* Don't add REQ_SYNC here to avoid CFQ's idle_slice_timer. */
+		req_flag |= REQ_NOIDLE | REQ_FLUSH | REQ_FUA;
+	}
+
+	err = save_sb(sb, req_flag);
 	if (err)
 		return err;
 
@@ -496,7 +512,7 @@ static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 	 * written before next block block. (But defree must be after
 	 * commit block.)
 	 */
-	commit_delta(sb);
+	commit_delta(sb, 0);
 out:
 	/* FIXME: what to do if error? */
 	tux3_end_backend();
