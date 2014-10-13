@@ -684,13 +684,12 @@ int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags);
 extern const struct inode_operations tux_symlink_iops;
 
 /* utility.c */
-int vecio(int rw, struct block_device *dev, loff_t offset, unsigned vecs,
-	  struct bio_vec *vec, bio_end_io_t endio, void *info);
-int syncio(int rw, struct block_device *dev, loff_t offset, unsigned vecs,
-	   struct bio_vec *vec);
-int devio(int rw, struct block_device *dev, loff_t offset, void *data,
-	  unsigned len);
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block);
+int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
+	       unsigned len);
+int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
+	    bio_end_io_t endio, void *bio_private);
+int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
+		 block_t block);
 int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count);
 
 #define tux3_msg(sb, fmt, ...)						\

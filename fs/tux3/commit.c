@@ -156,7 +156,7 @@ int load_sb(struct sb *sb)
 	if (err)
 		return err;
 
-	err = devio(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
+	err = devio_sync(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
 	if (err)
 		return err;
 	if (memcmp(super->magic, TUX3_MAGIC_STR, sizeof(super->magic)))
@@ -184,7 +184,7 @@ static int save_sb(struct sb *sb)
 	/* logchain and logcount are written to super directly */
 
 	/* Don't add REQ_SYNC to avoid CFQ's idle_slice_timer. */
-	return devio(WRITE | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
+	return devio_sync(WRITE | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
 }
 
 /* Delta transition */
