@@ -183,7 +183,8 @@ static int save_sb(struct sb *sb)
 	super->atomgen = cpu_to_be32(sb->atomgen);
 	/* logchain and logcount are written to super directly */
 
-	return devio(WRITE_SYNC | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
+	/* Don't add REQ_SYNC to avoid CFQ's idle_slice_timer. */
+	return devio(WRITE | REQ_META, sb_dev(sb), SB_LOC, super, SB_LEN);
 }
 
 /* Delta transition */
