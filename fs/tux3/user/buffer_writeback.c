@@ -14,6 +14,15 @@ void tux3_iowait_wait(struct iowait *iowait)
 {
 }
 
+/* Block plugging (stub) */
+void blk_start_plug(struct blk_plug *plug)
+{
+}
+
+void blk_finish_plug(struct blk_plug *plug)
+{
+}
+
 /*
  * Helper for buffer vector I/O.
  */

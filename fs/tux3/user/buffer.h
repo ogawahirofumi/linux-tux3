@@ -221,8 +221,13 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 	return bufvec_contig_index(bufvec) + bufvec_contig_count(bufvec) - 1;
 }
 
+struct blk_plug {
+};
+
 void tux3_iowait_init(struct iowait *iowait);
 void tux3_iowait_wait(struct iowait *iowait);
+void blk_start_plug(struct blk_plug *plug);
+void blk_finish_plug(struct blk_plug *plug);
 void bufvec_init(struct bufvec *bufvec, map_t *map,
 		 struct list_head *head, struct tux3_iattr_data *idata);
 void bufvec_free(struct bufvec *bufvec);
