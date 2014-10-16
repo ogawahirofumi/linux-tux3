@@ -139,7 +139,9 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	struct list_head *head, int req_flag);
 int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t physical,
 		     unsigned count);
-int tux3_volmap_io(int rw, struct bufvec *bufvec);
+int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer);
+int tux3_volmap_early_io(int rw, struct bufvec *bufvec);
+int tux3_volmap_clean_io(struct inode *inode);
 
 /* block_fork.c */
 #define PageForked(x)		PageChecked(x)

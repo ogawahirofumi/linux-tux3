@@ -301,6 +301,7 @@ struct sb {
 	struct stash deunify;	/* defer extent frees until after unify */
 
 	struct list_head unify_buffers; /* dirty metadata flushed at unify */
+	struct list_head phase2_buffers; /* 2nd phase volmap buffers to clean */
 
 	struct iowait *iowait;		/* helper for waiting I/O */
 

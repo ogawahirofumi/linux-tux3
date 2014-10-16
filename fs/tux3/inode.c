@@ -1042,7 +1042,7 @@ static void tux_setup_inode(struct inode *inode)
 			inode->i_size = (loff_t)sb->volblocks << sb->blockbits;
 			inode->i_mapping->a_ops = &tux_vol_aops;
 			if (inum == TUX_VOLMAP_INO)
-				tux_inode(inode)->io = tux3_volmap_io;
+				tux_inode(inode)->io = tux3_volmap_early_io;
 			else
 				tux_inode(inode)->io = tux3_logmap_io;
 			/* Flushed by tux3_flush_inode_internal() */
