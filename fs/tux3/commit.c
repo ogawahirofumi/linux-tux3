@@ -445,6 +445,7 @@ int tux3_under_backend(struct sb *sb)
 static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 {
 	unsigned delta = sb->staging_delta;
+	struct blk_plug plug;
 	struct iowait iowait;
 	int err = 0;
 
@@ -469,6 +470,12 @@ static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 	tux3_iowait_init(&iowait);
 	sb->iowait = &iowait;
 
+	/*
+	 * Start plugging to merge early I/O dleaf with data, and
+	 * possibly data with itree metadata.
+	 */
+	blk_start_plug(&plug);
+
 	/* Add delta log for debugging. */
 	log_delta(sb);
 
@@ -486,13 +493,13 @@ static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 	 */
 	err = stage_delta(sb, delta);
 	if (err)
-		goto out; /* FIXME: error handling */
+		goto error; /* FIXME: error handling */
 
 	if ((unify_flag == ALLOW_UNIFY && need_unify(sb)) ||
 	    unify_flag == FORCE_UNIFY) {
 		err = unify_log(sb);
 		if (err)
-			goto out; /* FIXME: error handling */
+			goto error; /* FIXME: error handling */
 
 		/* Add delta log for debugging. */
 		log_delta(sb);
@@ -500,6 +507,7 @@ static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 
 	write_btree(sb, delta);
 	write_log(sb);
+	blk_finish_plug(&plug);
 
 	/* Wait I/O was submitted */
 	tux3_iowait_wait(&iowait);
@@ -522,6 +530,10 @@ out:
 	trace("<<<<<<<<< post commit done %u", delta);
 
 	return err;
+
+error:
+	blk_finish_plug(&plug);
+	goto out;
 }
 
 /*
