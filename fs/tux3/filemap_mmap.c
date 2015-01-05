@@ -226,7 +226,6 @@ static const struct vm_operations_struct tux3_file_vm_ops = {
 
 int tux3_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
-#ifdef CONFIG_TUX3_MMAP
 	struct address_space *mapping = file->f_mapping;
 
 	if (!mapping->a_ops->readpage)
@@ -236,7 +235,4 @@ int tux3_file_mmap(struct file *file, struct vm_area_struct *vma)
 	vma->vm_ops = &tux3_file_vm_ops;
 
 	return 0;
-#else
-	return -EOPNOTSUPP;
-#endif
 }
