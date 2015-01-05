@@ -197,6 +197,11 @@ error:
 	return err;
 }
 
+int setup_mount_options(struct sb *sb, void *data)
+{
+	return parse_options(sb, &sb->mopt, data);
+}
+
 int tux3_init_mem(void)
 {
 	int err;

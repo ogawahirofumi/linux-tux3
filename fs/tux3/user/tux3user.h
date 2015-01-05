@@ -83,7 +83,10 @@ static inline struct timespec gettime(void)
 	__inode;						\
 })
 
-#define rapid_sb(x)	(&(struct sb){ .dev = x })
+#define rapid_sb(x)	(&(struct sb){		\
+	.dev = x,				\
+	.mopt = tux3_default_mopt,		\
+})
 
 /* dir.c */
 void tux_dump_entries(struct buffer_head *buffer);
@@ -131,6 +134,7 @@ void inode_init(struct tux3_inode *tuxnode, struct sb *sb, umode_t mode);
 void free_inode_check(struct tux3_inode *tuxnode);
 int put_super(struct sb *sb);
 int make_tux3(struct sb *sb);
+int setup_mount_options(struct sb *sb, void *data);
 int tux3_init_mem(void);
 void tux3_exit_mem(void);
 

@@ -352,6 +352,7 @@ int main(int argc, char *argv[])
 
 	struct options options[] = {
 		{ "commands", "L", 0, "List commands", },
+		{ "mount-option", "o", OPT_HASARG, "mount option", },
 		{ "verbose", "v", OPT_MANY, "Verbose output", },
 		{ "version", "V", 0, "Show version", },
 		{ "usage", "", 0, "Show usage", },
@@ -369,15 +370,22 @@ int main(int argc, char *argv[])
 	if (optc < 0)
 		error_exit("%s!", opterror(optv));
 
+	char *mount_option = NULL;
 	int verbose = 0;
 
 	for (int i = 0; i < optc; i++) {
+		const char *value = optvalue(optv, i);
 		switch (options[optindex(optv, i)].terse[0]) {
 		case 'L':
 			for (int j = 0; j < ARRAY_SIZE(commands); j++)
 				printf("%s ", commands[j]);
 			printf("\n");
 			exit(0);
+		case 'o':
+			mount_option = strdup(value);
+			if (mount_option == NULL)
+				strerror_exit(1, errno, "strdup");
+			break;
 		case 'v':
 			verbose++;
 			break;
@@ -431,6 +439,14 @@ int main(int argc, char *argv[])
 	for (cmd = 0; cmd < ARRAY_SIZE(commands); cmd++) {
 		if (commands[cmd] && !strcmp(command, commands[cmd]))
 			break;
+	}
+
+	if (mount_option) {
+		err = setup_mount_options(sb, mount_option);
+		if (err)
+			goto error;
+
+		free(mount_option);
 	}
 
 	switch (cmd) {
