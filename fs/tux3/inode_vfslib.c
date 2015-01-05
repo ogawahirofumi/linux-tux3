@@ -9,24 +9,21 @@
 #include <linux/aio.h>		/* for kiocb */
 
 /*
- * Almost copy of generic_file_aio_write() (added changed_begin/end,
+ * Almost copy of generic_file_write_iter() (added changed_begin/end,
  * tux3_iattrdirty()).
  */
-static ssize_t tux3_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
-				   unsigned long nr_segs, loff_t pos)
+static ssize_t tux3_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
 	struct sb *sb = tux_sb(inode->i_sb);
 	ssize_t ret;
 
-	BUG_ON(iocb->ki_pos != pos);
-
 	mutex_lock(&inode->i_mutex);
 	/* For each ->write_end() calls change_end(). */
 	change_begin(sb);
 	/* FIXME: file_update_time() in this can be race with mmap */
-	ret = __generic_file_aio_write(iocb, iov, nr_segs);
+	ret = __generic_file_write_iter(iocb, from);
 	change_end_if_needed(sb);
 	mutex_unlock(&inode->i_mutex);
 
@@ -37,67 +34,5 @@ static ssize_t tux3_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		if (err < 0)
 			ret = err;
 	}
-	return ret;
-}
-
-/*
- * Almost copy of generic_file_splice_write() (added changed_begin/end,
- * tux3_iattrdirty()).
- */
-static ssize_t tux3_file_splice_write(struct pipe_inode_info *pipe,
-				      struct file *out, loff_t *ppos,
-				      size_t len, unsigned int flags)
-{
-	struct address_space *mapping = out->f_mapping;
-	struct inode *inode = mapping->host;
-	struct sb *sb = tux_sb(inode->i_sb);
-	struct splice_desc sd = {
-		.total_len = len,
-		.flags = flags,
-		.pos = *ppos,
-		.u.file = out,
-	};
-	ssize_t ret;
-
-	pipe_lock(pipe);
-
-	splice_from_pipe_begin(&sd);
-	do {
-		ret = splice_from_pipe_next(pipe, &sd);
-		if (ret <= 0)
-			break;
-
-		mutex_lock_nested(&inode->i_mutex, I_MUTEX_CHILD);
-		/* For each ->write_end() calls change_end(). */
-		change_begin(sb);
-		ret = file_remove_suid(out);
-		if (!ret) {
-			/* FIXME: file_update_time() can be race with mmap */
-			ret = file_update_time(out);
-			if (!ret)
-				ret = splice_from_pipe_feed(pipe, &sd,
-							    pipe_to_file);
-		}
-		change_end_if_needed(sb);
-		mutex_unlock(&inode->i_mutex);
-	} while (ret > 0);
-	splice_from_pipe_end(pipe, &sd);
-
-	pipe_unlock(pipe);
-
-	if (sd.num_spliced)
-		ret = sd.num_spliced;
-
-	if (ret > 0) {
-		int err;
-
-		err = generic_write_sync(out, *ppos, ret);
-		if (err)
-			ret = err;
-		else
-			*ppos += ret;
-		balance_dirty_pages_ratelimited(mapping);
-	}
-
 	return ret;
 }

@@ -925,10 +925,10 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 
 static const struct file_operations tux_file_fops = {
 	.llseek		= generic_file_llseek,
-	.read		= do_sync_read,
-	.write		= do_sync_write,
-	.aio_read	= generic_file_aio_read,
-	.aio_write	= tux3_file_aio_write,
+	.read		= new_sync_read,
+	.write		= new_sync_write,
+	.read_iter	= generic_file_read_iter,
+	.write_iter	= tux3_file_write_iter,
 //	.unlocked_ioctl	= fat_generic_ioctl,
 #ifdef CONFIG_COMPAT
 //	.compat_ioctl	= fat_compat_dir_ioctl,
@@ -937,7 +937,7 @@ static const struct file_operations tux_file_fops = {
 	.open		= generic_file_open,
 	.fsync		= tux3_sync_file,
 	.splice_read	= generic_file_splice_read,
-	.splice_write	= tux3_file_splice_write,
+	.splice_write	= iter_file_splice_write,
 };
 
 static const struct inode_operations tux_file_iops = {
