@@ -142,7 +142,7 @@ static int tux3_idefer_add(struct tux3_idefer_map *map, inum_t inum)
 		if (!node)
 			return -ENOMEM;
 		if (prev)
-			hlist_add_after(prev, &node->link);
+			hlist_add_behind(&node->link, prev);
 		else
 			hlist_add_head(&node->link, head);
 	}
