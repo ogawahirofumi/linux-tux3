@@ -56,7 +56,7 @@ static int syncio(int rw, struct block_device *dev, loff_t offset,
 	};
 	sync.err = vecio(rw, dev, offset, vecs, vec, syncio_end_io, &sync);
 	if (!sync.err)
-		wait_for_completion(&sync.done);
+		wait_for_completion_io(&sync.done);
 	return sync.err;
 }
 
