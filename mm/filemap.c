@@ -669,7 +669,7 @@ int cow_replace_page_cache(struct page *oldpage, struct page *newpage)
 	spin_unlock_irq(&mapping->tree_lock);
 
 	/* mem_cgroup codes must not be called under tree_lock */
-	mem_cgroup_replace_page_cache(oldpage, newpage);
+	mem_cgroup_migrate(oldpage, newpage, true);
 
 	/* Release refcount for radix-tree */
 	page_cache_release(oldpage);
@@ -717,7 +717,6 @@ void cow_delete_from_page_cache(struct page *page)
 	 */
 	spin_unlock_irq(&mapping->tree_lock);
 
-	mem_cgroup_uncharge_cache_page(page);
 	page_cache_release(page);
 }
 EXPORT_SYMBOL_GPL(cow_delete_from_page_cache);

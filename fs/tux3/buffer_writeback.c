@@ -43,7 +43,7 @@ void tux3_iowait_wait(struct iowait *iowait)
 {
 	/* All I/O was submitted, release initial 1, then wait I/O */
 	iowait_inflight_dec(iowait);
-	wait_for_completion(&iowait->done);
+	wait_for_completion_io(&iowait->done);
 }
 
 /*
