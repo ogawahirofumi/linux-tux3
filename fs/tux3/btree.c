@@ -1196,6 +1196,8 @@ int btree_write(struct cursor *cursor, struct btree_key_range *key)
 					      &split_hint);
 			if (ret < 0)
 				return ret;
+			if (btree->ops == &dtree_ops)
+				remember_dleaf(btree->sb, cursor_leafbuf(cursor));
 			if (ret == BTREE_DO_RETRY) {
 				mark_buffer_dirty_non(cursor_leafbuf(cursor));
 				continue;

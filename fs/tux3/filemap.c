@@ -406,6 +406,17 @@ out_unlock:
 	return segs;
 }
 
+void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf)
+{
+	if (leafbuf != sb->last_dleaf) {
+		if (sb->last_dleaf)
+			vol_early_io(WRITE | REQ_META, sb, sb->last_dleaf);
+
+		assert(leafbuf == NULL || buffer_dirty(leafbuf));
+		sb->last_dleaf = leafbuf;
+	}
+}
+
 /*
  * Map logical extent to physical extent
  *
