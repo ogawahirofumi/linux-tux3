@@ -554,16 +554,17 @@ static int tux3_truncate(struct inode *inode, loff_t newsize)
 #else
 	const unsigned boundary = tux_sb(inode->i_sb)->blocksize;
 #endif
+	loff_t oldsize = inode->i_size;
 	loff_t holebegin;
 	int is_expand, err;
 
-	if (newsize == inode->i_size)
+	if (newsize == oldsize)
 		return 0;
 
 	/* inode_dio_wait(inode); */	/* FIXME: for direct I/O */
 
 	err = 0;
-	is_expand = newsize > inode->i_size;
+	is_expand = newsize > oldsize;
 
 	if (!is_expand) {
 		err = tux3_truncate_partial_block(inode, newsize);
@@ -574,6 +575,8 @@ static int tux3_truncate(struct inode *inode, loff_t newsize)
 	/* Change i_size, then clean buffers */
 	tux3_iattrdirty(inode);
 	i_size_write(inode, newsize);
+	if (is_expand)
+		pagecache_isize_extended(inode, oldsize, newsize);
 	/* Roundup. Partial page is handled by tux3_truncate_partial_block() */
 	holebegin = round_up(newsize, boundary);
 	if (newsize <= holebegin) {	/* Check overflow */
