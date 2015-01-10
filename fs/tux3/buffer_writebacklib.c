@@ -83,10 +83,10 @@ static void __tux3_test_set_page_writeback(struct page *page, int old_writeback)
 {
 	struct address_space *mapping = page->mapping;
 #if 0	/* FIXME */
+	struct mem_cgroup *memcg;
 	bool locked;
-	unsigned long memcg_flags;
 
-	mem_cgroup_begin_update_page_stat(page, &locked, &memcg_flags);
+	memcg = mem_cgroup_begin_page_stat(page, &locked, &memcg_flags);
 #endif
 	if (mapping) {
 		struct backing_dev_info *bdi = mapping->backing_dev_info;
@@ -112,9 +112,13 @@ static void __tux3_test_set_page_writeback(struct page *page, int old_writeback)
 				     PAGECACHE_TAG_TOWRITE);
 		spin_unlock_irqrestore(&mapping->tree_lock, flags);
 	}
-	if (!old_writeback)
-		account_page_writeback(page);
+	if (!old_writeback) {
+#if 0
+		mem_cgroup_inc_page_stat(memcg, MEM_CGROUP_STAT_WRITEBACK);
+#endif
+		inc_zone_page_state(page, NR_WRITEBACK);
+	}
 #if 0	/* FIXME */
-	mem_cgroup_end_update_page_stat(page, &locked, &memcg_flags);
+	mem_cgroup_end_page_stat(memcg, locked, memcg_flags);
 #endif
 }
