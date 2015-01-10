@@ -49,6 +49,8 @@ void truncate_setsize(struct inode *inode, loff_t newsize)
 	loff_t oldsize = inode->i_size;
 
 	inode->i_size = newsize;
+	if (newsize > oldsize)
+		pagecache_isize_extended(inode, oldsize, newsize);
 	if (newsize < oldsize)
 		truncate_pagecache(inode, newsize);
 }

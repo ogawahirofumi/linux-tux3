@@ -70,5 +70,10 @@ static inline void truncate_inode_pages_final(map_t *map)
 
 void truncate_pagecache(struct inode *inode, loff_t newsize);
 void truncate_setsize(struct inode *inode, loff_t newsize);
+static inline void pagecache_isize_extended(struct inode *inode, loff_t from,
+					    loff_t to)
+{
+	/* Nothing need to do. */
+}
 
 #endif /* !LIBKLIB_MM_H */
