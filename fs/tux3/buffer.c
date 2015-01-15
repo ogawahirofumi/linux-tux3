@@ -217,18 +217,28 @@ void blockput_free_unify(struct sb *sb, struct buffer_head *buffer)
 }
 
 /* Copied from fs/buffer.c */
-static void discard_buffer(struct buffer_head *buffer)
+/* Bits that are cleared during an invalidate */
+#define BUFFER_FLAGS_DISCARD \
+	(1 << BH_Mapped | 1 << BH_New | 1 << BH_Req | \
+	 1 << BH_Delay | 1 << BH_Unwritten)
+
+static void discard_buffer(struct buffer_head * bh)
 {
+	unsigned long b_state, b_state_old;
+
 	/* FIXME: we need lock_buffer()? */
-	lock_buffer(buffer);
-	/*clear_buffer_dirty(buffer);*/
-	buffer->b_bdev = NULL;
-	clear_buffer_mapped(buffer);
-	clear_buffer_req(buffer);
-	clear_buffer_new(buffer);
-	clear_buffer_delay(buffer);
-	clear_buffer_unwritten(buffer);
-	unlock_buffer(buffer);
+	lock_buffer(bh);
+	/*clear_buffer_dirty(bh);*/
+	bh->b_bdev = NULL;
+	b_state = bh->b_state;
+	for (;;) {
+		b_state_old = cmpxchg(&bh->b_state, b_state,
+				      (b_state & ~BUFFER_FLAGS_DISCARD));
+		if (b_state_old == b_state)
+			break;
+		b_state = b_state_old;
+	}
+	unlock_buffer(bh);
 }
 
 /*

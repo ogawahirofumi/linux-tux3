@@ -5,7 +5,7 @@
  */
 
 #include <linux/hugetlb.h>	/* for PageHuge() */
-#include <linux/swap.h>		/* for __lru_cache_add() */
+#include <linux/swap.h>		/* for lru_cache_add_file() */
 #include <linux/cleancache.h>
 
 /*
@@ -295,7 +295,27 @@ static void oldpage_try_remove_from_lru(struct page *page)
 /* Schedule to add LRU list (based on putback_lru_page()) */
 static void newpage_add_lru(struct page *page)
 {
-	__lru_cache_add(page);
+	/*
+	 * FIXME: we want to back same LRU type with oldpage, but
+	 * lru_cache_add() is not exported. (lru_cache_add_file()
+	 * calls ClearPageActive())
+	 *
+	 * So, this try to make page active by mark_page_accessed().
+	 */
+	int active = PageActive(page);
+	int referenced = PageReferenced(page);
+
+	lru_cache_add_file(page);
+
+	if (active) {
+		/* Make active,unreferenced */
+		if (!referenced)
+			SetPageReferenced(page);
+		mark_page_accessed(page);
+		/* Make active,referenced */
+		if (referenced)
+			SetPageReferenced(page);
+	}
 }
 
 enum ret_needfork {

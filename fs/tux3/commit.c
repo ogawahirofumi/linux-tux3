@@ -382,7 +382,8 @@ static int commit_delta(struct sb *sb, int req_flag)
 {
 	int err, barrier = TUX3_TEST_MOPT(sb, BARRIER);
 
-	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
+	/* Wait I/O was submitted */
+	tux3_iowait_wait(sb->iowait);
 
 	/*
 	 * FIXME: we don't need REQ_FUA here actually. But deferred
@@ -397,6 +398,7 @@ static int commit_delta(struct sb *sb, int req_flag)
 		req_flag |= REQ_NOIDLE | REQ_FLUSH | REQ_FUA;
 	}
 
+	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
 	err = save_sb(sb, req_flag);
 	if (err)
 		return err;
@@ -511,9 +513,6 @@ static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 	write_btree(sb, delta);
 	write_log(sb);
 	blk_finish_plug(&plug);
-
-	/* Wait I/O was submitted */
-	tux3_iowait_wait(&iowait);
 
 	/*
 	 * Commit last block (for now, this is sync I/O).

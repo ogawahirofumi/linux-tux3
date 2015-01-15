@@ -471,7 +471,6 @@ int tux3_filemap_redirect_io(int rw, struct bufvec *bufvec)
 
 #ifdef __KERNEL__
 #include <linux/mpage.h>
-#include <linux/swap.h>		/* for mark_page_accessed() */
 #include <linux/aio.h>		/* for kiocb */
 
 static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
@@ -652,8 +651,9 @@ static struct buffer_head *__find_get_buffer(struct address_space *mapping,
 {
 	struct buffer_head *bh = NULL;
 	struct page *page;
+	int fgp_flags = need_uptodate ? FGP_ACCESSED : 0;
 
-	page = find_get_page(mapping, index);
+	page = find_get_page_flags(mapping, index, fgp_flags);
 	if (page) {
 		if (!need_uptodate || PageUptodate(page)) {
 			spin_lock(&mapping->private_lock);
@@ -728,15 +728,6 @@ struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 	assert(buffer_uptodate(bh));
 
 out:
-	/*
-	 * FIXME: trace_block_touch_buffer() assuming buffer_mapped()
-	 * (use bh->b_bdev). But, for now, this function is used for
-	 * bitmap etc too. So, buffer can be not buffer_mapped().
-	 * So, now use mark_page_accessed() directly.
-	 */
-	/* touch_buffer(bh); */
-	mark_page_accessed(bh->b_page);
-
 	return bh;
 
 error_readpage:
@@ -809,15 +800,6 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 
 	unlock_page(page);
 	page_cache_release(page);
-
-	/*
-	 * FIXME: trace_block_touch_buffer() assuming buffer_mapped()
-	 * (use bh->b_bdev). But, for now, this function is used for
-	 * bitmap etc too. So, buffer can be not buffer_mapped().
-	 * So, now use mark_page_accessed() directly.
-	 */
-	/* touch_buffer(bh); */
-	mark_page_accessed(bh->b_page);
 
 	return bh;
 }
