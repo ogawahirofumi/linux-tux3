@@ -219,12 +219,6 @@ static inline void atomic_set_mask(unsigned int mask, atomic_t *v)
 	v->counter |= mask;
 }
 
-/* Assume that atomic operations are already serializing */
-#define smp_mb__before_atomic_dec()	barrier()
-#define smp_mb__after_atomic_dec()	barrier()
-#define smp_mb__before_atomic_inc()	barrier()
-#define smp_mb__after_atomic_inc()	barrier()
-
 /**
  * atomic_add_unless - add unless the number is already a given value
  * @v: pointer of type atomic_t
