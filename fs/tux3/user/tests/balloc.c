@@ -317,6 +317,29 @@ static void test08(struct sb *sb, block_t blocks)
 	clean_main(sb);
 }
 
+/* Test balloc for ENOSPC */
+static void test09(struct sb *sb, block_t blocks)
+{
+	enum { maxsegs = 1000 };
+	struct block_segment seg[maxsegs];
+	unsigned blks = sb->volblocks;
+	int segs;
+
+	/* Alloc blocks whole blocks */
+	test_assert(balloc_segs(sb, seg, maxsegs, &segs, &blks) == 0);
+	test_assert(segs > 0 && blks == 0);
+	test_assert(bitmap_all_set(sb, 0, sb->volblocks));
+
+	/* Test functions returns -ENOSPC */
+	blks = 1;
+	test_assert(balloc_find(sb, seg, maxsegs, &segs, &blks) == -ENOSPC);
+	blks = 1;
+	test_assert(balloc_segs(sb, seg, maxsegs, &segs, &blks) == -ENOSPC);
+	test_assert(balloc_one(sb) == -ENOSPC);
+
+	clean_main(sb);
+}
+
 static void initialize_buffer(struct inode *inode, block_t block)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
@@ -391,6 +414,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test08"))
 		test08(sb, BITMAP_BLOCKS);
+	test_end();
+
+	if (test_start("test09"))
+		test09(sb, BITMAP_BLOCKS);
 	test_end();
 
 	tux3_end_backend();
