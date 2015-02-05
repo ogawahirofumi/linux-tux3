@@ -200,10 +200,10 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 		return 0;
 
 	/*
-	 * We don't need to commit for "sync" operation with non WB_SYNC_ALL.
-	 * Because "sync" will issue again with WB_SYNC_ALL after this.
+	 * We ignore WB_REASON_SYNC for "sync".  Because we handle
+	 * "sync" request by ->sync_fs() with WB_REASON_TUX3_PENDING.
 	 */
-	if (work->sync_mode != WB_SYNC_ALL && work->reason == WB_REASON_SYNC)
+	if (work->reason == WB_REASON_SYNC)
 		goto out;
 
 	if (work->reason == WB_REASON_TUX3_PENDING) {
