@@ -111,6 +111,8 @@ struct writeback_control {
 struct bdi_writeback;
 void inode_writeback_done(struct inode *inode);
 void inode_writeback_touch(struct inode *inode);
+void writeback_queue_work_sb(struct super_block *sb,
+			     struct wb_writeback_work *work);
 void writeback_inodes_sb(struct super_block *, enum wb_reason reason);
 void writeback_inodes_sb_nr(struct super_block *, unsigned long nr,
 							enum wb_reason reason);

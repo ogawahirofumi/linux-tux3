@@ -217,10 +217,20 @@ struct cursor {
 
 struct stash { struct flink_head head; u64 *pos, *top; };
 
+/* For each delta + wb_check_{background_flush,old_data_flush} + safety */
+#define TUX3_MAX_WB_WORK	(TUX3_MAX_DELTA + 3)
+/* Work item for writeback flusher */
+struct tux3_wb_work {
+	struct wb_writeback_work work;
+	struct completion dummy_done;
+	unsigned delta;
+};
+
 /* Refcount for delta */
 struct delta_ref {
 	atomic_t refcount;
 	unsigned delta;
+	struct completion waitref_done;
 #ifdef UNIFY_DEBUG
 	int unify_flag;	/* FIXME: is there better way? */
 #endif
@@ -265,18 +275,23 @@ struct sb {
 #endif
 	struct delta_ref __rcu *current_delta;	/* current delta */
 	struct delta_ref delta_refs[TUX3_MAX_DELTA];
-	unsigned next_delta;			/* delta commit cycle */
 	unsigned unify;				/* log unify cycle */
 
-#define TUX3_COMMIT_RUNNING_BIT		0
-#define TUX3_COMMIT_PENDING_BIT		1
+#define TUX3_STATE_TRANSITION_BIT	0
 	unsigned long backend_state;		/* delta state */
 #ifdef UNIFY_DEBUG
 	struct delta_ref *pending_delta;	/* pending delta for commit */
 #endif
-	unsigned staging_delta;			/* staging delta */
-	unsigned committed_delta;		/* committed delta */
-	wait_queue_head_t delta_event_wq;	/* wait queue for delta event */
+	struct tux3_wb_work wb_work[TUX3_MAX_WB_WORK];
+	unsigned delta_waitref;			/* waiting refcount delta */
+	unsigned delta_pending;			/* pending delta */
+	unsigned delta_staging;			/* staging delta */
+	unsigned delta_commit;			/* committed delta */
+	unsigned delta_free;			/* free delta */
+	/* wait queue for transition event */
+	wait_queue_head_t delta_transition_wq;
+	/* wait queue for commit event */
+	wait_queue_head_t delta_commit_wq;
 
 	struct tux3_mount_opt mopt;		/* mount options */
 

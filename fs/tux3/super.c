@@ -514,14 +514,24 @@ static void tux3_destroy_inode(struct inode *inode)
 	call_rcu(&inode->i_rcu, tux3_i_callback);
 }
 
-#ifdef TUX3_FLUSHER_SYNC
 static int tux3_sync_fs(struct super_block *sb, int wait)
 {
-	/* FIXME: We should support "wait" parameter. */
-	trace_on("wait (%u) parameter is unsupported for now", wait);
+	/*
+	 * FIXME: We should support "wait" parameter. wait==1 is
+	 * called soon, so safe to ignore. But we should be better to
+	 * submit the request early.
+	 */
+	if (!wait) {
+		static int print_once;
+		if (!print_once) {
+			print_once++;
+			tux3_warn(tux_sb(sb),
+				  "sync_fs wait==0 is unsupported for now");
+		}
+		return 0;
+	}
 	return force_delta(tux_sb(sb));
 }
-#endif
 
 static void tux3_put_super(struct super_block *sb)
 {
@@ -593,10 +603,7 @@ static const struct super_operations tux3_super_ops = {
 #ifndef TUX3_FLUSHER_SYNC
 	.writeback	= tux3_writeback,
 #endif
-#ifdef TUX3_FLUSHER_SYNC
-	/* If TUX3_FLUSHER_ASYNC, normal kernel flush request does all */
 	.sync_fs	= tux3_sync_fs,
-#endif
 	.put_super	= tux3_put_super,
 	.statfs		= tux3_statfs,
 	.remount_fs	= tux3_remount,

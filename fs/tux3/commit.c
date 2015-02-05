@@ -1,8 +1,36 @@
 /*
  * Commit a filesystem delta atomically to media.
  *
- * Copyright (c) 2008-2014 Daniel Phillips
- * Copyright (c) 2008-2014 OGAWA Hirofumi
+ * Delta pipeline stages/states:
+ *
+ *        transition                     backend
+ *           |.|                       |.........|
+ *   frontend +=> wait ref => pending => running => free
+ *   |        |                                        |
+ *   +-<- [free => next frontend] <--------------------+
+ *
+ * Each stage can have only one delta at once. If new delta is going
+ * to enter busy stage, we have to wait the next stage become free.
+ *
+ * frontend:   Frontend adds dirty data to delta.
+ *
+ * transition: This is not the stage though. Related operation. Switch
+ *             the delta for adding dirty data to new delta.  After
+ *             this, frontends can't grab the reference to old delta
+ *             anymore.
+ *
+ * wait ref:   Frontend can't grab this delta, but some frontends may
+ *             still referencing. All frontends released the reference
+ *             to this delta, this become pending state.
+ *
+ * pending:    Reference == 0, so ready to start backend.
+ *
+ * running:    Backend is writing this delta to backing storage.
+ *
+ * free:       Backend was done to commit, and can reuse for frontend.
+ *
+ * Copyright (c) 2008-2015 Daniel Phillips
+ * Copyright (c) 2008-2015 OGAWA Hirofumi
  */
 
 #include "tux3.h"
@@ -17,8 +45,11 @@
 
 #define COMMIT_SYNC	(1 << 0)
 
-static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref);
-static void schedule_flush_delta(struct sb *sb);
+static void tux3_wake_delta_commit(struct sb *sb);
+static void tux3_wake_delta_free(struct sb *sb);
+static void delta_init(struct sb *sb);
+static void delta_setup(struct sb *sb);
+static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref);
 
 /*
  * Need frontend modification of backend buffers. (modification
@@ -35,13 +66,9 @@ static int init_sb(struct sb *sb)
 	int i;
 
 	/* Initialize sb */
-	for (i = 0; i < ARRAY_SIZE(sb->delta_refs); i++)
-		atomic_set(&sb->delta_refs[0].refcount, 0);
 
-#ifdef TUX3_FLUSHER_SYNC
-	init_rwsem(&sb->delta_lock);
-#endif
-	init_waitqueue_head(&sb->delta_event_wq);
+	delta_init(sb);
+
 	INIT_LIST_HEAD(&sb->orphan_add);
 	INIT_LIST_HEAD(&sb->orphan_del);
 	stash_init(&sb->defree);
@@ -88,13 +115,7 @@ static inline u64 roundup_pow_of_two64(u64 n)
 /* Setup sb by on-disk super block */
 static void __setup_sb(struct sb *sb, struct disksuper *super)
 {
-	sb->next_delta		= TUX3_INIT_DELTA;
-	sb->unify		= TUX3_INIT_DELTA;
-	sb->staging_delta	= TUX3_INIT_DELTA - 1;
-	sb->committed_delta	= TUX3_INIT_DELTA - 1;
-
-	/* Setup initial delta_ref */
-	__delta_transition(sb, &sb->delta_refs[0]);
+	delta_setup(sb);
 
 	sb->blockbits = be16_to_cpu(super->blockbits);
 	sb->volblocks = be64_to_cpu(super->volblocks);
@@ -403,6 +424,8 @@ static int commit_delta(struct sb *sb, int req_flag)
 	if (err)
 		return err;
 
+	tux3_wake_delta_commit(sb);
+
 	/* Commit was finished, apply defered bfree. */
 	return unstash(sb, &sb->defree, apply_defered_bfree);
 }
@@ -448,7 +471,7 @@ int tux3_under_backend(struct sb *sb)
 
 static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 {
-	unsigned delta = sb->staging_delta;
+	unsigned delta = sb->delta_staging;
 	int req_flag = (flags & COMMIT_SYNC ? REQ_SYNC : 0);
 	struct blk_plug plug;
 	struct iowait iowait;
@@ -522,7 +545,7 @@ static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 	 * written before next block block. (But defree must be after
 	 * commit block.)
 	 */
-	commit_delta(sb, req_flag);
+	err = commit_delta(sb, req_flag); /* FIXME: err */
 out:
 	/* FIXME: what to do if error? */
 	tux3_end_backend();
@@ -534,6 +557,7 @@ out:
 	return err;
 
 error:
+	tux3_warn(sb, "commit error %d", err);
 	blk_finish_plug(&plug);
 	goto out;
 }
@@ -542,9 +566,20 @@ error:
  * Flush delta work
  */
 
+#define delta_after(a,b)			\
+	(typecheck(unsigned, a) &&		\
+	 typecheck(unsigned, b) &&		\
+	 ((int)((b) - (a)) < 0))
+#define delta_before(a,b)	delta_after(b,a)
+
+#define delta_after_eq(a,b)			\
+	(typecheck(unsigned, a) &&		\
+	 typecheck(unsigned, b) &&		\
+	 ((int)((a) - (b)) >= 0))
+#define delta_before_eq(a,b)	delta_after_eq(b,a)
+
 static int flush_delta(struct sb *sb, int flags)
 {
-	unsigned delta = sb->staging_delta;
 	int err;
 #ifndef UNIFY_DEBUG
 	enum unify_flags unify_flag = ALLOW_UNIFY;
@@ -556,11 +591,14 @@ static int flush_delta(struct sb *sb, int flags)
 
 	err = do_commit(sb, flags, unify_flag);
 
-	sb->committed_delta = delta;
-	clear_bit(TUX3_COMMIT_RUNNING_BIT, &sb->backend_state);
+	/*
+	 * NOTE: We have to wakeup waiters even if error or skipped
+	 * commit (no dirty inodes). So, check it.
+	 */
+	if (delta_before(sb->delta_commit, sb->delta_staging))
+		tux3_wake_delta_commit(sb);
 
-	/* Wake up waiters for delta commit */
-	wake_up_all(&sb->delta_event_wq);
+	tux3_wake_delta_free(sb);
 
 	return err;
 }
@@ -568,6 +606,28 @@ static int flush_delta(struct sb *sb, int flags)
 /*
  * Provide transaction boundary for delta, and delta transition request.
  */
+
+static void tux3_wake_delta_commit(struct sb *sb)
+{
+	/* Wake up waiters for delta commit. */
+	sb->delta_commit++;
+	trace("delta_commit %u", sb->delta_commit);
+	wake_up_all(&sb->delta_commit_wq);
+}
+
+static void tux3_wake_delta_free(struct sb *sb)
+{
+	/* Wake up waiters for free delta */
+	sb->delta_free++;
+	trace("delta_free %u", sb->delta_free);
+	wake_up_all(&sb->delta_transition_wq);
+}
+
+/* Internal use only */
+static struct delta_ref *to_delta_ref(struct sb *sb, unsigned delta)
+{
+	return &sb->delta_refs[tux3_delta(delta)];
+}
 
 /* Grab the reference of current delta */
 static struct delta_ref *delta_get(struct sb *sb)
@@ -592,24 +652,24 @@ static struct delta_ref *delta_get(struct sb *sb)
 /* Release the reference of delta */
 static void delta_put(struct sb *sb, struct delta_ref *delta_ref)
 {
-	if (atomic_dec_and_test(&delta_ref->refcount)) {
-		trace("set TUX3_COMMIT_PENDING_BIT");
-		set_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state);
-		schedule_flush_delta(sb);
-	}
+	if (atomic_dec_and_test(&delta_ref->refcount))
+		schedule_flush_delta(sb, delta_ref);
 
 	trace("delta %u, refcount %u",
 	      delta_ref->delta, atomic_read(&delta_ref->refcount));
 }
 
 /* Update current delta */
-static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref)
+static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref,
+			       unsigned new_delta)
 {
-	/* Set the initial refcount is released by try_delta_transition(). */
 	assert(atomic_read(&delta_ref->refcount) == 0);
+	/* Set the initial refcount. */
 	atomic_set(&delta_ref->refcount, 1);
+	/* Initialize waitref completion */
+	reinit_completion(&delta_ref->waitref_done);
 	/* Assign the delta number */
-	delta_ref->delta = sb->next_delta++;
+	delta_ref->delta = new_delta;
 #ifdef UNIFY_DEBUG
 	delta_ref->unify_flag = ALLOW_UNIFY;
 #endif
@@ -631,44 +691,60 @@ static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref)
 static void delta_transition(struct sb *sb)
 {
 	/*
-	 * This is exclusive by TUX3_COMMIT_RUNNING_BIT (no writer),
+	 * This is exclusive by TUX3_STATE_TRANSITION_BIT (no writer),
 	 * so rcu_dereference may not be needed.
 	 */
 	struct delta_ref *prev = rcu_dereference_check(sb->current_delta, 1);
 	struct delta_ref *delta_ref;
 
 	/* Find the next delta_ref */
-	delta_ref = prev + 1;
-	if (delta_ref == &sb->delta_refs[TUX3_MAX_DELTA])
-		delta_ref = &sb->delta_refs[0];
+	delta_ref = to_delta_ref(sb, prev->delta + 1);
 
 	/* Update the current delta. */
-	__delta_transition(sb, delta_ref);
+	__delta_transition(sb, delta_ref, prev->delta + 1);
 
-	/* Set delta for staging */
-	sb->staging_delta = prev->delta;
-#ifdef UNIFY_DEBUG
-	sb->pending_delta = prev;
-#endif
+	/* Update the waitref delta to delta that transition was done */
+	sb->delta_waitref++;
+	assert(sb->delta_waitref == prev->delta);
 
 	/* Release initial refcount after updated the current delta. */
 	delta_put(sb, prev);
-
 	trace("prev %u, next %u", prev->delta, delta_ref->delta);
+}
 
-	/* Wake up waiters for delta transition */
-	wake_up_all(&sb->delta_event_wq);
+static void delta_init(struct sb *sb)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(sb->delta_refs); i++) {
+		atomic_set(&sb->delta_refs[i].refcount, 0);
+		init_completion(&sb->delta_refs[i].waitref_done);
+	}
+	for (i = 0; i < ARRAY_SIZE(sb->wb_work); i++) {
+		init_completion(&sb->wb_work[i].dummy_done);
+		/* just for debug assert in schedule_flush_delta() */
+		complete(&sb->wb_work[i].dummy_done);
+	}
+	init_waitqueue_head(&sb->delta_transition_wq);
+	init_waitqueue_head(&sb->delta_commit_wq);
 
 #ifdef TUX3_FLUSHER_SYNC
-	wait_event(sb->delta_event_wq,
-		   test_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state));
+	init_rwsem(&sb->delta_lock);
 #endif
 }
 
-#define delta_after_eq(a, b)			\
-	(typecheck(unsigned, a) &&		\
-	 typecheck(unsigned, b) &&		\
-	 ((int)(a) - (int)(b) >= 0))
+static void delta_setup(struct sb *sb)
+{
+	sb->unify		= TUX3_INIT_DELTA;
+	sb->delta_waitref	= TUX3_INIT_DELTA - 1;
+	sb->delta_pending	= TUX3_INIT_DELTA - 1;
+	sb->delta_staging	= TUX3_INIT_DELTA - 1;
+	sb->delta_commit	= TUX3_INIT_DELTA - 1;
+	sb->delta_free		= sb->delta_commit + TUX3_MAX_DELTA;
+
+	/* Setup initial delta_ref */
+	__delta_transition(sb, &sb->delta_refs[0], TUX3_INIT_DELTA);
+}
 
 #include "commit_flusher.c"
 
