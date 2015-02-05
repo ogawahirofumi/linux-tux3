@@ -480,7 +480,7 @@ int balloc_find(struct sb *sb,
 	unsigned groupsize = 1 << sb->groupbits, groupmask = groupsize - 1;
 	unsigned need = *blocks;
 	unsigned threshold = min(need, groupsize >> 2);
-	int err, newsegs = 0, pass = 0;
+	int newsegs = 0, pass = 0;
 
 	trace("scan volume for %u blocks, goal = %Lu", need, goal);
 	trace("groupsize = %u, topgroup = %Lu, threshold = %u",
@@ -519,9 +519,9 @@ last:
 			trace("goal = %Lu, next = %Lu, skip = %i",
 			      goal, next, skip);
 			if (!skip) {
-				err = balloc_find_range(sb, seg, maxsegs,
-							&newsegs, goal,
-							next - goal, &need);
+				int err = balloc_find_range(sb, seg, maxsegs,
+							    &newsegs, goal,
+							    next - goal, &need);
 				if (err)
 					return err;
 				if (!need || newsegs == maxsegs)
@@ -540,6 +540,8 @@ done:
 	*segs = newsegs;
 	*blocks = need;
 
+	if (newsegs == 0)
+		return -ENOSPC;	/* Couldn't allocate any blocks */
 	return 0;
 }
 
