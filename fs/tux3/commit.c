@@ -557,6 +557,7 @@ out:
 	return err;
 
 error:
+	tux3_warn(sb, "commit error %d", err);
 	blk_finish_plug(&plug);
 	goto out;
 }
