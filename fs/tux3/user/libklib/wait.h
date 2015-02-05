@@ -3,6 +3,8 @@
 
 #include <libklib/typecheck.h>
 
+#define	MAX_SCHEDULE_TIMEOUT	LONG_MAX
+
 /*
  * Provide wait queue stabs
  */
@@ -32,10 +34,17 @@ do {							\
 
 #define DECLARE_WAIT_QUEUE_HEAD_ONSTACK(name) DECLARE_WAIT_QUEUE_HEAD(name)
 
+static inline int waitqueue_active(wait_queue_head_t *q)
+{
+	return 0;
+}
+
 #define __wake_up(q, mode, nr, key)			\
 do {							\
 	typecheck(wait_queue_head_t *, q);		\
 } while (0)
+#define __wake_up_locked(q, mode, nr)	__wake_up(q, mode, nr, NULL)
+#define __wake_up_sync(q, mode, nr)	__wake_up(q, mode, nr, NULL)
 
 #define wake_up(x)			__wake_up(x, TASK_NORMAL, 1, NULL)
 #define wake_up_nr(x, nr)		__wake_up(x, TASK_NORMAL, nr, NULL)

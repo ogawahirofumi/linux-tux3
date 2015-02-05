@@ -24,6 +24,7 @@
 #include <libklib/log2.h>
 #include <libklib/rcupdate.h>
 #include <libklib/wait.h>
+#include <libklib/completion.h>
 #include <libklib/time.h>
 
 #ifdef __CHECKER__
