@@ -79,6 +79,7 @@ void tux3_invalidate_buffer(struct buffer_head *buffer);
 struct iowait {
 	atomic_t inflight;		/* In-flight I/O count */
 	struct completion done;		/* completion for in-flight I/O */
+	int req_flag;			/* Additional REQ_ flags */
 };
 
 /* Helper for buffer vector I/O */
@@ -131,7 +132,7 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 	return bufvec_contig_index(bufvec) + bufvec_contig_count(bufvec) - 1;
 }
 
-void tux3_iowait_init(struct iowait *iowait);
+void tux3_iowait_init(struct iowait *iowait, int req_flag);
 void tux3_iowait_wait(struct iowait *iowait);
 int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);

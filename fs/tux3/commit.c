@@ -15,6 +15,8 @@
 #define trace trace_off
 #endif
 
+#define COMMIT_SYNC	(1 << 0)
+
 static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref);
 static void schedule_flush_delta(struct sb *sb);
 
@@ -442,9 +444,10 @@ int tux3_under_backend(struct sb *sb)
 	return current->journal_info == sb;
 }
 
-static int do_commit(struct sb *sb, enum unify_flags unify_flag)
+static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 {
 	unsigned delta = sb->staging_delta;
+	int req_flag = (flags & COMMIT_SYNC ? REQ_SYNC : 0);
 	struct blk_plug plug;
 	struct iowait iowait;
 	int err = 0;
@@ -467,7 +470,7 @@ static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 		goto out;
 
 	/* Prepare to wait I/O */
-	tux3_iowait_init(&iowait);
+	tux3_iowait_init(&iowait, req_flag);
 	sb->iowait = &iowait;
 
 	/*
@@ -520,7 +523,7 @@ static int do_commit(struct sb *sb, enum unify_flags unify_flag)
 	 * written before next block block. (But defree must be after
 	 * commit block.)
 	 */
-	commit_delta(sb, 0);
+	commit_delta(sb, req_flag);
 out:
 	/* FIXME: what to do if error? */
 	tux3_end_backend();
@@ -540,7 +543,7 @@ error:
  * Flush delta work
  */
 
-static int flush_delta(struct sb *sb)
+static int flush_delta(struct sb *sb, int flags)
 {
 	unsigned delta = sb->staging_delta;
 	int err;
@@ -552,7 +555,7 @@ static int flush_delta(struct sb *sb)
 	sb->pending_delta = NULL;
 #endif
 
-	err = do_commit(sb, unify_flag);
+	err = do_commit(sb, flags, unify_flag);
 
 	sb->committed_delta = delta;
 	clear_bit(TUX3_COMMIT_RUNNING_BIT, &sb->backend_state);

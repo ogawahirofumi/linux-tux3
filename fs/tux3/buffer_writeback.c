@@ -22,7 +22,13 @@ static void iowait_inflight_dec(struct iowait *iowait)
 		complete(&iowait->done);
 }
 
-void tux3_iowait_init(struct iowait *iowait)
+/* This req_flag is added to all I/O request counted in ->iowait */
+static int iowait_req_flag(struct iowait *iowait)
+{
+	return iowait->req_flag;
+}
+
+void tux3_iowait_init(struct iowait *iowait, int req_flag)
 {
 	/*
 	 * Grab 1 to prevent the partial complete until all I/O is
@@ -30,6 +36,7 @@ void tux3_iowait_init(struct iowait *iowait)
 	 */
 	init_completion(&iowait->done);
 	atomic_set(&iowait->inflight, 1);
+	iowait->req_flag = req_flag;
 }
 
 void tux3_iowait_wait(struct iowait *iowait)
@@ -159,7 +166,7 @@ static void bufvec_submit_bio(int rw, struct bufvec *bufvec)
 	      bio_bi_size(bio) >> sb->blockbits);
 
 	iowait_inflight_inc(sb->iowait);
-	submit_bio(rw, bio);
+	submit_bio(rw | iowait_req_flag(sb->iowait), bio);
 }
 
 /*
@@ -885,8 +892,8 @@ int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
 	iowait_inflight_inc(sb->iowait);
-	err = blockio(rw, sb, buffer, bufindex(buffer), vol_early_end_io,
-		      buffer);
+	err = blockio(rw | iowait_req_flag(sb->iowait), sb, buffer,
+		      bufindex(buffer), vol_early_end_io, buffer);
 	if (err)
 		iowait_inflight_dec(sb->iowait);
 

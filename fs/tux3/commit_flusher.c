@@ -39,7 +39,7 @@ static int flush_pending_delta(struct sb *sb)
 		goto out;
 
 	if (test_and_clear_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state))
-		err = flush_delta(sb);
+		err = flush_delta(sb, COMMIT_SYNC);
 out:
 	return err;
 }
@@ -177,11 +177,18 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 	struct sb *sb = tux_sb(super);
 	struct delta_ref *delta_ref;
 	unsigned delta;
-	int err;
+	int err, flags;
 
 	/* If we didn't finish replay yet, don't flush. */
 	if (!(super->s_flags & MS_ACTIVE))
 		return 0;
+
+	/*
+	 * We don't need to commit for "sync" operation with non WB_SYNC_ALL.
+	 * Because "sync" will issue again with WB_SYNC_ALL after this.
+	 */
+	if (work->sync_mode != WB_SYNC_ALL && work->reason == WB_REASON_SYNC)
+		goto out;
 
 	/* Get delta that have to write */
 	delta_ref = delta_get(sb);
@@ -205,10 +212,12 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 	if (test_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state)) {
 		clear_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state);
 
-		err = flush_delta(sb);
+		flags = (work->sync_mode == WB_SYNC_ALL ? COMMIT_SYNC : 0);
+		err = flush_delta(sb, flags);
 		/* FIXME: error handling */
 	}
 
+out:
 	/* FIXME: set proper nr_pages */
 	work->nr_pages = 0;
 
