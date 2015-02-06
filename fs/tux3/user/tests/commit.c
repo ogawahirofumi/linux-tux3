@@ -936,6 +936,48 @@ static void test09(struct sb *sb)
 	clean_main_and_fsck(sb);
 }
 
+/* Test for mount options */
+static void test10(struct sb *sb)
+{
+	char options[512];
+	char buf[512];
+	ssize_t size_all, size;
+	int err;
+
+	test_assert(make_tux3(sb) == 0);
+	/* Should have default options */
+	test_assert(sb->mopt.flags == tux3_default_mopt.flags);
+
+	/* Set invalid option */
+	strcpy(options, "barrier,foo,nobarrier");
+	err = setup_mount_options(sb, options);
+	test_assert(err < 0);
+	/* Clear barrier */
+	strcpy(options, "nobarrier");
+	err = setup_mount_options(sb, options);
+	test_assert(!err);
+	test_assert(!TUX3_TEST_MOPT(sb, BARRIER));
+	/* Set barrier */
+	strcpy(options, "barrier");
+	err = setup_mount_options(sb, options);
+	test_assert(!err);
+	test_assert(TUX3_TEST_MOPT(sb, BARRIER));
+
+	/* Show all options */
+	size_all = get_mount_options(sb, buf, sizeof(buf), 1);
+	test_assert(size_all > 0);
+	test_assert(size_all == strlen(buf) + 1);
+	/* Show options except default */
+	size = get_mount_options(sb, buf, sizeof(buf), 0);
+	test_assert(size_all >= size);
+	test_assert(size == strlen(buf) + 1);
+	/* Too small buffer */
+	size = get_mount_options(sb, buf, 1, 1);
+	test_assert(size < 0);
+
+	clean_main_and_fsck(sb);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 2)
@@ -998,6 +1040,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test09"))
 		test09(sb);
+	test_end();
+
+	if (test_start("test10"))
+		test10(sb);
 	test_end();
 
 	clean_main(sb);
