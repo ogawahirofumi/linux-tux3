@@ -220,7 +220,11 @@ ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
 	if (err)
 		return err;
 
-	return seq.count;
+	/* nul terminate for convenience. */
+	if (seq.count + 1 > size)
+		return -EOVERFLOW;
+	buf[seq.count] = '\0';
+	return seq.count + 1;
 }
 
 int tux3_init_mem(void)
