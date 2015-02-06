@@ -224,7 +224,7 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 struct blk_plug {
 };
 
-void tux3_iowait_init(struct iowait *iowait);
+void tux3_iowait_init(struct iowait *iowait, int req_flag);
 void tux3_iowait_wait(struct iowait *iowait);
 void blk_start_plug(struct blk_plug *plug);
 void blk_finish_plug(struct blk_plug *plug);

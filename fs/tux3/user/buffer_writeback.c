@@ -6,7 +6,7 @@
  * Helper for waiting I/O (stub)
  */
 
-void tux3_iowait_init(struct iowait *iowait)
+void tux3_iowait_init(struct iowait *iowait, int req_flag)
 {
 }
 
