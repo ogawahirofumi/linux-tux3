@@ -35,13 +35,13 @@
  */
 
 /* I_DIRTY_SYNC, I_DIRTY_DATASYNC, and I_DIRTY_PAGES */
-#define NUM_DIRTY_BITS		3
+#define NUM_DIRTY_BITS		3U
 /* Iattr fork dirty base */
-#define IATTR_DIRTY		1
+#define IATTR_DIRTY		1U
 /* Xattr fork dirty base */
-#define XATTR_DIRTY		1
+#define XATTR_DIRTY		1U
 /* Dead inode dirty base */
-#define DEAD_DIRTY		1
+#define DEAD_DIRTY		1U
 /* Bits usage of inode->flags */
 #define IFLAGS_DIRTY_BITS	(NUM_DIRTY_BITS * TUX3_MAX_DELTA)
 #define IFLAGS_IATTR_BITS	(order_base_2(IATTR_DIRTY + TUX3_MAX_DELTA))
@@ -53,13 +53,13 @@
 #define IFLAGS_DEAD_SHIFT	(IFLAGS_XATTR_SHIFT + IFLAGS_XATTR_BITS)
 
 /* btree root is modified from only backend, so no need per-delta flag */
-#define TUX3_DIRTY_BTREE	(1 << 28)
+#define TUX3_DIRTY_BTREE	(1U << 28)
 /* the orphaned flag is set by only backend, so no need per-delta flag */
-#define TUX3_INODE_ORPHANED	(1 << 29)
+#define TUX3_INODE_ORPHANED	(1U << 29)
 /* the dead flag is set by only backend, so no need per-delta flag */
-#define TUX3_INODE_DEAD		(1 << 30)
+#define TUX3_INODE_DEAD		(1U << 30)
 /* If no-flush flag is set, tux3_flush_inodes() doesn't flush */
-#define TUX3_INODE_NO_FLUSH	(1 << 31)
+#define TUX3_INODE_NO_FLUSH	(1U << 31)
 
 #define NON_DIRTY_FLAGS					\
 	(TUX3_INODE_ORPHANED | TUX3_INODE_DEAD | TUX3_INODE_NO_FLUSH)
