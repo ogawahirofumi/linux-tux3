@@ -380,7 +380,7 @@ static tuxkey_t ileaf_split_hint(struct btree *btree, struct ileaf *ileaf,
 	tuxkey_t base = ibase(ileaf);
 	unsigned count = icount(ileaf);
 	if (key >= base + count)
-		return key & ~(btree->entries_per_leaf - 1);
+		return key & ~(tuxkey_t)(btree->entries_per_leaf - 1);
 
 	return base + count / 2;
 }
