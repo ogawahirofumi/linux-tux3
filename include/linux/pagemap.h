@@ -653,6 +653,8 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 extern void delete_from_page_cache(struct page *page);
 extern void __delete_from_page_cache(struct page *page, void *shadow);
 int replace_page_cache_page(struct page *old, struct page *new, gfp_t gfp_mask);
+int cow_replace_page_cache(struct page *oldpage, struct page *newpage);
+void cow_delete_from_page_cache(struct page *page);
 
 /*
  * Like add_to_page_cache_locked, but used to add newly allocated pages:

@@ -639,6 +639,89 @@ int add_to_page_cache_lru(struct page *page, struct address_space *mapping,
 }
 EXPORT_SYMBOL_GPL(add_to_page_cache_lru);
 
+/*
+ * Atomically replace oldpage with newpage.
+ *
+ * Similar to migrate_pages(), but the oldpage is for writeout.
+ */
+int cow_replace_page_cache(struct page *oldpage, struct page *newpage)
+{
+	struct address_space *mapping = oldpage->mapping;
+	void **pslot;
+
+	VM_BUG_ON_PAGE(!PageLocked(oldpage), oldpage);
+	VM_BUG_ON_PAGE(!PageLocked(newpage), newpage);
+
+	/* Get refcount for radix-tree */
+	page_cache_get(newpage);
+
+	/* Replace page in radix tree. */
+	spin_lock_irq(&mapping->tree_lock);
+	/* PAGECACHE_TAG_DIRTY represents the view of frontend. Clear it. */
+	if (PageDirty(oldpage))
+		radix_tree_tag_clear(&mapping->page_tree, page_index(oldpage),
+				     PAGECACHE_TAG_DIRTY);
+	/* The refcount to newpage is used for radix tree. */
+	pslot = radix_tree_lookup_slot(&mapping->page_tree, oldpage->index);
+	radix_tree_replace_slot(pslot, newpage);
+	__inc_zone_page_state(newpage, NR_FILE_PAGES);
+	__dec_zone_page_state(oldpage, NR_FILE_PAGES);
+	spin_unlock_irq(&mapping->tree_lock);
+
+	/* mem_cgroup codes must not be called under tree_lock */
+	mem_cgroup_replace_page_cache(oldpage, newpage);
+
+	/* Release refcount for radix-tree */
+	page_cache_release(oldpage);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(cow_replace_page_cache);
+
+/*
+ * Delete page from radix-tree, leaving page->mapping unchanged.
+ *
+ * Similar to delete_from_page_cache(), but the deleted page is for writeout.
+ */
+void cow_delete_from_page_cache(struct page *page)
+{
+	struct address_space *mapping = page->mapping;
+
+	/* Delete page from radix tree. */
+	spin_lock_irq(&mapping->tree_lock);
+	/*
+	 * if we're uptodate, flush out into the cleancache, otherwise
+	 * invalidate any existing cleancache entries.  We can't leave
+	 * stale data around in the cleancache once our page is gone
+	 */
+	if (PageUptodate(page) && PageMappedToDisk(page))
+		cleancache_put_page(page);
+	else
+		cleancache_invalidate_page(mapping, page);
+
+	page_cache_tree_delete(mapping, page, NULL);
+#if 0 /* FIXME: backend is assuming page->mapping is available */
+	page->mapping = NULL;
+#endif
+	/* Leave page->index set: truncation lookup relies upon it */
+
+	__dec_zone_page_state(page, NR_FILE_PAGES);
+	BUG_ON(page_mapped(page));
+
+	/*
+	 * The following dirty accounting is done by writeback
+	 * path. So, we don't need to do here.
+	 *
+	 * dec_zone_page_state(page, NR_FILE_DIRTY);
+	 * dec_bdi_stat(mapping->backing_dev_info, BDI_RECLAIMABLE);
+	 */
+	spin_unlock_irq(&mapping->tree_lock);
+
+	mem_cgroup_uncharge_cache_page(page);
+	page_cache_release(page);
+}
+EXPORT_SYMBOL_GPL(cow_delete_from_page_cache);
+
 #ifdef CONFIG_NUMA
 struct page *__page_cache_alloc(gfp_t gfp)
 {
