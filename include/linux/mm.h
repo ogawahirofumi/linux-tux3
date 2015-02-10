@@ -1909,6 +1909,11 @@ vm_unmapped_area(struct vm_unmapped_area_info *info)
 }
 
 /* truncate.c */
+void generic_truncate_partial_page(struct address_space *mapping,
+				   struct page *page, unsigned int start,
+				   unsigned int len);
+void generic_truncate_full_page(struct address_space *mapping,
+				struct page *page, int wait);
 extern void truncate_inode_pages(struct address_space *, loff_t);
 extern void truncate_inode_pages_range(struct address_space *,
 				       loff_t lstart, loff_t lend);
