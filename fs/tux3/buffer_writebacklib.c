@@ -61,12 +61,10 @@ static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 		/*
 		 * We carefully synchronise fault handlers against
 		 * installing a dirty pte and marking the page dirty
-		 * at this point. We do this by having them hold the
-		 * page lock at some point after installing their
-		 * pte, but before marking the page dirty.
-		 * Pages are always locked coming in here, so we get
-		 * the desired exclusion. See mm/memory.c:do_wp_page()
-		 * for more comments.
+		 * at this point.  We do this by having them hold the
+		 * page lock while dirtying the page, and pages are
+		 * always locked coming in here, so we get the desired
+		 * exclusion.
 		 */
 		if (TestClearPageDirty(page)) {
 			dec_zone_page_state(page, NR_FILE_DIRTY);
@@ -83,6 +81,7 @@ static void __tux3_test_set_page_writeback(struct page *page, int old_writeback)
 {
 	struct address_space *mapping = page->mapping;
 #if 0	/* FIXME */
+	unsigned long memcg_flags;
 	struct mem_cgroup *memcg;
 	bool locked;
 
@@ -119,6 +118,6 @@ static void __tux3_test_set_page_writeback(struct page *page, int old_writeback)
 		inc_zone_page_state(page, NR_WRITEBACK);
 	}
 #if 0	/* FIXME */
-	mem_cgroup_end_page_stat(memcg, locked, memcg_flags);
+	mem_cgroup_end_page_stat(memcg, &locked, &memcg_flags);
 #endif
 }
