@@ -68,6 +68,9 @@ struct inode *__tuxmknod(struct inode *dir, const char *name, unsigned len,
 	};
 	int err;
 
+	if (S_ISDIR(iattr->mode) && dir->i_nlink >= dir->i_sb->s_max_links)
+		return ERR_PTR(-EMLINK);
+
 	err = __tux3_mknod(dir, &dentry, iattr, rdev);
 	if (err)
 		return ERR_PTR(err);
@@ -110,6 +113,9 @@ struct inode *__tuxlink(struct inode *src_inode, struct inode *dir,
 		.d_name.len = dstlen,
 	};
 	int err;
+
+	if (src_inode->i_nlink >= dir->i_sb->s_max_links)
+		return ERR_PTR(-EMLINK);
 
 	err = tux3_link(&src, dir, &dst);
 	if (err)
@@ -285,7 +291,7 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 		.d_name.name = (unsigned char *)new_name,
 		.d_name.len = new_len,
 	};
-	int err;
+	int err, is_dir, new_is_dir;
 
 	/*
 	 * FIXME: we can cache dirent position by tuxlookup(), and
@@ -304,17 +310,18 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 	err = 0;
 	if (old.d_inode == new.d_inode)
 		goto out;
+	is_dir = S_ISDIR(old.d_inode->i_mode);
+	new_is_dir = new.d_inode && S_ISDIR(new.d_inode->i_mode);
 	if (new.d_inode) {
-		if (S_ISDIR(old.d_inode->i_mode)) {
-			if (!S_ISDIR(new.d_inode->i_mode)) {
-				err = -ENOTDIR;
-				goto out;
-			}
-		} else {
-			if (S_ISDIR(new.d_inode->i_mode)) {
-				err = -EISDIR;
-				goto out;
-			}
+		if (is_dir != new_is_dir) {
+			err = is_dir ? -ENOTDIR : -EISDIR;
+			goto out;
+		}
+	} else if (new_dir != old_dir) {
+		unsigned max_links = new_dir->i_sb->s_max_links;
+		if (is_dir && !new_is_dir && new_dir->i_nlink >= max_links) {
+			err = -EMLINK;
+			goto out;
 		}
 	}
 
