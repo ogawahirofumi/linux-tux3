@@ -12,6 +12,8 @@
 #define mb()		barrier()
 #define rmb()		mb()
 #define wmb()		barrier()
+#define dma_rmb()	rmb()
+#define dma_wmb()	wmb()
 
 #ifdef CONFIG_SMP
 #define smp_mb()	mb()
@@ -28,8 +30,22 @@
 #define read_barrier_depends()		do {} while (0)
 #define smp_read_barrier_depends()	do {} while (0)
 
-/* Atomic operations are already serializing on x86 */
-#define smp_mb__before_atomic()	barrier()
-#define smp_mb__after_atomic()	barrier()
+#define smp_mb__before_atomic()	smp_mb()
+#define smp_mb__after_atomic()	smp_mb()
+
+#define smp_store_release(p, v)						\
+do {									\
+	compiletime_assert_atomic_type(*p);				\
+	smp_mb();							\
+	ACCESS_ONCE(*p) = (v);						\
+} while (0)
+
+#define smp_load_acquire(p)						\
+({									\
+	typeof(*p) ___p1 = ACCESS_ONCE(*p);				\
+	compiletime_assert_atomic_type(*p);				\
+	smp_mb();							\
+	___p1;								\
+})
 
 #endif /* !LIBKLIB_BARRIER_H */
