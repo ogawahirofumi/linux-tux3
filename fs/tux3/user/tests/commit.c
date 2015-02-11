@@ -1029,6 +1029,32 @@ static void test11(struct sb *sb)
 	err = tuxreadlink(sb->rootdir, not, strlen(not), buf, sizeof(buf));
 	test_assert(err == -ENOENT);
 
+	/* Create hardlink */
+	const char *a1 = name;
+	char a2[] = "name_dst";
+	err = tuxlink(sb->rootdir, a1, strlen(a1), a2, strlen(a2));
+	test_assert(!err);
+
+	/* Create exist destination */
+	err = tuxlink(sb->rootdir, a1, strlen(a1), a2, strlen(a2));
+	test_assert(err == -EEXIST);
+
+	/* Create hardlink for dir */
+	char d1[] = "dir";
+	char d2[] = "dir_dst";
+	iattr.mode = S_IFDIR | 0755;
+	struct inode *inode = tuxcreate(sb->rootdir, d1, strlen(d1), &iattr);
+	test_assert(!IS_ERR(inode));
+	iput(inode);
+	err = tuxlink(sb->rootdir, d1, strlen(d1), d2, strlen(d2));
+	test_assert(err == -EPERM);
+
+	/* Create no exist source */
+	char n1[] = "no";
+	char n2[] = "no_dst";
+	err = tuxlink(sb->rootdir, n1, strlen(n1), n2, strlen(n2));
+	test_assert(err == -ENOENT);
+
 	/* Flush */
 	test_assert(force_delta(sb) == 0);
 
