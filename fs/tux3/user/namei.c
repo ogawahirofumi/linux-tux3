@@ -157,8 +157,9 @@ int tuxlink(struct inode *dir, const char *srcname, unsigned srclen,
 		goto error_src;
 
 	struct inode *inode = __tuxlink(src_inode, dir, dstname, dstlen);
-	err = PTR_ERR(inode);
-	if (!err)
+	if (IS_ERR(inode))
+		err = PTR_ERR(inode);
+	else
 		iput(inode);
 error_src:
 	iput(src_inode);
