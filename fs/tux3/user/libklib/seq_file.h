@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <libklib/types.h>
+#include <libklib/compiler.h>
 
 struct seq_file {
 	char *buf;

@@ -1,8 +1,6 @@
 #ifndef LIBKLIB_TYPES_H
 #define LIBKLIB_TYPES_H
 
-#include <libklib/compiler.h>
-
 typedef unsigned short		umode_t;
 
 typedef signed char		__s8;
@@ -23,6 +21,11 @@ typedef unsigned int		u32;
 typedef signed long long	s64;
 typedef unsigned long long	u64;
 
+#ifdef __CHECKER__
+#define __bitwise__ __attribute__((bitwise))
+#else
+#define __bitwise__
+#endif
 #ifdef __CHECK_ENDIAN__
 #define __bitwise __bitwise__
 #else
