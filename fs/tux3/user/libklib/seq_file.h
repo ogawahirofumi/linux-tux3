@@ -18,7 +18,7 @@ struct seq_file {
  * buffer is reallocated and all the data will be printed again.
  * The overflow state is true when m->count == m->size.
  */
-static inline bool seq_overflow(struct seq_file *m)
+static inline bool seq_has_overflowed(struct seq_file *m)
 {
 	return m->count == m->size;
 }

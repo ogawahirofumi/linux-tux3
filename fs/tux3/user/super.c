@@ -215,7 +215,7 @@ ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
 	int err;
 
 	err = __tux3_show_options(&seq, &dummy, all);
-	if (seq_overflow(&seq))
+	if (seq_has_overflowed(&seq))
 		err = -EOVERFLOW;
 	if (err)
 		return err;
