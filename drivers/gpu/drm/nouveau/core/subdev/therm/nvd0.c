@@ -40,6 +40,7 @@ pwm_info(struct nouveau_therm *therm, int line)
 		case 0x00: return 2;
 		case 0x19: return 1;
 		case 0x1c: return 0;
+		case 0x1e: return 2;
 		default:
 			break;
 		}
@@ -113,7 +114,7 @@ nvd0_fan_pwm_clock(struct nouveau_therm *therm, int line)
 		return nv_device(therm)->crystal * 1000 / 10;
 }
 
-static int
+int
 nvd0_therm_init(struct nouveau_object *object)
 {
 	struct nvd0_therm_priv *priv = (void *)object;
@@ -148,6 +149,8 @@ nvd0_therm_ctor(struct nouveau_object *parent,
 	*pobject = nv_object(priv);
 	if (ret)
 		return ret;
+
+	nv84_sensor_setup(&priv->base.base);
 
 	priv->base.base.pwm_ctrl = nvd0_fan_pwm_ctrl;
 	priv->base.base.pwm_get = nvd0_fan_pwm_get;

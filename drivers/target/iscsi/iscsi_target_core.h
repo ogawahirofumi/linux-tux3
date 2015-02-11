@@ -135,8 +135,8 @@ enum cmd_flags_table {
 	ICF_CONTIG_MEMORY			= 0x00000020,
 	ICF_ATTACHED_TO_RQUEUE			= 0x00000040,
 	ICF_OOO_CMDSN				= 0x00000080,
-	IFC_SENDTARGETS_ALL			= 0x00000100,
-	IFC_SENDTARGETS_SINGLE			= 0x00000200,
+	ICF_SENDTARGETS_ALL			= 0x00000100,
+	ICF_SENDTARGETS_SINGLE			= 0x00000200,
 };
 
 /* struct iscsi_cmd->i_state */
@@ -775,6 +775,7 @@ struct iscsi_np {
 	int			np_ip_proto;
 	int			np_sock_type;
 	enum np_thread_state_table np_thread_state;
+	bool                    enabled;
 	enum iscsi_timer_flags_table np_login_timer_flags;
 	u32			np_exports;
 	enum np_flags_table	np_flags;
@@ -789,7 +790,6 @@ struct iscsi_np {
 	void			*np_context;
 	struct iscsit_transport *np_transport;
 	struct list_head	np_list;
-	struct iscsi_tpg_np	*tpg_np;
 } ____cacheline_aligned;
 
 struct iscsi_tpg_np {

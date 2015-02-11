@@ -33,6 +33,8 @@
 #define KV_MINIMUM_ENGINE_CLOCK         800
 #define SMC_RAM_END                     0x40000
 
+static int kv_enable_nb_dpm(struct radeon_device *rdev,
+			    bool enable);
 static void kv_init_graphics_levels(struct radeon_device *rdev);
 static int kv_calculate_ds_divider(struct radeon_device *rdev);
 static int kv_calculate_nbps_level_settings(struct radeon_device *rdev);
@@ -546,6 +548,52 @@ static int kv_set_divider_value(struct radeon_device *rdev,
 	return 0;
 }
 
+static u32 kv_convert_vid2_to_vid7(struct radeon_device *rdev,
+				   struct sumo_vid_mapping_table *vid_mapping_table,
+				   u32 vid_2bit)
+{
+	struct radeon_clock_voltage_dependency_table *vddc_sclk_table =
+		&rdev->pm.dpm.dyn_state.vddc_dependency_on_sclk;
+	u32 i;
+
+	if (vddc_sclk_table && vddc_sclk_table->count) {
+		if (vid_2bit < vddc_sclk_table->count)
+			return vddc_sclk_table->entries[vid_2bit].v;
+		else
+			return vddc_sclk_table->entries[vddc_sclk_table->count - 1].v;
+	} else {
+		for (i = 0; i < vid_mapping_table->num_entries; i++) {
+			if (vid_mapping_table->entries[i].vid_2bit == vid_2bit)
+				return vid_mapping_table->entries[i].vid_7bit;
+		}
+		return vid_mapping_table->entries[vid_mapping_table->num_entries - 1].vid_7bit;
+	}
+}
+
+static u32 kv_convert_vid7_to_vid2(struct radeon_device *rdev,
+				   struct sumo_vid_mapping_table *vid_mapping_table,
+				   u32 vid_7bit)
+{
+	struct radeon_clock_voltage_dependency_table *vddc_sclk_table =
+		&rdev->pm.dpm.dyn_state.vddc_dependency_on_sclk;
+	u32 i;
+
+	if (vddc_sclk_table && vddc_sclk_table->count) {
+		for (i = 0; i < vddc_sclk_table->count; i++) {
+			if (vddc_sclk_table->entries[i].v == vid_7bit)
+				return i;
+		}
+		return vddc_sclk_table->count - 1;
+	} else {
+		for (i = 0; i < vid_mapping_table->num_entries; i++) {
+			if (vid_mapping_table->entries[i].vid_7bit == vid_7bit)
+				return vid_mapping_table->entries[i].vid_2bit;
+		}
+
+		return vid_mapping_table->entries[vid_mapping_table->num_entries - 1].vid_2bit;
+	}
+}
+
 static u16 kv_convert_8bit_index_to_voltage(struct radeon_device *rdev,
 					    u16 voltage)
 {
@@ -556,9 +604,9 @@ static u16 kv_convert_2bit_index_to_voltage(struct radeon_device *rdev,
 					    u32 vid_2bit)
 {
 	struct kv_power_info *pi = kv_get_pi(rdev);
-	u32 vid_8bit = sumo_convert_vid2_to_vid7(rdev,
-						 &pi->sys_info.vid_mapping_table,
-						 vid_2bit);
+	u32 vid_8bit = kv_convert_vid2_to_vid7(rdev,
+					       &pi->sys_info.vid_mapping_table,
+					       vid_2bit);
 
 	return kv_convert_8bit_index_to_voltage(rdev, (u16)vid_8bit);
 }
@@ -639,7 +687,7 @@ static int kv_force_lowest_valid(struct radeon_device *rdev)
 
 static int kv_unforce_levels(struct radeon_device *rdev)
 {
-	if (rdev->family == CHIP_KABINI)
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
 		return kv_notify_message_to_smu(rdev, PPSMC_MSG_NoForcedLevel);
 	else
 		return kv_set_enabled_levels(rdev);
@@ -1249,6 +1297,9 @@ void kv_dpm_disable(struct radeon_device *rdev)
 {
 	kv_smc_bapm_enable(rdev, false);
 
+	if (rdev->family == CHIP_MULLINS)
+		kv_enable_nb_dpm(rdev, false);
+
 	/* powerup blocks */
 	kv_dpm_powergate_acp(rdev, false);
 	kv_dpm_powergate_samu(rdev, false);
@@ -1362,12 +1413,19 @@ static int kv_update_uvd_dpm(struct radeon_device *rdev, bool gate)
 	struct radeon_uvd_clock_voltage_dependency_table *table =
 		&rdev->pm.dpm.dyn_state.uvd_clock_voltage_dependency_table;
 	int ret;
+	u32 mask;
 
 	if (!gate) {
-		if (!pi->caps_uvd_dpm || table->count || pi->caps_stable_p_state)
+		if (table->count)
 			pi->uvd_boot_level = table->count - 1;
 		else
 			pi->uvd_boot_level = 0;
+
+		if (!pi->caps_uvd_dpm || pi->caps_stable_p_state) {
+			mask = 1 << pi->uvd_boot_level;
+		} else {
+			mask = 0x1f;
+		}
 
 		ret = kv_copy_bytes_to_smc(rdev,
 					   pi->dpm_table_start +
@@ -1377,24 +1435,22 @@ static int kv_update_uvd_dpm(struct radeon_device *rdev, bool gate)
 		if (ret)
 			return ret;
 
-		if (!pi->caps_uvd_dpm ||
-		    pi->caps_stable_p_state)
-			kv_send_msg_to_smc_with_parameter(rdev,
-							  PPSMC_MSG_UVDDPM_SetEnabledMask,
-							  (1 << pi->uvd_boot_level));
+		kv_send_msg_to_smc_with_parameter(rdev,
+						  PPSMC_MSG_UVDDPM_SetEnabledMask,
+						  mask);
 	}
 
 	return kv_enable_uvd_dpm(rdev, !gate);
 }
 
-static u8 kv_get_vce_boot_level(struct radeon_device *rdev)
+static u8 kv_get_vce_boot_level(struct radeon_device *rdev, u32 evclk)
 {
 	u8 i;
 	struct radeon_vce_clock_voltage_dependency_table *table =
 		&rdev->pm.dpm.dyn_state.vce_clock_voltage_dependency_table;
 
 	for (i = 0; i < table->count; i++) {
-		if (table->entries[i].evclk >= 0) /* XXX */
+		if (table->entries[i].evclk >= evclk)
 			break;
 	}
 
@@ -1417,7 +1473,7 @@ static int kv_update_vce_dpm(struct radeon_device *rdev,
 		if (pi->caps_stable_p_state)
 			pi->vce_boot_level = table->count - 1;
 		else
-			pi->vce_boot_level = kv_get_vce_boot_level(rdev);
+			pi->vce_boot_level = kv_get_vce_boot_level(rdev, radeon_new_state->evclk);
 
 		ret = kv_copy_bytes_to_smc(rdev,
 					   pi->dpm_table_start +
@@ -1617,7 +1673,7 @@ static void kv_dpm_powergate_acp(struct radeon_device *rdev, bool gate)
 	if (pi->acp_power_gated == gate)
 		return;
 
-	if (rdev->family == CHIP_KABINI)
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
 		return;
 
 	pi->acp_power_gated = gate;
@@ -1718,15 +1774,24 @@ static int kv_update_dfs_bypass_settings(struct radeon_device *rdev,
 	return ret;
 }
 
-static int kv_enable_nb_dpm(struct radeon_device *rdev)
+static int kv_enable_nb_dpm(struct radeon_device *rdev,
+			    bool enable)
 {
 	struct kv_power_info *pi = kv_get_pi(rdev);
 	int ret = 0;
 
-	if (pi->enable_nb_dpm && !pi->nb_dpm_enabled) {
-		ret = kv_notify_message_to_smu(rdev, PPSMC_MSG_NBDPM_Enable);
-		if (ret == 0)
-			pi->nb_dpm_enabled = true;
+	if (enable) {
+		if (pi->enable_nb_dpm && !pi->nb_dpm_enabled) {
+			ret = kv_notify_message_to_smu(rdev, PPSMC_MSG_NBDPM_Enable);
+			if (ret == 0)
+				pi->nb_dpm_enabled = true;
+		}
+	} else {
+		if (pi->enable_nb_dpm && pi->nb_dpm_enabled) {
+			ret = kv_notify_message_to_smu(rdev, PPSMC_MSG_NBDPM_Disable);
+			if (ret == 0)
+				pi->nb_dpm_enabled = false;
+		}
 	}
 
 	return ret;
@@ -1786,7 +1851,7 @@ int kv_dpm_set_power_state(struct radeon_device *rdev)
 		}
 	}
 
-	if (rdev->family == CHIP_KABINI) {
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS) {
 		if (pi->enable_dpm) {
 			kv_set_valid_clock_range(rdev, new_ps);
 			kv_update_dfs_bypass_settings(rdev, new_ps);
@@ -1812,6 +1877,8 @@ int kv_dpm_set_power_state(struct radeon_device *rdev)
 				return ret;
 			}
 			kv_update_sclk_t(rdev);
+			if (rdev->family == CHIP_MULLINS)
+				kv_enable_nb_dpm(rdev, true);
 		}
 	} else {
 		if (pi->enable_dpm) {
@@ -1836,7 +1903,7 @@ int kv_dpm_set_power_state(struct radeon_device *rdev)
 			}
 			kv_update_acp_boot_level(rdev);
 			kv_update_sclk_t(rdev);
-			kv_enable_nb_dpm(rdev);
+			kv_enable_nb_dpm(rdev, true);
 		}
 	}
 
@@ -1862,7 +1929,7 @@ void kv_dpm_reset_asic(struct radeon_device *rdev)
 {
 	struct kv_power_info *pi = kv_get_pi(rdev);
 
-	if (rdev->family == CHIP_KABINI) {
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS) {
 		kv_force_lowest_valid(rdev);
 		kv_init_graphics_levels(rdev);
 		kv_program_bootup_state(rdev);
@@ -1901,14 +1968,41 @@ static void kv_construct_max_power_limits_table(struct radeon_device *rdev,
 static void kv_patch_voltage_values(struct radeon_device *rdev)
 {
 	int i;
-	struct radeon_uvd_clock_voltage_dependency_table *table =
+	struct radeon_uvd_clock_voltage_dependency_table *uvd_table =
 		&rdev->pm.dpm.dyn_state.uvd_clock_voltage_dependency_table;
+	struct radeon_vce_clock_voltage_dependency_table *vce_table =
+		&rdev->pm.dpm.dyn_state.vce_clock_voltage_dependency_table;
+	struct radeon_clock_voltage_dependency_table *samu_table =
+		&rdev->pm.dpm.dyn_state.samu_clock_voltage_dependency_table;
+	struct radeon_clock_voltage_dependency_table *acp_table =
+		&rdev->pm.dpm.dyn_state.acp_clock_voltage_dependency_table;
 
-	if (table->count) {
-		for (i = 0; i < table->count; i++)
-			table->entries[i].v =
+	if (uvd_table->count) {
+		for (i = 0; i < uvd_table->count; i++)
+			uvd_table->entries[i].v =
 				kv_convert_8bit_index_to_voltage(rdev,
-								 table->entries[i].v);
+								 uvd_table->entries[i].v);
+	}
+
+	if (vce_table->count) {
+		for (i = 0; i < vce_table->count; i++)
+			vce_table->entries[i].v =
+				kv_convert_8bit_index_to_voltage(rdev,
+								 vce_table->entries[i].v);
+	}
+
+	if (samu_table->count) {
+		for (i = 0; i < samu_table->count; i++)
+			samu_table->entries[i].v =
+				kv_convert_8bit_index_to_voltage(rdev,
+								 samu_table->entries[i].v);
+	}
+
+	if (acp_table->count) {
+		for (i = 0; i < acp_table->count; i++)
+			acp_table->entries[i].v =
+				kv_convert_8bit_index_to_voltage(rdev,
+								 acp_table->entries[i].v);
 	}
 
 }
@@ -1941,7 +2035,7 @@ static int kv_force_dpm_highest(struct radeon_device *rdev)
 			break;
 	}
 
-	if (rdev->family == CHIP_KABINI)
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
 		return kv_send_msg_to_smc_with_parameter(rdev, PPSMC_MSG_DPM_ForceState, i);
 	else
 		return kv_set_enabled_level(rdev, i);
@@ -1961,7 +2055,7 @@ static int kv_force_dpm_lowest(struct radeon_device *rdev)
 			break;
 	}
 
-	if (rdev->family == CHIP_KABINI)
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
 		return kv_send_msg_to_smc_with_parameter(rdev, PPSMC_MSG_DPM_ForceState, i);
 	else
 		return kv_set_enabled_level(rdev, i);
@@ -2118,7 +2212,7 @@ static void kv_apply_state_adjust_rules(struct radeon_device *rdev,
 	else
 		pi->battery_state = false;
 
-	if (rdev->family == CHIP_KABINI) {
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS) {
 		ps->dpm0_pg_nb_ps_lo = 0x1;
 		ps->dpm0_pg_nb_ps_hi = 0x0;
 		ps->dpmx_nb_ps_lo = 0x1;
@@ -2179,7 +2273,7 @@ static int kv_calculate_nbps_level_settings(struct radeon_device *rdev)
 	if (pi->lowest_valid > pi->highest_valid)
 		return -EINVAL;
 
-	if (rdev->family == CHIP_KABINI) {
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS) {
 		for (i = pi->lowest_valid; i <= pi->highest_valid; i++) {
 			pi->graphics_level[i].GnbSlow = 1;
 			pi->graphics_level[i].ForceNbPs1 = 0;
@@ -2253,9 +2347,9 @@ static void kv_init_graphics_levels(struct radeon_device *rdev)
 				break;
 
 			kv_set_divider_value(rdev, i, table->entries[i].clk);
-			vid_2bit = sumo_convert_vid7_to_vid2(rdev,
-							     &pi->sys_info.vid_mapping_table,
-							     table->entries[i].v);
+			vid_2bit = kv_convert_vid7_to_vid2(rdev,
+							   &pi->sys_info.vid_mapping_table,
+							   table->entries[i].v);
 			kv_set_vid(rdev, i, vid_2bit);
 			kv_set_at(rdev, i, pi->at[i]);
 			kv_dpm_power_level_enabled_for_throttle(rdev, i, true);
@@ -2324,7 +2418,7 @@ static void kv_program_nbps_index_settings(struct radeon_device *rdev,
 	struct kv_power_info *pi = kv_get_pi(rdev);
 	u32 nbdpmconfig1;
 
-	if (rdev->family == CHIP_KABINI)
+	if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
 		return;
 
 	if (pi->sys_info.nb_dpm_enable) {
@@ -2631,10 +2725,11 @@ int kv_dpm_init(struct radeon_device *rdev)
 
         pi->sram_end = SMC_RAM_END;
 
-	if (rdev->family == CHIP_KABINI)
-		pi->high_voltage_t = 4001;
-
-	pi->enable_nb_dpm = true;
+	/* Enabling nb dpm on an asrock system prevents dpm from working */
+	if (rdev->pdev->subsystem_vendor == 0x1849)
+		pi->enable_nb_dpm = false;
+	else
+		pi->enable_nb_dpm = true;
 
 	pi->caps_power_containment = true;
 	pi->caps_cac = true;
@@ -2649,7 +2744,17 @@ int kv_dpm_init(struct radeon_device *rdev)
 	pi->caps_sclk_ds = true;
 	pi->enable_auto_thermal_throttling = true;
 	pi->disable_nb_ps3_in_battery = false;
-	pi->bapm_enable = false;
+	if (radeon_bapm == -1) {
+		/* only enable bapm on KB, ML by default */
+		if (rdev->family == CHIP_KABINI || rdev->family == CHIP_MULLINS)
+			pi->bapm_enable = true;
+		else
+			pi->bapm_enable = false;
+	} else if (radeon_bapm == 0) {
+		pi->bapm_enable = false;
+	} else {
+		pi->bapm_enable = true;
+	}
 	pi->voltage_drop_t = 0;
 	pi->caps_sclk_throttle_low_notification = false;
 	pi->caps_fps = false; /* true? */
@@ -2693,6 +2798,8 @@ void kv_dpm_debugfs_print_current_performance_level(struct radeon_device *rdev,
 		tmp = (RREG32_SMC(SMU_VOLTAGE_STATUS) & SMU_VOLTAGE_CURRENT_LEVEL_MASK) >>
 			SMU_VOLTAGE_CURRENT_LEVEL_SHIFT;
 		vddc = kv_convert_8bit_index_to_voltage(rdev, (u16)tmp);
+		seq_printf(m, "uvd    %sabled\n", pi->uvd_power_gated ? "dis" : "en");
+		seq_printf(m, "vce    %sabled\n", pi->vce_power_gated ? "dis" : "en");
 		seq_printf(m, "power level %d    sclk: %u vddc: %u\n",
 			   current_index, sclk, vddc);
 	}

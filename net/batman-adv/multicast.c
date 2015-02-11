@@ -20,7 +20,6 @@
 #include "originator.h"
 #include "hard-interface.h"
 #include "translation-table.h"
-#include "multicast.h"
 
 /**
  * batadv_mcast_mla_softif_get - get softif multicast listeners
@@ -415,7 +414,7 @@ batadv_mcast_forw_ipv4_node_get(struct batadv_priv *bat_priv)
 	hlist_for_each_entry_rcu(tmp_orig_node,
 				 &bat_priv->mcast.want_all_ipv4_list,
 				 mcast_want_all_ipv4_node) {
-		if (!atomic_inc_not_zero(&orig_node->refcount))
+		if (!atomic_inc_not_zero(&tmp_orig_node->refcount))
 			continue;
 
 		orig_node = tmp_orig_node;
@@ -442,7 +441,7 @@ batadv_mcast_forw_ipv6_node_get(struct batadv_priv *bat_priv)
 	hlist_for_each_entry_rcu(tmp_orig_node,
 				 &bat_priv->mcast.want_all_ipv6_list,
 				 mcast_want_all_ipv6_node) {
-		if (!atomic_inc_not_zero(&orig_node->refcount))
+		if (!atomic_inc_not_zero(&tmp_orig_node->refcount))
 			continue;
 
 		orig_node = tmp_orig_node;
@@ -493,7 +492,7 @@ batadv_mcast_forw_unsnoop_node_get(struct batadv_priv *bat_priv)
 	hlist_for_each_entry_rcu(tmp_orig_node,
 				 &bat_priv->mcast.want_all_unsnoopables_list,
 				 mcast_want_all_unsnoopables_node) {
-		if (!atomic_inc_not_zero(&orig_node->refcount))
+		if (!atomic_inc_not_zero(&tmp_orig_node->refcount))
 			continue;
 
 		orig_node = tmp_orig_node;
@@ -686,11 +685,13 @@ static void batadv_mcast_tvlv_ogm_handler_v1(struct batadv_priv *bat_priv,
 		if (orig_initialized)
 			atomic_dec(&bat_priv->mcast.num_disabled);
 		orig->capabilities |= BATADV_ORIG_CAPA_HAS_MCAST;
-	/* If mcast support is being switched off increase the disabled
-	 * mcast node counter.
+	/* If mcast support is being switched off or if this is an initial
+	 * OGM without mcast support then increase the disabled mcast
+	 * node counter.
 	 */
 	} else if (!orig_mcast_enabled &&
-		   orig->capabilities & BATADV_ORIG_CAPA_HAS_MCAST) {
+		   (orig->capabilities & BATADV_ORIG_CAPA_HAS_MCAST ||
+		    !orig_initialized)) {
 		atomic_inc(&bat_priv->mcast.num_disabled);
 		orig->capabilities &= ~BATADV_ORIG_CAPA_HAS_MCAST;
 	}
@@ -739,7 +740,8 @@ void batadv_mcast_purge_orig(struct batadv_orig_node *orig)
 {
 	struct batadv_priv *bat_priv = orig->bat_priv;
 
-	if (!(orig->capabilities & BATADV_ORIG_CAPA_HAS_MCAST))
+	if (!(orig->capabilities & BATADV_ORIG_CAPA_HAS_MCAST) &&
+	    orig->capa_initialized & BATADV_ORIG_CAPA_HAS_MCAST)
 		atomic_dec(&bat_priv->mcast.num_disabled);
 
 	batadv_mcast_want_unsnoop_update(bat_priv, orig, BATADV_NO_FLAGS);

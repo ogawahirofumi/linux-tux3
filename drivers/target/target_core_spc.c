@@ -129,15 +129,10 @@ static sense_reason_t
 spc_emulate_evpd_80(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
-	u16 len = 0;
+	u16 len;
 
 	if (dev->dev_flags & DF_EMULATED_VPD_UNIT_SERIAL) {
-		u32 unit_serial_len;
-
-		unit_serial_len = strlen(dev->t10_wwn.unit_serial);
-		unit_serial_len++; /* For NULL Terminator */
-
-		len += sprintf(&buf[4], "%s", dev->t10_wwn.unit_serial);
+		len = sprintf(&buf[4], "%s", dev->t10_wwn.unit_serial);
 		len++; /* Extra Byte for NULL Terminator */
 		buf[3] = len;
 	}
@@ -510,7 +505,6 @@ static sense_reason_t
 spc_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 {
 	struct se_device *dev = cmd->se_dev;
-	u32 max_sectors;
 	int have_tp = 0;
 	int opt, min;
 
@@ -544,9 +538,7 @@ spc_emulate_evpd_b0(struct se_cmd *cmd, unsigned char *buf)
 	/*
 	 * Set MAXIMUM TRANSFER LENGTH
 	 */
-	max_sectors = min(dev->dev_attrib.fabric_max_sectors,
-			  dev->dev_attrib.hw_max_sectors);
-	put_unaligned_be32(max_sectors, &buf[8]);
+	put_unaligned_be32(dev->dev_attrib.hw_max_sectors, &buf[8]);
 
 	/*
 	 * Set OPTIMAL TRANSFER LENGTH
@@ -669,7 +661,7 @@ spc_emulate_evpd_b3(struct se_cmd *cmd, unsigned char *buf)
 	buf[0] = dev->transport->get_device_type(dev);
 	buf[3] = 0x0c;
 	put_unaligned_be32(dev->t10_alua.lba_map_segment_size, &buf[8]);
-	put_unaligned_be32(dev->t10_alua.lba_map_segment_size, &buf[12]);
+	put_unaligned_be32(dev->t10_alua.lba_map_segment_multiplier, &buf[12]);
 
 	return 0;
 }
@@ -721,6 +713,7 @@ spc_emulate_inquiry(struct se_cmd *cmd)
 	unsigned char *buf;
 	sense_reason_t ret;
 	int p;
+	int len = 0;
 
 	buf = kzalloc(SE_INQUIRY_BUF, GFP_KERNEL);
 	if (!buf) {
@@ -742,6 +735,7 @@ spc_emulate_inquiry(struct se_cmd *cmd)
 		}
 
 		ret = spc_emulate_inquiry_std(cmd, buf);
+		len = buf[4] + 5;
 		goto out;
 	}
 
@@ -749,6 +743,7 @@ spc_emulate_inquiry(struct se_cmd *cmd)
 		if (cdb[2] == evpd_handlers[p].page) {
 			buf[1] = cdb[2];
 			ret = evpd_handlers[p].emulate(cmd, buf);
+			len = get_unaligned_be16(&buf[2]) + 4;
 			goto out;
 		}
 	}
@@ -765,7 +760,7 @@ out:
 	kfree(buf);
 
 	if (!ret)
-		target_complete_cmd(cmd, GOOD);
+		target_complete_cmd_with_length(cmd, GOOD, len);
 	return ret;
 }
 
@@ -1103,7 +1098,7 @@ set_length:
 		transport_kunmap_data_sg(cmd);
 	}
 
-	target_complete_cmd(cmd, GOOD);
+	target_complete_cmd_with_length(cmd, GOOD, length);
 	return 0;
 }
 
@@ -1279,7 +1274,7 @@ done:
 	buf[3] = (lun_count & 0xff);
 	transport_kunmap_data_sg(cmd);
 
-	target_complete_cmd(cmd, GOOD);
+	target_complete_cmd_with_length(cmd, GOOD, 8 + lun_count * 8);
 	return 0;
 }
 EXPORT_SYMBOL(spc_emulate_report_luns);
@@ -1359,7 +1354,7 @@ spc_parse_cdb(struct se_cmd *cmd, unsigned int *size)
 		 * Do implicit HEAD_OF_QUEUE processing for INQUIRY.
 		 * See spc4r17 section 5.3
 		 */
-		cmd->sam_task_attr = MSG_HEAD_TAG;
+		cmd->sam_task_attr = TCM_HEAD_TAG;
 		cmd->execute_cmd = spc_emulate_inquiry;
 		break;
 	case SECURITY_PROTOCOL_IN:
@@ -1393,7 +1388,7 @@ spc_parse_cdb(struct se_cmd *cmd, unsigned int *size)
 		 * Do implicit HEAD_OF_QUEUE processing for REPORT_LUNS
 		 * See spc4r17 section 5.3
 		 */
-		cmd->sam_task_attr = MSG_HEAD_TAG;
+		cmd->sam_task_attr = TCM_HEAD_TAG;
 		break;
 	case TEST_UNIT_READY:
 		cmd->execute_cmd = spc_emulate_testunitready;

@@ -821,7 +821,7 @@ static int build_i2c_fw_hdr(__u8 *header, struct device *dev)
 	firmware_rec =  (struct ti_i2c_firmware_rec*)i2c_header->Data;
 
 	i2c_header->Type	= I2C_DESC_TYPE_FIRMWARE_BLANK;
-	i2c_header->Size	= (__u16)buffer_size;
+	i2c_header->Size	= cpu_to_le16(buffer_size);
 	i2c_header->CheckSum	= cs;
 	firmware_rec->Ver_Major	= OperationalMajorVersion;
 	firmware_rec->Ver_Minor	= OperationalMinorVersion;
@@ -1456,12 +1456,8 @@ static void handle_new_msr(struct edgeport_port *edge_port, __u8 msr)
 	tty = tty_port_tty_get(&edge_port->port->port);
 	/* handle CTS flow control */
 	if (tty && C_CRTSCTS(tty)) {
-		if (msr & EDGEPORT_MSR_CTS) {
-			tty->hw_stopped = 0;
+		if (msr & EDGEPORT_MSR_CTS)
 			tty_wakeup(tty);
-		} else {
-			tty->hw_stopped = 1;
-		}
 	}
 	tty_kref_put(tty);
 }
@@ -2177,7 +2173,6 @@ static void change_port_settings(struct tty_struct *tty,
 		dev_dbg(dev, "%s - RTS/CTS is enabled\n", __func__);
 	} else {
 		dev_dbg(dev, "%s - RTS/CTS is disabled\n", __func__);
-		tty->hw_stopped = 0;
 		restart_read(edge_port);
 	}
 
