@@ -1042,7 +1042,7 @@ int page_cow_file(struct vm_area_struct *orig_vma, struct page *oldpage,
 	BUG_ON(PageAnon(oldpage));
 	BUG_ON(mapping == NULL);
 
-	mutex_lock(&mapping->i_mmap_mutex);
+	i_mmap_lock_read(mapping);
 	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
 		/*
 		 * The orig_vma's PTE is handled by caller.
@@ -1056,7 +1056,7 @@ int page_cow_file(struct vm_area_struct *orig_vma, struct page *oldpage,
 			ret += page_cow_one(oldpage, newpage, vma, address);
 		}
 	}
-	mutex_unlock(&mapping->i_mmap_mutex);
+	i_mmap_unlock_read(mapping);
 
 	return ret;
 }
