@@ -647,10 +647,10 @@ struct fillstate {
 	unsigned type;
 };
 
-static int tux3fuse_filler(void *ctx, const char *name, int namelen,
-			   loff_t offset, u64 ino, unsigned type)
+static int tux3fuse_filler(struct dir_context *ctx, const char *name,
+			   int namelen, loff_t offset, u64 ino, unsigned type)
 {
-	struct fillstate *state = ctx;
+	struct fillstate *state = container_of(ctx, struct fillstate, ctx);
 	if (state->done || namelen > TUX_NAME_LEN)
 		return -EINVAL;
 	trace("'%.*s'\n", namelen, name);

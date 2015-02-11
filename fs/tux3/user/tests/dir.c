@@ -67,8 +67,8 @@ static void test01(struct sb *sb, struct inode *dir)
 	clean_main(sb, dir);
 }
 
-static int filldir(void *entry, const char *name, int namelen, loff_t offset,
-		   u64 inum, unsigned type)
+static int filldir(struct dir_context *ctx, const char *name, int namelen,
+		   loff_t offset, u64 inum, unsigned type)
 {
 	static int pos;
 

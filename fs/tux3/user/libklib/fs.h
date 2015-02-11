@@ -137,7 +137,9 @@ static inline struct inode *file_inode(struct file *f)
 #define DT_SOCK		12
 #define DT_WHT		14
 
-typedef int (*filldir_t)(void *, const char *, int, loff_t, u64, unsigned);
+struct dir_context;
+typedef int (*filldir_t)(struct dir_context *, const char *, int, loff_t, u64,
+			 unsigned);
 struct dir_context {
 	const filldir_t actor;
 	loff_t pos;
