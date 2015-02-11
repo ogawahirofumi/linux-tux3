@@ -326,6 +326,9 @@ int page_symlink(struct inode *inode, const char *symname, int len)
 	int ret;
 
 	assert(inode->i_size == 0);
+	assert(len > 0);
+
+	len--;	/* don't save nul */
 	ret = tuxio(&file, (void *)symname, len, 1);
 	if (ret < 0)
 		return ret;
@@ -345,5 +348,5 @@ int page_readlink(struct inode *inode, void *buf, unsigned size)
 		return ret;
 	if (ret != len)
 		return -EIO;
-	return 0;
+	return len;
 }

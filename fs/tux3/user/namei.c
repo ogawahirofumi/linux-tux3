@@ -170,18 +170,18 @@ int tuxreadlink(struct inode *dir, const char *name, unsigned len,
 		void *buf, unsigned bufsize)
 {
 	struct inode *inode;
-	int err;
+	int res;
 
 	inode = tuxopen(dir, name, len);
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 
-	err = -EINVAL;
+	res = -EINVAL;
 	if (S_ISLNK(inode->i_mode))
-		err = page_readlink(inode, buf, bufsize);
+		res = page_readlink(inode, buf, bufsize);
 	iput(inode);
 
-	return err;
+	return res;
 }
 
 struct inode *__tuxsymlink(struct inode *dir, const char *name, unsigned len,
@@ -209,6 +209,9 @@ int tuxsymlink(struct inode *dir, const char *name, unsigned len,
 	};
 	struct inode *inode;
 	int err;
+
+	if (strlen(symname) == 0)
+		return -ENOENT;
 
 	/*
 	 * FIXME: we can find space with existent check
