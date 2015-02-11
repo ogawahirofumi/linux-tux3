@@ -71,18 +71,10 @@
 			interrupts = <58>;
 		};
 
-		mailbox: mailbox@48094000 {
-			compatible = "ti,omap2-mailbox";
-			ti,hwmods = "mailbox";
-			reg = <0x48094000 0x200>;
-			interrupts = <26>;
-		};
-
 		intc: interrupt-controller@1 {
 			compatible = "ti,omap2-intc";
 			interrupt-controller;
 			#interrupt-cells = <1>;
-			ti,intc-size = <96>;
 			reg = <0x480FE000 0x1000>;
 		};
 

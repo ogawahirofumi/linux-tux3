@@ -22,14 +22,14 @@
 #include <linux/of.h>
 #include <linux/of_graph.h>
 #include <linux/phy/phy.h>
-#include <linux/platform_data/mipi-csis.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/videodev2.h>
-#include <media/s5p_fimc.h>
+#include <media/exynos-fimc.h>
 #include <media/v4l2-of.h>
 #include <media/v4l2-subdev.h>
 
@@ -238,34 +238,34 @@ struct csis_state {
  */
 struct csis_pix_format {
 	unsigned int pix_width_alignment;
-	enum v4l2_mbus_pixelcode code;
+	u32 code;
 	u32 fmt_reg;
 	u8 data_alignment;
 };
 
 static const struct csis_pix_format s5pcsis_formats[] = {
 	{
-		.code = V4L2_MBUS_FMT_VYUY8_2X8,
+		.code = MEDIA_BUS_FMT_VYUY8_2X8,
 		.fmt_reg = S5PCSIS_CFG_FMT_YCBCR422_8BIT,
 		.data_alignment = 32,
 	}, {
-		.code = V4L2_MBUS_FMT_JPEG_1X8,
+		.code = MEDIA_BUS_FMT_JPEG_1X8,
 		.fmt_reg = S5PCSIS_CFG_FMT_USER(1),
 		.data_alignment = 32,
 	}, {
-		.code = V4L2_MBUS_FMT_S5C_UYVY_JPEG_1X8,
+		.code = MEDIA_BUS_FMT_S5C_UYVY_JPEG_1X8,
 		.fmt_reg = S5PCSIS_CFG_FMT_USER(1),
 		.data_alignment = 32,
 	}, {
-		.code = V4L2_MBUS_FMT_SGRBG8_1X8,
+		.code = MEDIA_BUS_FMT_SGRBG8_1X8,
 		.fmt_reg = S5PCSIS_CFG_FMT_RAW8,
 		.data_alignment = 24,
 	}, {
-		.code = V4L2_MBUS_FMT_SGRBG10_1X10,
+		.code = MEDIA_BUS_FMT_SGRBG10_1X10,
 		.fmt_reg = S5PCSIS_CFG_FMT_RAW10,
 		.data_alignment = 24,
 	}, {
-		.code = V4L2_MBUS_FMT_SGRBG12_1X12,
+		.code = MEDIA_BUS_FMT_SGRBG12_1X12,
 		.fmt_reg = S5PCSIS_CFG_FMT_RAW12,
 		.data_alignment = 24,
 	}
@@ -730,26 +730,6 @@ static irqreturn_t s5pcsis_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int s5pcsis_get_platform_data(struct platform_device *pdev,
-				     struct csis_state *state)
-{
-	struct s5p_platform_mipi_csis *pdata = pdev->dev.platform_data;
-
-	if (pdata == NULL) {
-		dev_err(&pdev->dev, "Platform data not specified\n");
-		return -EINVAL;
-	}
-
-	state->clk_frequency = pdata->clk_rate;
-	state->num_lanes = pdata->lanes;
-	state->hs_settle = pdata->hs_settle;
-	state->index = max(0, pdev->id);
-	state->max_num_lanes = state->index ? CSIS1_MAX_LANES :
-					      CSIS0_MAX_LANES;
-	return 0;
-}
-
-#ifdef CONFIG_OF
 static int s5pcsis_parse_dt(struct platform_device *pdev,
 			    struct csis_state *state)
 {
@@ -773,7 +753,7 @@ static int s5pcsis_parse_dt(struct platform_device *pdev,
 	v4l2_of_parse_endpoint(node, &endpoint);
 
 	state->index = endpoint.base.port - FIMC_INPUT_MIPI_CSI2_0;
-	if (state->index < 0 || state->index >= CSIS_MAX_ENTITIES)
+	if (state->index >= CSIS_MAX_ENTITIES)
 		return -ENXIO;
 
 	/* Get MIPI CSI-2 bus configration from the endpoint node. */
@@ -787,9 +767,6 @@ static int s5pcsis_parse_dt(struct platform_device *pdev,
 
 	return 0;
 }
-#else
-#define s5pcsis_parse_dt(pdev, state) (-ENOSYS)
-#endif
 
 static int s5pcsis_pm_resume(struct device *dev, bool runtime);
 static const struct of_device_id s5pcsis_of_match[];
@@ -812,19 +789,14 @@ static int s5pcsis_probe(struct platform_device *pdev)
 	spin_lock_init(&state->slock);
 	state->pdev = pdev;
 
-	if (dev->of_node) {
-		of_id = of_match_node(s5pcsis_of_match, dev->of_node);
-		if (WARN_ON(of_id == NULL))
-			return -EINVAL;
+	of_id = of_match_node(s5pcsis_of_match, dev->of_node);
+	if (WARN_ON(of_id == NULL))
+		return -EINVAL;
 
-		drv_data = of_id->data;
-		state->interrupt_mask = drv_data->interrupt_mask;
+	drv_data = of_id->data;
+	state->interrupt_mask = drv_data->interrupt_mask;
 
-		ret = s5pcsis_parse_dt(pdev, state);
-	} else {
-		ret = s5pcsis_get_platform_data(pdev, state);
-	}
-
+	ret = s5pcsis_parse_dt(pdev, state);
 	if (ret < 0)
 		return ret;
 
@@ -1006,7 +978,7 @@ static int s5pcsis_resume(struct device *dev)
 }
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int s5pcsis_runtime_suspend(struct device *dev)
 {
 	return s5pcsis_pm_suspend(dev, true);
@@ -1069,7 +1041,6 @@ static struct platform_driver s5pcsis_driver = {
 	.driver		= {
 		.of_match_table = s5pcsis_of_match,
 		.name		= CSIS_DRIVER_NAME,
-		.owner		= THIS_MODULE,
 		.pm		= &s5pcsis_pm_ops,
 	},
 };

@@ -329,6 +329,11 @@ static struct crush_map *crush_decode(void *pbyval, void *end)
 	dout("crush decode tunable chooseleaf_descend_once = %d",
 	     c->chooseleaf_descend_once);
 
+	ceph_decode_need(p, end, sizeof(u8), done);
+	c->chooseleaf_vary_r = ceph_decode_8(p);
+	dout("crush decode tunable chooseleaf_vary_r = %d",
+	     c->chooseleaf_vary_r);
+
 done:
 	dout("crush_decode success\n");
 	return c;
@@ -516,11 +521,11 @@ static int decode_pool(void **p, void *end, struct ceph_pg_pool_info *pi)
 	ev = ceph_decode_8(p);  /* encoding version */
 	cv = ceph_decode_8(p); /* compat version */
 	if (ev < 5) {
-		pr_warning("got v %d < 5 cv %d of ceph_pg_pool\n", ev, cv);
+		pr_warn("got v %d < 5 cv %d of ceph_pg_pool\n", ev, cv);
 		return -EINVAL;
 	}
 	if (cv > 9) {
-		pr_warning("got v %d cv %d > 9 of ceph_pg_pool\n", ev, cv);
+		pr_warn("got v %d cv %d > 9 of ceph_pg_pool\n", ev, cv);
 		return -EINVAL;
 	}
 	len = ceph_decode_32(p);
@@ -666,25 +671,25 @@ static int osdmap_set_max_osd(struct ceph_osdmap *map, int max)
 	int i;
 
 	state = krealloc(map->osd_state, max*sizeof(*state), GFP_NOFS);
-	weight = krealloc(map->osd_weight, max*sizeof(*weight), GFP_NOFS);
-	addr = krealloc(map->osd_addr, max*sizeof(*addr), GFP_NOFS);
-	if (!state || !weight || !addr) {
-		kfree(state);
-		kfree(weight);
-		kfree(addr);
-
+	if (!state)
 		return -ENOMEM;
-	}
+	map->osd_state = state;
+
+	weight = krealloc(map->osd_weight, max*sizeof(*weight), GFP_NOFS);
+	if (!weight)
+		return -ENOMEM;
+	map->osd_weight = weight;
+
+	addr = krealloc(map->osd_addr, max*sizeof(*addr), GFP_NOFS);
+	if (!addr)
+		return -ENOMEM;
+	map->osd_addr = addr;
 
 	for (i = map->max_osd; i < max; i++) {
-		state[i] = 0;
-		weight[i] = CEPH_OSD_OUT;
-		memset(addr + i, 0, sizeof(*addr));
+		map->osd_state[i] = 0;
+		map->osd_weight[i] = CEPH_OSD_OUT;
+		memset(map->osd_addr + i, 0, sizeof(*map->osd_addr));
 	}
-
-	map->osd_state = state;
-	map->osd_weight = weight;
-	map->osd_addr = addr;
 
 	if (map->osd_primary_affinity) {
 		u32 *affinity;
@@ -693,11 +698,11 @@ static int osdmap_set_max_osd(struct ceph_osdmap *map, int max)
 				    max*sizeof(*affinity), GFP_NOFS);
 		if (!affinity)
 			return -ENOMEM;
+		map->osd_primary_affinity = affinity;
 
 		for (i = map->max_osd; i < max; i++)
-			affinity[i] = CEPH_OSD_DEFAULT_PRIMARY_AFFINITY;
-
-		map->osd_primary_affinity = affinity;
+			map->osd_primary_affinity[i] =
+			    CEPH_OSD_DEFAULT_PRIMARY_AFFINITY;
 	}
 
 	map->max_osd = max;
@@ -724,9 +729,9 @@ static int get_osdmap_client_data_v(void **p, void *end,
 
 		ceph_decode_8_safe(p, end, struct_compat, e_inval);
 		if (struct_compat > OSDMAP_WRAPPER_COMPAT_VER) {
-			pr_warning("got v %d cv %d > %d of %s ceph_osdmap\n",
-				   struct_v, struct_compat,
-				   OSDMAP_WRAPPER_COMPAT_VER, prefix);
+			pr_warn("got v %d cv %d > %d of %s ceph_osdmap\n",
+				struct_v, struct_compat,
+				OSDMAP_WRAPPER_COMPAT_VER, prefix);
 			return -EINVAL;
 		}
 		*p += 4; /* ignore wrapper struct_len */
@@ -734,9 +739,9 @@ static int get_osdmap_client_data_v(void **p, void *end,
 		ceph_decode_8_safe(p, end, struct_v, e_inval);
 		ceph_decode_8_safe(p, end, struct_compat, e_inval);
 		if (struct_compat > OSDMAP_CLIENT_DATA_COMPAT_VER) {
-			pr_warning("got v %d cv %d > %d of %s ceph_osdmap client data\n",
-				   struct_v, struct_compat,
-				   OSDMAP_CLIENT_DATA_COMPAT_VER, prefix);
+			pr_warn("got v %d cv %d > %d of %s ceph_osdmap client data\n",
+				struct_v, struct_compat,
+				OSDMAP_CLIENT_DATA_COMPAT_VER, prefix);
 			return -EINVAL;
 		}
 		*p += 4; /* ignore client data struct_len */
@@ -746,8 +751,8 @@ static int get_osdmap_client_data_v(void **p, void *end,
 		*p -= 1;
 		ceph_decode_16_safe(p, end, version, e_inval);
 		if (version < 6) {
-			pr_warning("got v %d < 6 of %s ceph_osdmap\n", version,
-				   prefix);
+			pr_warn("got v %d < 6 of %s ceph_osdmap\n",
+				version, prefix);
 			return -EINVAL;
 		}
 
@@ -1548,8 +1553,10 @@ static void apply_primary_affinity(struct ceph_osdmap *osdmap, u32 pps,
 		return;
 
 	for (i = 0; i < len; i++) {
-		if (osds[i] != CRUSH_ITEM_NONE &&
-		    osdmap->osd_primary_affinity[i] !=
+		int osd = osds[i];
+
+		if (osd != CRUSH_ITEM_NONE &&
+		    osdmap->osd_primary_affinity[osd] !=
 					CEPH_OSD_DEFAULT_PRIMARY_AFFINITY) {
 			break;
 		}
@@ -1563,10 +1570,9 @@ static void apply_primary_affinity(struct ceph_osdmap *osdmap, u32 pps,
 	 * osd's pgs get rejected as primary.
 	 */
 	for (i = 0; i < len; i++) {
-		int osd;
+		int osd = osds[i];
 		u32 aff;
 
-		osd = osds[i];
 		if (osd == CRUSH_ITEM_NONE)
 			continue;
 

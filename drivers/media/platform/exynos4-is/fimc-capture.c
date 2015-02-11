@@ -294,15 +294,15 @@ static int start_streaming(struct vb2_queue *q, unsigned int count)
 	return 0;
 }
 
-static int stop_streaming(struct vb2_queue *q)
+static void stop_streaming(struct vb2_queue *q)
 {
 	struct fimc_ctx *ctx = q->drv_priv;
 	struct fimc_dev *fimc = ctx->fimc_dev;
 
 	if (!fimc_capture_active(fimc))
-		return -EINVAL;
+		return;
 
-	return fimc_stop_capture(fimc, false);
+	fimc_stop_capture(fimc, false);
 }
 
 int fimc_capture_suspend(struct fimc_dev *fimc)
@@ -749,7 +749,7 @@ static int fimc_cap_enum_fmt_mplane(struct file *file, void *priv,
 		return -EINVAL;
 	strncpy(f->description, fmt->name, sizeof(f->description) - 1);
 	f->pixelformat = fmt->fourcc;
-	if (fmt->fourcc == V4L2_MBUS_FMT_JPEG_1X8)
+	if (fmt->fourcc == MEDIA_BUS_FMT_JPEG_1X8)
 		f->flags |= V4L2_FMT_FLAG_COMPRESSED;
 	return 0;
 }

@@ -248,7 +248,7 @@ enum s5k5baf_gpio_id {
 #define NUM_ISP_PADS 2
 
 struct s5k5baf_pixfmt {
-	enum v4l2_mbus_pixelcode code;
+	u32 code;
 	u32 colorspace;
 	/* REG_P_FMT(x) register value */
 	u16 reg_p_fmt;
@@ -331,10 +331,10 @@ struct s5k5baf {
 };
 
 static const struct s5k5baf_pixfmt s5k5baf_formats[] = {
-	{ V4L2_MBUS_FMT_VYUY8_2X8,	V4L2_COLORSPACE_JPEG,	5 },
+	{ MEDIA_BUS_FMT_VYUY8_2X8,	V4L2_COLORSPACE_JPEG,	5 },
 	/* range 16-240 */
-	{ V4L2_MBUS_FMT_VYUY8_2X8,	V4L2_COLORSPACE_REC709,	6 },
-	{ V4L2_MBUS_FMT_RGB565_2X8_BE,	V4L2_COLORSPACE_JPEG,	0 },
+	{ MEDIA_BUS_FMT_VYUY8_2X8,	V4L2_COLORSPACE_REC709,	6 },
+	{ MEDIA_BUS_FMT_RGB565_2X8_BE,	V4L2_COLORSPACE_JPEG,	0 },
 };
 
 static struct v4l2_rect s5k5baf_cis_rect = {
@@ -816,7 +816,7 @@ static void s5k5baf_hw_find_min_fiv(struct s5k5baf *state)
 				 "error setting frame interval: %d\n", err);
 			state->error = -EINVAL;
 		}
-	};
+	}
 	v4l2_err(&state->sd, "cannot find correct frame interval\n");
 	state->error = -ERANGE;
 }
@@ -1206,7 +1206,7 @@ static int s5k5baf_enum_mbus_code(struct v4l2_subdev *sd,
 	if (code->pad == PAD_CIS) {
 		if (code->index > 0)
 			return -EINVAL;
-		code->code = V4L2_MBUS_FMT_FIXED;
+		code->code = MEDIA_BUS_FMT_FIXED;
 		return 0;
 	}
 
@@ -1227,7 +1227,7 @@ static int s5k5baf_enum_frame_size(struct v4l2_subdev *sd,
 		return -EINVAL;
 
 	if (fse->pad == PAD_CIS) {
-		fse->code = V4L2_MBUS_FMT_FIXED;
+		fse->code = MEDIA_BUS_FMT_FIXED;
 		fse->min_width = S5K5BAF_CIS_WIDTH;
 		fse->max_width = S5K5BAF_CIS_WIDTH;
 		fse->min_height = S5K5BAF_CIS_HEIGHT;
@@ -1252,7 +1252,7 @@ static void s5k5baf_try_cis_format(struct v4l2_mbus_framefmt *mf)
 {
 	mf->width = S5K5BAF_CIS_WIDTH;
 	mf->height = S5K5BAF_CIS_HEIGHT;
-	mf->code = V4L2_MBUS_FMT_FIXED;
+	mf->code = MEDIA_BUS_FMT_FIXED;
 	mf->colorspace = V4L2_COLORSPACE_JPEG;
 	mf->field = V4L2_FIELD_NONE;
 }
@@ -1312,6 +1312,8 @@ static int s5k5baf_set_fmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct s5k5baf *state = to_s5k5baf(sd);
 	const struct s5k5baf_pixfmt *pixfmt;
 	int ret = 0;
+
+	mf->field = V4L2_FIELD_NONE;
 
 	if (fmt->which == V4L2_SUBDEV_FORMAT_TRY) {
 		*v4l2_subdev_get_try_format(fh, fmt->pad) = *mf;

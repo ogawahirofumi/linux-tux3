@@ -266,6 +266,18 @@ static int map_direct(struct btree *btree, block_t start, unsigned count,
 	return segs;
 }
 
+
+/* The inode is accessed by only backend. */
+static inline int inode_is_backend_only(struct inode *inode)
+{
+	switch (tux_inode(inode)->inum) {
+	case TUX_BITMAP_INO:
+	case TUX_COUNTMAP_INO:
+		return 1;
+	}
+	return 0;
+}
+
 /* filemap() by using dleaf */
 static int filemap2(struct inode *inode, block_t start, unsigned count,
 		       struct block_segment seg[], unsigned seg_max,
@@ -273,7 +285,7 @@ static int filemap2(struct inode *inode, block_t start, unsigned count,
 {
 	struct btree *btree = &tux_inode(inode)->btree;
 	struct cursor *cursor = NULL;
-	int err, segs = 0;
+	int err, segs = 0, need_lock = !inode_is_backend_only(inode);
 
 	assert(seg_max > 0);
 
@@ -290,7 +302,7 @@ static int filemap2(struct inode *inode, block_t start, unsigned count,
 	 * But bitmap is used (read/write) only from backend.
 	 * So, no need to lock.
 	 */
-	if (tux_inode(inode)->inum != TUX_BITMAP_INO) {
+	if (need_lock) {
 		if (mode == MAP_READ)
 			down_read(&btree->lock);
 		else
@@ -382,7 +394,7 @@ static int filemap2(struct inode *inode, block_t start, unsigned count,
 	if (cursor)
 		release_cursor(cursor);
 out_unlock:
-	if (tux_inode(inode)->inum != TUX_BITMAP_INO) {
+	if (need_lock) {
 		if (mode == MAP_READ)
 			up_read(&btree->lock);
 		else

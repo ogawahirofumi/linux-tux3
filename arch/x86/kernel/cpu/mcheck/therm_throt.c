@@ -429,14 +429,14 @@ static inline void __smp_thermal_interrupt(void)
 	smp_thermal_vector();
 }
 
-asmlinkage void smp_thermal_interrupt(struct pt_regs *regs)
+asmlinkage __visible void smp_thermal_interrupt(struct pt_regs *regs)
 {
 	entering_irq();
 	__smp_thermal_interrupt();
 	exiting_ack_irq();
 }
 
-asmlinkage void smp_trace_thermal_interrupt(struct pt_regs *regs)
+asmlinkage __visible void smp_trace_thermal_interrupt(struct pt_regs *regs)
 {
 	entering_irq();
 	trace_thermal_apic_entry(THERMAL_APIC_VECTOR);
@@ -498,8 +498,8 @@ void intel_init_thermal(struct cpuinfo_x86 *c)
 
 
 	if ((l & MSR_IA32_MISC_ENABLE_TM1) && (h & APIC_DM_SMI)) {
-		printk(KERN_DEBUG
-		       "CPU%d: Thermal monitoring handled by SMI\n", cpu);
+		if (system_state == SYSTEM_BOOTING)
+			printk(KERN_DEBUG "CPU%d: Thermal monitoring handled by SMI\n", cpu);
 		return;
 	}
 

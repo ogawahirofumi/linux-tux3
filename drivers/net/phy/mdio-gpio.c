@@ -215,6 +215,10 @@ static int mdio_gpio_probe(struct platform_device *pdev)
 	if (pdev->dev.of_node) {
 		pdata = mdio_gpio_of_get_data(pdev);
 		bus_id = of_alias_get_id(pdev->dev.of_node, "mdio-gpio");
+		if (bus_id < 0) {
+			dev_warn(&pdev->dev, "failed to get alias id\n");
+			bus_id = 0;
+		}
 	} else {
 		pdata = dev_get_platdata(&pdev->dev);
 		bus_id = pdev->id;
@@ -255,7 +259,6 @@ static struct platform_driver mdio_gpio_driver = {
 	.remove = mdio_gpio_remove,
 	.driver		= {
 		.name	= "mdio-gpio",
-		.owner	= THIS_MODULE,
 		.of_match_table = mdio_gpio_of_match,
 	},
 };

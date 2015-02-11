@@ -31,6 +31,7 @@ config FS_MBCACHE
 	default y if EXT4_FS=y
 	default m if EXT2_FS_XATTR || EXT3_FS_XATTR || EXT4_FS
 
+source "fs/tux3/Kconfig"
 source "fs/reiserfs/Kconfig"
 source "fs/jfs/Kconfig"
 
@@ -67,6 +68,7 @@ source "fs/quota/Kconfig"
 
 source "fs/autofs4/Kconfig"
 source "fs/fuse/Kconfig"
+source "fs/overlayfs/Kconfig"
 
 menu "Caches"
 
@@ -233,9 +235,13 @@ if NETWORK_FILESYSTEMS
 source "fs/nfs/Kconfig"
 source "fs/nfsd/Kconfig"
 
+config GRACE_PERIOD
+	tristate
+
 config LOCKD
 	tristate
 	depends on FILE_LOCKING
+	select GRACE_PERIOD
 
 config LOCKD_V4
 	bool
@@ -249,7 +255,7 @@ config NFS_ACL_SUPPORT
 
 config NFS_COMMON
 	bool
-	depends on NFSD || NFS_FS
+	depends on NFSD || NFS_FS || LOCKD
 	default y
 
 source "net/sunrpc/Kconfig"

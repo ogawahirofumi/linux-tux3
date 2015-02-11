@@ -422,12 +422,12 @@ static void adv7180_exit_controls(struct adv7180_state *state)
 }
 
 static int adv7180_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
-				 enum v4l2_mbus_pixelcode *code)
+				 u32 *code)
 {
 	if (index > 0)
 		return -EINVAL;
 
-	*code = V4L2_MBUS_FMT_YUYV8_2X8;
+	*code = MEDIA_BUS_FMT_YUYV8_2X8;
 
 	return 0;
 }
@@ -437,7 +437,7 @@ static int adv7180_mbus_fmt(struct v4l2_subdev *sd,
 {
 	struct adv7180_state *state = to_state(sd);
 
-	fmt->code = V4L2_MBUS_FMT_YUYV8_2X8;
+	fmt->code = MEDIA_BUS_FMT_YUYV8_2X8;
 	fmt->colorspace = V4L2_COLORSPACE_SMPTE170M;
 	fmt->field = V4L2_FIELD_INTERLACED;
 	fmt->width = 720;
@@ -461,6 +461,7 @@ static int adv7180_g_mbus_config(struct v4l2_subdev *sd,
 }
 
 static const struct v4l2_subdev_video_ops adv7180_video_ops = {
+	.s_std = adv7180_s_std,
 	.querystd = adv7180_querystd,
 	.g_input_status = adv7180_g_input_status,
 	.s_routing = adv7180_s_routing,
@@ -472,7 +473,6 @@ static const struct v4l2_subdev_video_ops adv7180_video_ops = {
 };
 
 static const struct v4l2_subdev_core_ops adv7180_core_ops = {
-	.s_std = adv7180_s_std,
 	.s_power = adv7180_s_power,
 };
 
@@ -663,7 +663,6 @@ static int adv7180_remove(struct i2c_client *client)
 	if (state->irq > 0)
 		free_irq(client->irq, state);
 
-	v4l2_device_unregister_subdev(sd);
 	adv7180_exit_controls(state);
 	mutex_destroy(&state->mutex);
 	return 0;
