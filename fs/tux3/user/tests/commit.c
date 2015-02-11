@@ -978,6 +978,63 @@ static void test10(struct sb *sb)
 	clean_main_and_fsck(sb);
 }
 
+/* Test for non regular file types */
+static void test11(struct sb *sb)
+{
+	test_assert(make_tux3(sb) == 0);
+
+	struct tux_iattr iattr = {
+		.uid = GLOBAL_ROOT_UID,
+		.gid = GLOBAL_ROOT_GID,
+	};
+	const char name[] = "filename";
+	const char target[] = "../foo/bar/test";
+	static char buf[1 << 16];
+	int err;
+
+	/* Create too long symlink */
+	memset(buf, 'a', sizeof(buf) - 1);
+	buf[sizeof(buf) - 1] = '\0';
+	err = tuxsymlink(sb->rootdir, name, strlen(name), &iattr, buf);
+	test_assert(err == -ENAMETOOLONG);
+
+	/* Create empty symlink */
+	err = tuxsymlink(sb->rootdir, name, strlen(name), &iattr, "");
+	test_assert(err == -ENOENT);
+
+	/* Create normal symlink */
+	err = tuxsymlink(sb->rootdir, name, strlen(name), &iattr, target);
+	test_assert(!err);
+
+	/* Create same symlink again */
+	err = tuxsymlink(sb->rootdir, name, strlen(name), &iattr, target);
+	test_assert(err == -EEXIST);
+
+	int len;
+	/* Read symlink */
+	len = tuxreadlink(sb->rootdir, name, strlen(name), buf, sizeof(buf));
+	test_assert(len == strlen(target));
+	buf[len] = '\0';
+	test_assert(!strcmp(buf, target));
+
+	/* Read symlink with too small buffer */
+	buf[1] = '#';
+	len = tuxreadlink(sb->rootdir, name, strlen(name), buf, 1);
+	test_assert(len == 1);
+	test_assert(buf[0] == target[0]);
+	test_assert(buf[1] == '#');
+
+	/* Read symlink with no exist name */
+	const char not[] = "not";
+	err = tuxreadlink(sb->rootdir, not, strlen(not), buf, sizeof(buf));
+	test_assert(err == -ENOENT);
+
+	/* Flush */
+	test_assert(force_delta(sb) == 0);
+
+	clean_main_and_fsck(sb);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 2)
@@ -1044,6 +1101,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test10"))
 		test10(sb);
+	test_end();
+
+	if (test_start("test11"))
+		test11(sb);
 	test_end();
 
 	clean_main(sb);
