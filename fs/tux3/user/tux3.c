@@ -336,7 +336,7 @@ int main(int argc, char *argv[])
 
 		CMD_DELTA, CMD_UNIFY,
 		CMD_READ, CMD_WRITE, CMD_GET, CMD_SET, CMD_STAT, CMD_DELETE,
-		CMD_TRUNCATE, CMD_SYMLINK, CMD_READLINK, CMD_UNKNOWN,
+		CMD_TRUNCATE, CMD_LINK, CMD_SYMLINK, CMD_READLINK, CMD_UNKNOWN,
 	};
 
 	static char *commands[] = {
@@ -347,7 +347,7 @@ int main(int argc, char *argv[])
 		[CMD_READ] = "read", [CMD_WRITE] = "write",
 		[CMD_GET] = "get", [CMD_SET] = "set",
 		[CMD_STAT] = "stat", [CMD_DELETE] = "delete",
-		[CMD_TRUNCATE] = "truncate",
+		[CMD_TRUNCATE] = "truncate", [CMD_LINK] = "link",
 		[CMD_SYMLINK] = "symlink", [CMD_READLINK] = "readlink",
 	};
 
@@ -705,6 +705,25 @@ int main(int argc, char *argv[])
 		}
 		err = tuxtruncate(inode, vars.seek);
 		iput(inode);
+		if (err)
+			goto error;
+
+		err = sync_super(sb);
+		if (err)
+			goto error;
+		free(argv2optv(args));
+		break;
+	}
+	case CMD_LINK: {
+		common_options(&argc, &args, onlysize, 5, progname, command,
+			       "<volume> <path1> <path2>", &vars);
+		filename = args[3];
+		const char *dst = args[4];
+		err = open_fs(vars.volname, sb);
+		if (err)
+			goto error;
+		err = tuxlink(sb->rootdir, filename, strlen(filename),
+			      dst, strlen(dst));
 		if (err)
 			goto error;
 
