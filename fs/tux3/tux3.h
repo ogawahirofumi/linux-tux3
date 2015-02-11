@@ -356,6 +356,7 @@ struct sb {
 #else
 	struct dev *dev;		/* userspace block device */
 	loff_t s_maxbytes;		/* maximum file size */
+	unsigned int s_max_links;	/* maximum link counts */
 #endif
 };
 
@@ -567,7 +568,7 @@ static inline struct btree *otree_btree(struct sb *sb)
 	return &sb->otree;
 }
 
-#define TUX_LINK_MAX (1 << 15) /* arbitrary limit, increase it */
+#define TUX_MAX_LINKS (1 << 15) /* arbitrary limit, increase it */
 
 #define TUX_NAME_LEN 255
 
