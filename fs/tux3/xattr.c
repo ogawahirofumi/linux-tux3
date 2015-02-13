@@ -81,7 +81,7 @@ static struct buffer_head *blockread_unatom(struct inode *atable, atom_t atom,
 	struct sb *sb = tux_sb(atable->i_sb);
 	unsigned shift = sb->blockbits - UNATOM_BLKBITS;
 
-	*offset = atom & ~(-1 << shift);
+	*offset = atom & ((1U << shift) - 1);
 	return blockread(mapping(atable), sb->unatom_base + (atom >> shift));
 }
 
@@ -298,7 +298,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 	struct sb *sb = tux_sb(atable->i_sb);
 	unsigned shift = sb->blockbits - ATOMREF_BLKBITS;
 	unsigned block = sb->atomref_base + ATOMREF_SIZE * (atom >> shift);
-	unsigned offset = atom & ~(-1 << shift), kill = 0;
+	unsigned offset = atom & ((1U << shift) - 1), kill = 0;
 	struct buffer_head *buffer;
 	__be16 *refcount;
 	int err;
@@ -317,7 +317,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 	if (err)
 		return err;
 
-	if (!low || (low & (-1 << 16))) {
+	if (!low || (low & (~0U << 16))) {
 		buffer = blockread(mapping(atable), block + 1);
 		if (!buffer)
 			return -EIO;

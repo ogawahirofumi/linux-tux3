@@ -216,13 +216,13 @@ static int save_sb(struct sb *sb, int req_flag)
 
 static int relog_frontend_defer_as_bfree(struct sb *sb, u64 val)
 {
-	log_bfree_relog(sb, val & ~(-1ULL << 48), val >> 48);
+	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
 	return 0;
 }
 
 static int relog_as_bfree(struct sb *sb, u64 val)
 {
-	log_bfree_relog(sb, val & ~(-1ULL << 48), val >> 48);
+	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
 	return stash_value(&sb->defree, val);
 }
 
@@ -397,7 +397,7 @@ static int write_log(struct sb *sb)
 
 static int apply_defered_bfree(struct sb *sb, u64 val)
 {
-	return bfree(sb, val & ~(-1ULL << 48), val >> 48);
+	return bfree(sb, val & ((1ULL << 48) - 1), val >> 48);
 }
 
 static int commit_delta(struct sb *sb, int req_flag)

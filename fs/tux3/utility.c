@@ -163,8 +163,8 @@ void __tux3_dbg(const char *fmt, ...)
 void set_bits(u8 *bitmap, unsigned start, unsigned count)
 {
 	unsigned limit = start + count;
-	unsigned lmask = (-1 << (start & 7)) & 0xff; // little endian!!!
-	unsigned rmask = ~(-1 << (limit & 7)) & 0xff; // little endian!!!
+	unsigned lmask = (~0U << (start & 7)) & 0xff; // little endian!!!
+	unsigned rmask = ((1U << (limit & 7)) - 1) & 0xff; // little endian!!!
 	unsigned loff = start >> 3, roff = limit >> 3;
 
 	if (loff == roff) {
@@ -180,8 +180,8 @@ void set_bits(u8 *bitmap, unsigned start, unsigned count)
 void clear_bits(u8 *bitmap, unsigned start, unsigned count)
 {
 	unsigned limit = start + count;
-	unsigned lmask = (-1 << (start & 7)) & 0xff; // little endian!!!
-	unsigned rmask = ~(-1 << (limit & 7)) & 0xff; // little endian!!!
+	unsigned lmask = (~0U << (start & 7)) & 0xff; // little endian!!!
+	unsigned rmask = ((1U << (limit & 7)) - 1) & 0xff; // little endian!!!
 	unsigned loff = start >> 3, roff = limit >> 3;
 
 	if (loff == roff) {
@@ -203,8 +203,8 @@ int all_set(u8 *bitmap, unsigned start, unsigned count)
 	return find_next_zero_bit_le(bitmap, limit, start) == limit;
 #else
 	unsigned limit = start + count;
-	unsigned lmask = (-1 << (start & 7)) & 0xff;	/* little endian!!! */
-	unsigned rmask = ~(-1 << (limit & 7)) & 0xff;	/* little endian!!! */
+	unsigned lmask = (~0U << (start & 7)) & 0xff;	// little endian!!!
+	unsigned rmask = ((1U << (limit & 7)) - 1) & 0xff; // little endian!!!
 	unsigned loff = start >> 3, roff = limit >> 3;
 
 	if (loff == roff) {
@@ -228,8 +228,8 @@ int all_clear(u8 *bitmap, unsigned start, unsigned count)
 	return find_next_bit_le(bitmap, limit, start) == limit;
 #else
 	unsigned limit = start + count;
-	unsigned lmask = (-1 << (start & 7)) & 0xff;	/* little endian!!! */
-	unsigned rmask = ~(-1 << (limit & 7)) & 0xff;	/* little endian!!! */
+	unsigned lmask = (~0U << (start & 7)) & 0xff; // little endian!!!
+	unsigned rmask = ((1U << (limit & 7)) - 1) & 0xff; // little endian!!!
 	unsigned loff = start >> 3, roff = limit >> 3;
 
 	if (loff == roff) {
