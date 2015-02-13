@@ -125,6 +125,8 @@ struct inode *__tuxlink(struct inode *src_inode, struct inode *dir,
 			const char *dstname, unsigned dstlen);
 int tuxlink(struct inode *dir, const char *srcname, unsigned srclen,
 	    const char *dstname, unsigned dstlen);
+int tuxreadlink(struct inode *dir, const char *name, unsigned len,
+		void *buf, unsigned bufsize);
 struct inode *__tuxsymlink(struct inode *dir, const char *name, unsigned len,
 			   struct tux_iattr *iattr, const char *symname);
 int tuxsymlink(struct inode *dir, const char *name, unsigned len,

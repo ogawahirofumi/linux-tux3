@@ -336,7 +336,7 @@ int main(int argc, char *argv[])
 
 		CMD_DELTA, CMD_UNIFY,
 		CMD_READ, CMD_WRITE, CMD_GET, CMD_SET, CMD_STAT, CMD_DELETE,
-		CMD_TRUNCATE, CMD_UNKNOWN,
+		CMD_TRUNCATE, CMD_SYMLINK, CMD_READLINK, CMD_UNKNOWN,
 	};
 
 	static char *commands[] = {
@@ -348,6 +348,7 @@ int main(int argc, char *argv[])
 		[CMD_GET] = "get", [CMD_SET] = "set",
 		[CMD_STAT] = "stat", [CMD_DELETE] = "delete",
 		[CMD_TRUNCATE] = "truncate",
+		[CMD_SYMLINK] = "symlink", [CMD_READLINK] = "readlink",
 	};
 
 	struct options options[] = {
@@ -510,7 +511,7 @@ int main(int argc, char *argv[])
 		free(argv2optv(args));
 		break;
 
-	case CMD_WRITE:
+	case CMD_WRITE: {
 		common_options(&argc, &args, onlyseek, 4, progname, command,
 			       "<volume> <filename>", &vars);
 		filename = args[3];
@@ -555,8 +556,8 @@ int main(int argc, char *argv[])
 		//bitmap_dump(sb->bitmap, 0, sb->volblocks);
 		//tux_dump_entries(blockget(sb->rootdir->map, 0));
 		break;
-
-	case CMD_READ:
+	}
+	case CMD_READ: {
 		common_options(&argc, &args, onlyseek, 4, progname, command,
 			       "<volume> <filename>", &vars);
 		filename = args[3];
@@ -584,8 +585,8 @@ int main(int argc, char *argv[])
 		hexdump(buf, got);
 		free(argv2optv(args));
 		break;
-
-	case CMD_SET:
+	}
+	case CMD_SET: {
 		common_options(&argc, &args, onlyhelp, 5, progname, command,
 			       "<volume> <filename> <attribute>", &vars);
 		filename = args[3];
@@ -598,6 +599,7 @@ int main(int argc, char *argv[])
 			err = PTR_ERR(inode);
 			goto error;
 		}
+		char text[1 << 16];
 		ssize_t len;
 		len = read(0, text, sizeof(text));
 		if (len < 0)
@@ -614,8 +616,8 @@ int main(int argc, char *argv[])
 			goto error;
 		free(argv2optv(args));
 		break;
-
-	case CMD_GET:
+	}
+	case CMD_GET: {
 		common_options(&argc, &args, onlyhelp, 5, progname, command,
 			       "<volume> <filename> <attribute>", &vars);
 		filename = args[3];
@@ -649,8 +651,8 @@ int main(int argc, char *argv[])
 		iput(inode);
 		free(argv2optv(args));
 		break;
-
-	case CMD_STAT:
+	}
+	case CMD_STAT: {
 		common_options(&argc, &args, onlyhelp, 4, progname, command,
 			       "<volume> <filename>", &vars);
 		filename = args[3];
@@ -666,8 +668,8 @@ int main(int argc, char *argv[])
 		iput(inode);
 		free(argv2optv(args));
 		break;
-
-	case CMD_DELETE:
+	}
+	case CMD_DELETE: {
 		common_options(&argc, &args, onlyhelp, 4, progname, command,
 			       "<volume> <filename>", &vars);
 		filename = args[3];
@@ -688,8 +690,8 @@ int main(int argc, char *argv[])
 			goto error;
 		free(argv2optv(args));
 		break;
-
-	case CMD_TRUNCATE:
+	}
+	case CMD_TRUNCATE: {
 		common_options(&argc, &args, onlysize, 4, progname, command,
 			       "<volume> <filename>", &vars);
 		filename = args[3];
@@ -711,7 +713,49 @@ int main(int argc, char *argv[])
 			goto error;
 		free(argv2optv(args));
 		break;
+	}
+	case CMD_SYMLINK: {
+		common_options(&argc, &args, onlysize, 5, progname, command,
+			       "<volume> <target> <filename>", &vars);
+		const char *target = args[3];
+		filename = args[4];
+		err = open_fs(vars.volname, sb);
+		if (err)
+			goto error;
+		struct tux_iattr iattr = {
+			.uid = GLOBAL_ROOT_UID,
+			.gid = GLOBAL_ROOT_GID,
+		};
+		err = tuxsymlink(sb->rootdir, filename, strlen(filename),
+				 &iattr, target);
+		if (err)
+			goto error;
 
+		err = sync_super(sb);
+		if (err)
+			goto error;
+		free(argv2optv(args));
+		break;
+	}
+	case CMD_READLINK: {
+		common_options(&argc, &args, onlysize, 4, progname, command,
+			       "<volume> <filename>", &vars);
+		filename = args[3];
+		err = open_fs(vars.volname, sb);
+		if (err)
+			goto error;
+		char buf[4096];
+		int len = tuxreadlink(sb->rootdir, filename, strlen(filename),
+				      buf, sizeof(buf) - 1);
+		if (len < 0)
+			goto error;
+		buf[len] = '\0';
+
+		printf("%s: len %d, %s\n", filename, len, buf);
+
+		free(argv2optv(args));
+		break;
+	}
 	default:
 		error_exit("'%s' is not a command", command);
 	}
