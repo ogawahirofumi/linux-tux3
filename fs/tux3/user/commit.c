@@ -11,11 +11,11 @@ int force_unify(struct sb *sb)
 /* Force flush (even if no dirty) without unify */
 int force_delta(struct sb *sb)
 {
-	return __sync_current_delta(sb, NO_UNIFY);
+	return __sync_current_delta(sb, FORCE_DELTA);
 }
 
 /* Normal flush */
 int sync_super(struct sb *sb)
 {
-	return __sync_current_delta(sb, ALLOW_UNIFY);
+	return __sync_current_delta(sb, FLUSH_NORMAL);
 }
