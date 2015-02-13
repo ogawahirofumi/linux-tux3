@@ -588,7 +588,9 @@ static int flush_delta(struct sb *sb, int flags)
 {
 	int err;
 #ifndef UNIFY_DEBUG
-	enum unify_flags unify_flag = ALLOW_UNIFY;
+	/* If synchronous flush, avoid unify. */
+	enum unify_flags unify_flag =
+		(flags == COMMIT_SYNC) ? NO_UNIFY : ALLOW_UNIFY;
 #else
 	struct delta_ref *delta_ref = to_delta_ref(sb, sb->delta_staging);
 	enum unify_flags unify_flag = delta_ref->unify_flag;

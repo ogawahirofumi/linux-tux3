@@ -69,7 +69,7 @@ static int need_delta(struct sb *sb)
 	return !(++crudehack % 10);
 }
 
-static int flush_latest_delta(struct sb *sb)
+static int flush_latest_delta(struct sb *sb, int flags)
 {
 	trace("waitref %u", sb->delta_waitref);
 	delta_transition(sb);
@@ -80,7 +80,7 @@ static int flush_latest_delta(struct sb *sb)
 	assert(sb->delta_pending == sb->delta_staging);
 
 	trace("staging %u", sb->delta_staging);
-	return flush_delta(sb, COMMIT_SYNC);
+	return flush_delta(sb, flags);
 }
 
 /* Try flush delta */
@@ -90,7 +90,7 @@ static int try_flush_delta(struct sb *sb)
 
 	down_write(&sb->delta_lock);
 	if (need_delta(sb))
-		err = flush_latest_delta(sb);
+		err = flush_latest_delta(sb, 0);
 	up_write(&sb->delta_lock);
 
 	return err;
@@ -112,7 +112,7 @@ static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
 	delta = delta_ref->delta;
 	delta_put(sb, delta_ref);
 
-	err = flush_latest_delta(sb);
+	err = flush_latest_delta(sb, COMMIT_SYNC);
 	assert(err || delta_after_eq(sb->delta_commit, delta));
 
 	up_write(&sb->delta_lock);
