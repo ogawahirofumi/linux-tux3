@@ -69,7 +69,7 @@ static int need_delta(struct sb *sb)
 	return !(++crudehack % 10);
 }
 
-static int flush_latest_delta(struct sb *sb)
+static int flush_latest_delta(struct sb *sb, int flags)
 {
 	trace("waitref %u", sb->delta_waitref);
 	delta_transition(sb);
@@ -80,7 +80,7 @@ static int flush_latest_delta(struct sb *sb)
 	assert(sb->delta_pending == sb->delta_staging);
 
 	trace("staging %u", sb->delta_staging);
-	return flush_delta(sb, COMMIT_SYNC);
+	return flush_delta(sb, flags);
 }
 
 /* Try flush delta */
@@ -90,13 +90,13 @@ static int try_flush_delta(struct sb *sb)
 
 	down_write(&sb->delta_lock);
 	if (need_delta(sb))
-		err = flush_latest_delta(sb);
+		err = flush_latest_delta(sb, FLUSH_NORMAL);
 	up_write(&sb->delta_lock);
 
 	return err;
 }
 
-static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
+static int __sync_current_delta(struct sb *sb, int flags)
 {
 	struct delta_ref *delta_ref;
 	unsigned delta;
@@ -106,13 +106,10 @@ static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
 
 	/* Get delta that have to write */
 	delta_ref = delta_get(sb);
-#ifdef UNIFY_DEBUG
-	delta_ref->unify_flag = unify_flag;
-#endif
 	delta = delta_ref->delta;
 	delta_put(sb, delta_ref);
 
-	err = flush_latest_delta(sb);
+	err = flush_latest_delta(sb, flags);
 	assert(err || delta_after_eq(sb->delta_commit, delta));
 
 	up_write(&sb->delta_lock);
@@ -132,7 +129,7 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 {
 	struct sb *sb = tux_sb(super);
 	unsigned target_delta;
-	int err, flags;
+	int err;
 
 	/* If we didn't finish replay yet, don't flush. */
 	if (!(super->s_flags & MS_ACTIVE))
@@ -157,10 +154,12 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 
 	/* target_delta may already be flushed. */
 	if (delta_before(sb->delta_staging, target_delta)) {
+		int flags = (work->sync_mode == WB_SYNC_ALL)
+			? FLUSH_SYNC : FLUSH_NORMAL;
+
 		/* Make sure the pending delta is there. */
 		tux3_wait_for_pending(sb);
 
-		flags = (work->sync_mode == WB_SYNC_ALL ? COMMIT_SYNC : 0);
 		err = flush_delta(sb, flags);
 		/* FIXME: error handling */
 	}
@@ -232,13 +231,16 @@ static int tux3_wait_for_commit(struct sb *sb, unsigned delta, int is_umount)
 				delta_after_eq(sb->delta_commit, delta));
 }
 
-static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
+static int __sync_current_delta(struct sb *sb, int flags)
 {
 	unsigned delta;
 	int err, is_umount = (vfs_sb(sb)->s_root == NULL);
 
-	/* FORCE_UNIFY is not supported */
-	WARN_ON(unify_flag == FORCE_UNIFY);
+	/*
+	 * FORCE_DELTA and FORCE_UNIFY are not supported. And there is
+	 * no way to pass "flags" to tux3_writeback() reliably.
+	 */
+	WARN_ON(flags & ~(FLUSH_NORMAL | FLUSH_SYNC));
 
 	err = tux3_wait_for_transition(sb, &delta, is_umount);
 	if (!err)
@@ -287,7 +289,7 @@ static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
 /* Synchronous flush (without unify if possible). */
 int sync_current_delta(struct sb *sb)
 {
-	return __sync_current_delta(sb, NO_UNIFY);
+	return __sync_current_delta(sb, FLUSH_SYNC);
 }
 
 static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref)
