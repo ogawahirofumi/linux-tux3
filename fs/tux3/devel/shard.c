@@ -145,7 +145,7 @@ void errno_exit(void)
 
 static inline unsigned align(unsigned n, unsigned maskbits)
 {
-	return n + (-n & (~(-1 << maskbits)));
+	return n + (-n & ((1U << maskbits) - 1));
 }
 
 /*
@@ -273,12 +273,12 @@ struct shardmap {
 
 static inline hashkey_t map_keymask(struct shardmap *map)
 {
-	return ~(-1ULL << (map->mapbits + map->shardbits));
+	return (1ULL << (map->mapbits + map->shardbits)) - 1;
 }
 
 static inline hashkey_t shard_keymask(struct shardmap *map)
 {
-	return ~(-1ULL << (map->shardbits));
+	return (1ULL << (map->shardbits)) - 1;
 }
 
 static unsigned shard_bytes(unsigned size)
@@ -594,7 +594,7 @@ static struct shard *new_shard(unsigned size, unsigned fence, unsigned bucketbit
 	assert(shard);
 	*shard = (struct shard){
 		.size = size, .fence = fence, .bucketbits = bucketbits, .lowbits = lowbits,
-		.lowmask = ~(-1 << lowbits), .blockbits = keybits - lowbits, .blockmask = (1LL << blockbits) - 1,
+		.lowmask = ((1U << lowbits) - 1), .blockbits = keybits - lowbits, .blockmask = (1LL << blockbits) - 1,
 		.used = 1 << bucketbits };
 
 	for (unsigned i = 0, buckets = shard_buckets(shard); i < buckets; i++)
@@ -708,7 +708,7 @@ static int map_insert(struct shardmap *map, hashkey_t key, unsigned block)
 	if (!map->table[i])
 		populate_and_map(map, i);
 	struct shard *shard = map->table[i];
-	unsigned k = key & ~(-1 << map->shardbits);
+	unsigned k = key & shard_keymask(map);
 	if (0)
 		printf("map_insert shard = %Li, key = %x\n", key >> map->shardbits, k);
 	if (0 && shard->count >= 16 << shard->bucketbits && shard->lowbits > 2)
@@ -744,7 +744,7 @@ static int map_delete(struct shardmap *map, hashkey_t key, unsigned block)
 
 static struct shardmap *alloc_map(int fd, unsigned mapbits, unsigned shardbits, unsigned lowbits, u64 base) {
 	enum {maxwindow = 1 << 13, fifo_entry_size_bits = 3 };
-	unsigned shards = 1 << mapbits, mapmask = ~(-1 << mapbits);
+	unsigned shards = 1 << mapbits, mapmask = ((1U << mapbits) - 1);
 	unsigned windowbits = 13, window = 1 << windowbits;
 	unsigned fencebits = shardbits - lowbits + fifo_entry_size_bits + 3;
 
@@ -938,8 +938,8 @@ static struct shardmap *dir_open(int fd)
 		shard_unmap(shard);
 		shard_mmap_window(shard);
 		unsigned tail = map->tailmap[i] * sizeof(struct fifo_entry); // endian!!!
-		shard->head = tail & (-1 << blocksize_bits);
-		shard->fifo.tail = (struct fifo_entry *)((char *)shard->fifo.base + (tail & ~(-1 << blocksize_bits)));
+		shard->head = tail & (~0U << blocksize_bits);
+		shard->fifo.tail = (struct fifo_entry *)((char *)shard->fifo.base + (tail & ((1U << blocksize_bits) - 1)));
 		if (0)
 			printf("%i: tail = %x\n", i, fifo_tail(map->table[i]));
 		if (0 && i == 0)
@@ -1117,7 +1117,7 @@ static unsigned entry_lookup(struct shardmap *map, char *name, unsigned len) {
 	struct shard *shard = map->table[bucket];
 
 	for (unsigned i = 0, next = 0; i < 9999; i++) { // paranoia limit, should be entry count of shard or something
-		unsigned block = shard_probe(shard, key & ~(-1 << map->shardbits), &next);
+		unsigned block = shard_probe(shard, key & shard_keymask(map), &next);
 		if (block == -1)
 			break;
 		if (0)
@@ -1416,7 +1416,7 @@ void test(void)
 		enum { shardsize = 1 << (big ? 21 : 16), bucketbits = (big ? 15 : 4), lowbits = 6 };
 		enum { count = big ? 1000 : 300 };
 		static struct testitem { hashkey_t key, block; } testdata[count];
-		hashkey_t keymask = ~(-1ULL << (bucketbits + lowbits));
+		hashkey_t keymask = (1ULL << (bucketbits + lowbits)) - 1;
 
 		srand(1);
 		for (unsigned i = 0; i < count; i++)

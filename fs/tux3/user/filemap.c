@@ -46,7 +46,7 @@ static int filemap_bufvec_check(struct bufvec *bufvec, enum map_mode mode)
 	      tux_inode(bufvec_inode(bufvec))->inum,
 	      bufvec_contig_index(bufvec));
 
-	if (bufvec_contig_last_index(bufvec) & (-1LL << MAX_BLOCKS_BITS))
+	if (bufvec_contig_last_index(bufvec) >= MAX_BLOCKS)
 		return -EIO;
 
 	list_for_each_entry(buffer, &bufvec->contig, link) {

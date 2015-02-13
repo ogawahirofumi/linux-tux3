@@ -462,7 +462,7 @@ static struct walk_btree_ops fsck_otree_ops = {
 static struct fsck_context *fsck_unstash_context;
 static int fsck_unstash_mark(struct sb *sb, u64 val)
 {
-	block_t block = val & ~(-1ULL << 48);
+	block_t block = val & ((1ULL << 48) - 1);
 	unsigned count = val >> 48;
 	shadow_bitmap_modify(sb, fsck_unstash_context, block, count, 1);
 	return 0;

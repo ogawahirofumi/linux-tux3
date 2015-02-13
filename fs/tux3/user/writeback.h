@@ -11,7 +11,7 @@
 #define I_REFERENCED		(1 << 8)
 
 #define I_DIRTY (I_DIRTY_SYNC | I_DIRTY_DATASYNC | I_DIRTY_PAGES)
-#define I_BAD			(1 << 31)
+#define I_BAD			(1U << 31)
 
 struct inode;
 

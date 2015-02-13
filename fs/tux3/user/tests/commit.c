@@ -83,7 +83,7 @@ static block_t check_block;
 
 static int check_defree_block(struct sb *sb, u64 val)
 {
-	block_t block = val & ~(-1ULL << 48);
+	block_t block = val & ((1ULL << 48) - 1);
 	int count = val >> 48;
 	if (block <= check_block && check_block < block + count)
 		return -1;
