@@ -29,8 +29,3 @@ void mark_inode_dirty_sync(struct inode *inode)
 {
 	__mark_inode_dirty(inode, I_DIRTY_SYNC);
 }
-
-int sync_super(struct sb *sb)
-{
-	return force_delta(sb);
-}

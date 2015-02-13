@@ -88,6 +88,11 @@ static inline struct timespec gettime(void)
 	.mopt = tux3_default_mopt,		\
 })
 
+/* commit.c */
+int force_unify(struct sb *sb);
+int force_delta(struct sb *sb);
+int sync_super(struct sb *sb);
+
 /* dir.c */
 void tux_dump_entries(struct buffer_head *buffer);
 

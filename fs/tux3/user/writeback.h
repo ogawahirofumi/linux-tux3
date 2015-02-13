@@ -13,13 +13,11 @@
 #define I_DIRTY (I_DIRTY_SYNC | I_DIRTY_DATASYNC | I_DIRTY_PAGES)
 #define I_BAD			(1 << 31)
 
-struct sb;
 struct inode;
 
 void clear_inode(struct inode *inode);
 void __mark_inode_dirty(struct inode *inode, unsigned flags);
 void mark_inode_dirty(struct inode *inode);
 void mark_inode_dirty_sync(struct inode *inode);
-int sync_super(struct sb *sb);
 
 #endif /* !TUX3_WRITEBACK_H */
