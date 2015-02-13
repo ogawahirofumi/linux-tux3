@@ -217,6 +217,7 @@ struct cursor {
 
 struct stash { struct flink_head head; u64 *pos, *top; };
 
+#ifndef TUX3_FLUSHER_SYNC
 /* For each delta + wb_check_{background_flush,old_data_flush} + safety */
 #define TUX3_MAX_WB_WORK	(TUX3_MAX_DELTA + 3)
 /* Work item for writeback flusher */
@@ -225,6 +226,7 @@ struct tux3_wb_work {
 	struct completion dummy_done;
 	unsigned delta;
 };
+#endif
 
 /* Refcount for delta */
 struct delta_ref {
@@ -270,19 +272,18 @@ struct sb {
 		char thisbig[SB_LEN];
 	};
 
-#ifdef TUX3_FLUSHER_SYNC
-	struct rw_semaphore delta_lock;		/* delta transition exclusive */
-#endif
 	struct delta_ref __rcu *current_delta;	/* current delta */
 	struct delta_ref delta_refs[TUX3_MAX_DELTA];
 	unsigned unify;				/* log unify cycle */
 
 #define TUX3_STATE_TRANSITION_BIT	0
 	unsigned long backend_state;		/* delta state */
-#ifdef UNIFY_DEBUG
-	struct delta_ref *pending_delta;	/* pending delta for commit */
-#endif
+
+#ifdef TUX3_FLUSHER_SYNC
+	struct rw_semaphore delta_lock;		/* delta transition exclusive */
+#else
 	struct tux3_wb_work wb_work[TUX3_MAX_WB_WORK];
+#endif
 	unsigned delta_waitref;			/* waiting refcount delta */
 	unsigned delta_pending;			/* pending delta */
 	unsigned delta_staging;			/* staging delta */
@@ -805,10 +806,9 @@ int load_sb(struct sb *sb);
 void tux3_start_backend(struct sb *sb);
 void tux3_end_backend(void);
 int tux3_under_backend(struct sb *sb);
-int force_unify(struct sb *sb);
-int force_delta(struct sb *sb);
 unsigned tux3_get_current_delta(void);
 unsigned tux3_inode_delta(struct inode *inode);
+int sync_current_delta(struct sb *sb);
 void change_begin_atomic(struct sb *sb);
 void change_end_atomic(struct sb *sb);
 void change_begin_atomic_nested(struct sb *sb, void **ptr);

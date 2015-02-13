@@ -4,138 +4,6 @@
  * Copyright (c) 2008-2014 OGAWA Hirofumi
  */
 
-#ifdef TUX3_FLUSHER_SYNC
-#include "tux3.h"
-
-static void __tux3_init_flusher(struct sb *sb)
-{
-#ifdef __KERNEL__
-	/* Disable writeback task to control inode reclaim by dirty flags */
-	vfs_sb(sb)->s_bdi = &noop_backing_dev_info;
-#endif
-}
-
-int tux3_init_flusher(struct sb *sb)
-{
-	__tux3_init_flusher(sb);
-	return 0;
-}
-
-void tux3_exit_flusher(struct sb *sb)
-{
-}
-
-static void schedule_flush_delta(struct sb *sb)
-{
-	/* Wake up waiters for pending delta staging */
-	wake_up_all(&sb->delta_event_wq);
-}
-
-static int flush_pending_delta(struct sb *sb)
-{
-	int err = 0;
-
-	if (!test_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state))
-		goto out;
-
-	if (test_and_clear_bit(TUX3_COMMIT_PENDING_BIT, &sb->backend_state))
-		err = flush_delta(sb, COMMIT_SYNC);
-out:
-	return err;
-}
-
-/* Try delta transition */
-static void try_delta_transition(struct sb *sb)
-{
-	trace("stage %u, backend_state %lx",
-	      sb->staging_delta, sb->backend_state);
-	if (!test_and_set_bit(TUX3_COMMIT_RUNNING_BIT, &sb->backend_state))
-		delta_transition(sb);
-}
-
-/* Do the delta transition until specified delta */
-static int try_delta_transition_until_delta(struct sb *sb, unsigned delta)
-{
-	trace("delta %u, stage %u, backend_state %lx",
-	      delta, sb->staging_delta, sb->backend_state);
-
-	/* Already delta transition was started for delta */
-	if (delta_after_eq(sb->staging_delta, delta))
-		return 1;
-
-	if (!test_and_set_bit(TUX3_COMMIT_RUNNING_BIT, &sb->backend_state)) {
-		/* Recheck after grabed TUX3_COMMIT_RUNNING_BIT */
-		if (delta_after_eq(sb->staging_delta, delta)) {
-			clear_bit(TUX3_COMMIT_RUNNING_BIT, &sb->backend_state);
-			return 1;
-		}
-
-		delta_transition(sb);
-	}
-
-	return delta_after_eq(sb->staging_delta, delta);
-}
-
-/* Advance delta transition until specified delta */
-static int wait_for_transition(struct sb *sb, unsigned delta)
-{
-	return wait_event_killable(sb->delta_event_wq,
-				   try_delta_transition_until_delta(sb, delta));
-}
-
-static int try_flush_pending_until_delta(struct sb *sb, unsigned delta)
-{
-	trace("delta %u, committed %u, backend_state %lx",
-	      delta, sb->committed_delta, sb->backend_state);
-
-	if (!delta_after_eq(sb->committed_delta, delta))
-		flush_pending_delta(sb);
-
-	return delta_after_eq(sb->committed_delta, delta);
-}
-
-static int wait_for_commit(struct sb *sb, unsigned delta)
-{
-	return wait_event_killable(sb->delta_event_wq,
-				   try_flush_pending_until_delta(sb, delta));
-}
-
-static int sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
-{
-	struct delta_ref *delta_ref;
-	unsigned delta;
-	int err = 0;
-
-	down_write(&sb->delta_lock);
-	/* Get delta that have to write */
-	delta_ref = delta_get(sb);
-#ifdef UNIFY_DEBUG
-	delta_ref->unify_flag = unify_flag;
-#endif
-	delta = delta_ref->delta;
-	delta_put(sb, delta_ref);
-
-	trace("delta %u", delta);
-
-	/* Make sure the delta transition was done for current delta */
-	err = wait_for_transition(sb, delta);
-	if (err)
-		return err;
-	assert(delta_after_eq(sb->staging_delta, delta));
-
-	/* Wait until committing the current delta */
-	err = wait_for_commit(sb, delta);
-	assert(err || delta_after_eq(sb->committed_delta, delta));
-	up_write(&sb->delta_lock);
-	return err;
-}
-
-#else /* !TUX3_FLUSHER_SYNC */
-static void try_delta_transition(struct sb *sb)
-{
-	/* do nothing */
-}
-
 static inline int can_transition(struct sb *sb, unsigned delta)
 {
 	unsigned next_frontend_delta = sb->delta_waitref + 2;
@@ -186,6 +54,77 @@ static void tux3_wait_for_pending(struct sb *sb)
 	sb->delta_staging = delta;
 }
 
+#ifdef TUX3_FLUSHER_SYNC
+static void tux3_init_flusher(struct sb *sb)
+{
+#ifdef __KERNEL__
+	/* Disable writeback task to control inode reclaim by dirty flags */
+	vfs_sb(sb)->s_bdi = &noop_backing_dev_info;
+#endif
+}
+
+static int need_delta(struct sb *sb)
+{
+	static unsigned crudehack;
+	return !(++crudehack % 10);
+}
+
+static int flush_latest_delta(struct sb *sb)
+{
+	trace("waitref %u", sb->delta_waitref);
+	delta_transition(sb);
+
+	/* Make sure the pending delta is there. */
+	tux3_wait_for_pending(sb);
+	assert(sb->delta_waitref == sb->delta_pending);
+	assert(sb->delta_pending == sb->delta_staging);
+
+	trace("staging %u", sb->delta_staging);
+	return flush_delta(sb, COMMIT_SYNC);
+}
+
+/* Try flush delta */
+static int try_flush_delta(struct sb *sb)
+{
+	int err = 0;
+
+	down_write(&sb->delta_lock);
+	if (need_delta(sb))
+		err = flush_latest_delta(sb);
+	up_write(&sb->delta_lock);
+
+	return err;
+}
+
+static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
+{
+	struct delta_ref *delta_ref;
+	unsigned delta;
+	int err = 0;
+
+	down_write(&sb->delta_lock);
+
+	/* Get delta that have to write */
+	delta_ref = delta_get(sb);
+#ifdef UNIFY_DEBUG
+	delta_ref->unify_flag = unify_flag;
+#endif
+	delta = delta_ref->delta;
+	delta_put(sb, delta_ref);
+
+	err = flush_latest_delta(sb);
+	assert(err || delta_after_eq(sb->delta_commit, delta));
+
+	up_write(&sb->delta_lock);
+
+	return err;
+}
+
+static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
+{
+	/* TUX3_FLUSHER_SYNC, so nothing to do */
+}
+#else /* !TUX3_FLUSHER_SYNC */
 #define WB_REASON_TUX3_PENDING	((enum wb_reason)WB_REASON_MAX + 1)
 
 long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
@@ -293,7 +232,7 @@ static int tux3_wait_for_commit(struct sb *sb, unsigned delta, int is_umount)
 				delta_after_eq(sb->delta_commit, delta));
 }
 
-static int sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
+static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
 {
 	unsigned delta;
 	int err, is_umount = (vfs_sb(sb)->s_root == NULL);
@@ -343,6 +282,13 @@ static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
 	};
 	writeback_queue_work_sb(vfs_sb(sb), &wb_work->work);
 }
+#endif /* !TUX3_FLUSHER_SYNC */
+
+/* Synchronous flush (without unify if possible). */
+int sync_current_delta(struct sb *sb)
+{
+	return __sync_current_delta(sb, NO_UNIFY);
+}
 
 static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref)
 {
@@ -362,4 +308,3 @@ static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref)
 	sb->delta_pending++;
 	wake_up_all(&sb->delta_transition_wq);
 }
-#endif /* !TUX3_FLUSHER_SYNC */

@@ -788,7 +788,7 @@ int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 			  start, end, datasync);
 	}
 
-	return force_delta(sb);
+	return sync_current_delta(sb);
 }
 
 int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
