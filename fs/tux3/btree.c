@@ -1247,6 +1247,11 @@ int btree_alloc_empty(struct btree *btree)
 
 	assert(!has_root(btree));
 
+	/*
+	 * NOTE: If this is dtree and had the direct extent,
+	 * new_leaf() will add a extent to leafbuf in ->dleaf_init().
+	 * FIXME: better way?
+	 */
 	leafbuf = new_leaf(btree);
 	if (IS_ERR(leafbuf))
 		return PTR_ERR(leafbuf);
