@@ -55,9 +55,10 @@ OWNER	= root
 GROUP	= root
 
 # lcov flags
+TUX3_DIR = $(abspath $(TOPDIR)/../)
 GCOV_DIR = gcov
 LCOV_FLAGS = --capture
-GENHTML_FLAGS = --prefix $(abspath $(TOPDIR)/../) --show-details --legend
+GENHTML_FLAGS = --prefix $(TUX3_DIR) --show-details --legend
 # lcov-1.10 or above, branch coverage is off by default, enable it
 ifeq ($(shell lcov --help | grep -q -- --rc && echo has_rc), has_rc)
 	LCOV_FLAGS += --rc lcov_branch_coverage=1
@@ -207,7 +208,7 @@ tests: $(TEST_BIN)
 coverage:
 	# NOTE: need to compile with GCOV=1
 	[ -d $(GCOV_DIR) ] || mkdir $(GCOV_DIR)
-	lcov $(LCOV_FLAGS) -b $(TOPDIR) -d $(TOPDIR) -o $(GCOV_DIR)/tux3.info
+	lcov $(LCOV_FLAGS) -b $(TOPDIR) -d $(TUX3_DIR) -o $(GCOV_DIR)/tux3.info
 	genhtml $(GENHTML_FLAGS) -o $(GCOV_DIR) $(GCOV_DIR)/tux3.info
 
 makefs mkfs: tux3
