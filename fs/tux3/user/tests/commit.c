@@ -154,10 +154,15 @@ static struct replay *check_replay(struct sb *sb)
 	return rp;
 }
 
-static void check_files(struct sb *sb, struct open_result *results, int nr)
+static void reload_sb(struct sb *sb, int apply)
 {
 	struct replay *rp = check_replay(sb);
-	test_assert(replay_stage3(rp, 0) == 0);
+	test_assert(replay_stage3(rp, apply) == 0);
+}
+
+static void check_files(struct sb *sb, struct open_result *results, int nr)
+{
+	reload_sb(sb, 0);
 
 	for (int i = 0; i < nr; i++) {
 		struct open_result *r = &results[i];
@@ -1061,6 +1066,70 @@ static void test11(struct sb *sb)
 	clean_main_and_fsck(sb);
 }
 
+/* Test for reading saved inodes from disk  */
+static void test12(struct sb *sb)
+{
+	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
+	struct entry {
+		struct inode inode;
+		char name[256];
+		int len;
+	} entries[10];
+
+	test_assert(make_tux3(sb) == 0);
+
+	/* Create and remember inode */
+	for (int i = 0; i < ARRAY_SIZE(entries); i++) {
+		struct entry *e = &entries[i];
+		struct inode *inode;
+
+		e->len = snprintf(e->name, sizeof(e->name), "file%03d", i);
+		inode = tuxcreate(sb->rootdir, e->name, e->len, &iattr);
+		test_assert(!IS_ERR(inode));
+
+		e->inode = *inode;
+
+		iput(inode);
+	}
+
+	/* Flush */
+	test_assert(force_unify(sb) == 0);
+	clean_sb(sb);
+
+	fsck(sb);
+
+	reload_sb(sb, 1);
+
+	/* Load and compare inode */
+	for (int i = 0; i < ARRAY_SIZE(entries); i++) {
+		struct entry *e = &entries[i];
+		struct inode *inode;
+
+		inode = tuxopen(sb->rootdir, e->name, e->len);
+		test_assert(!IS_ERR(inode));
+
+		test_assert(e->inode.i_mode == inode->i_mode);
+		test_assert(uid_eq(e->inode.i_uid, inode->i_uid));
+		test_assert(gid_eq(e->inode.i_gid, inode->i_gid));
+		test_assert(e->inode.i_nlink == inode->i_nlink);
+		test_assert(e->inode.i_rdev == inode->i_rdev);
+		test_assert(e->inode.i_size == inode->i_size);
+#if 0 /* FIXME: atime is not supported yet */
+		test_assert(e->inode.i_atime.tv_sec == inode->i_atime.tv_sec);
+		test_assert(e->inode.i_atime.tv_nsec == inode->i_atime.tv_nsec);
+#endif
+		test_assert(e->inode.i_mtime.tv_sec == inode->i_mtime.tv_sec);
+		test_assert(e->inode.i_mtime.tv_nsec == inode->i_mtime.tv_nsec);
+		test_assert(e->inode.i_ctime.tv_sec == inode->i_ctime.tv_sec);
+		test_assert(e->inode.i_ctime.tv_nsec == inode->i_ctime.tv_nsec);
+		test_assert(e->inode.i_version == inode->i_version);
+
+		iput(inode);
+	}
+
+	clean_main(sb);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 2)
@@ -1131,6 +1200,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test11"))
 		test11(sb);
+	test_end();
+
+	if (test_start("test12"))
+		test12(sb);
 	test_end();
 
 	clean_main(sb);
