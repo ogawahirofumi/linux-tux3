@@ -5,6 +5,8 @@
 #include "../filemap.c"
 #include "test.h"
 
+#define FOO	"foo"
+
 static void clean_main(struct sb *sb, struct inode *inode)
 {
 	iput(inode);
@@ -374,6 +376,72 @@ static void test05(struct sb *sb, struct inode *inode)
 	clean_main(sb, inode);
 }
 
+/* Test of filemap_hole stuff */
+static void test06(struct sb *sb, struct inode *inode)
+{
+	struct file file = {
+		.f_inode = inode,
+	};
+	char *buf;
+	int ret;
+
+	int size = sb->blocksize * 10;
+	buf = malloc(size);
+	assert(buf);
+	memset(buf, 'a', size);
+
+	/* Prevent flush */
+	change_begin(sb);
+
+	/* Write 10 blocks */
+	ret = tuxio(&file, buf, size, 1);
+	test_assert(ret == size);
+
+	/* Make hole extent at block-9 */
+	ret = __tuxtruncate(inode, sb->blocksize * 9);
+	test_assert(ret == 0);
+	test_assert(tux3_is_hole(inode, 8, 1) == 0);
+	test_assert(tux3_is_hole(inode, 9, 1) == 1);
+	/* Make hole extent at block-8 */
+	ret = __tuxtruncate(inode, sb->blocksize * 8);
+	test_assert(ret == 0);
+	test_assert(tux3_is_hole(inode, 7, 1) == 0);
+	test_assert(tux3_is_hole(inode, 8, 1) == 1);
+	/* Make hole extent at block-2 */
+	ret = __tuxtruncate(inode, sb->blocksize * 2);
+	test_assert(ret == 0);
+	test_assert(tux3_is_hole(inode, 1, 1) == 0);
+	test_assert(tux3_is_hole(inode, 2, 1) == 1);
+
+	char *tmp = malloc(size);
+	assert(tmp);
+	for (int i = 0; i < size / sb->blocksize; i++) {
+		struct buffer_head *buffer = blockread(mapping(inode), i);
+		test_assert(buffer);
+		void *data = bufdata(buffer);
+		if (i < 2)
+			memset(tmp, 'a', sb->blocksize);
+		else
+			memset(tmp, '\0', sb->blocksize);
+		test_assert(memcmp(data, tmp, sb->blocksize) == 0);
+		blockput(buffer);
+	}
+	free(tmp);
+
+	/* TODO: test of tux3_map_hole() */
+
+	change_end(sb);
+	free(buf);
+
+	/* For tux3_clear_hole() */
+	iput(inode);
+	ret = tuxunlink(sb->rootdir, FOO, strlen(FOO));
+	test_assert(ret == 0);
+
+	test_assert(force_delta(sb) == 0);
+	clean_main(sb, NULL);
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 2)
@@ -402,7 +470,7 @@ int main(int argc, char *argv[])
 	test_assert(make_tux3(sb) == 0);
 
 	struct tux_iattr iattr = { .mode = S_IFREG | 0644, };
-	struct inode *inode = tuxcreate(sb->rootdir, "foo", 3, &iattr);
+	struct inode *inode = tuxcreate(sb->rootdir, FOO, strlen(FOO), &iattr);
 
 	test_assert(force_unify(sb) == 0);
 
@@ -426,6 +494,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test05"))
 		test05(sb, inode);
+	test_end();
+
+	if (test_start("test06"))
+		test06(sb, inode);
 	test_end();
 
 	clean_main(sb, inode);
