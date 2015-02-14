@@ -145,6 +145,7 @@ static void fsck_cmp_shadow_dleaf(struct btree *btree,
 
 static struct walk_btree_ops walk_cmp_shadow_dtree_ops = {
 	.leaf	= fsck_cmp_shadow_dleaf,
+	.extent	= fsck_cmp_shadow_extent,
 };
 
 /*
@@ -290,7 +291,7 @@ static void fsck_check_countmap(struct sb *sb, struct fsck_context *context)
 	struct inode *countmap = sb->countmap;
 	struct btree *dtree = &tux_inode(countmap)->btree;
 
-	walk_btree(dtree, &walk_cmp_shadow_dtree_ops, &cmp_data);
+	walk_dtree(dtree, NULL, &walk_cmp_shadow_dtree_ops, &cmp_data);
 }
 
 static inline unsigned long le_long_to_cpu(const unsigned long y)
@@ -354,7 +355,7 @@ static void fsck_check_bitmap(struct sb *sb, struct fsck_context *context)
 	struct inode *bitmap = sb->bitmap;
 	struct btree *dtree = &tux_inode(bitmap)->btree;
 
-	walk_btree(dtree, &walk_cmp_shadow_dtree_ops, &cmp_data);
+	walk_dtree(dtree, NULL, &walk_cmp_shadow_dtree_ops, &cmp_data);
 
 	if (context->freeblocks != sb->freeblocks) {
 		tux3_err(sb, "shadow freeblocks %Lu, freeblocks %Lu",
