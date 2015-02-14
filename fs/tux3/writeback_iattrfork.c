@@ -115,12 +115,12 @@ static void tux3_iattr_clear_dirty(struct tux3_inode *tuxnode)
 }
 
 /*
- * Read iattrs, then clear iattr dirty to tell no need to iattrfork
- * anymore if needed.
+ * Peek i_size and dead states, keep dirty state as is.
  *
  * Caller must hold tuxnode->lock.
  */
-static loff_t tux3_iattr_read_i_size(struct inode *inode, unsigned delta)
+static loff_t tux3_iattr_peek_i_size(struct inode *inode, unsigned *deleted,
+				     unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	unsigned long flags;
@@ -148,12 +148,10 @@ static loff_t tux3_iattr_read_i_size(struct inode *inode, unsigned delta)
 		i_size = idata->i_size;
 	}
 
-	/*
-	 * If inode was marked as dead, we don't need to flush data.
-	 * To skip to flush data, this return i_size=0.
-	 */
 	if (tux3_dead_read(flags, delta))
-		i_size = 0;
+		*deleted = 1;
+	else
+		*deleted = 0;
 
 	return i_size;
 }

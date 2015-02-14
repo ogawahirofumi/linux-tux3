@@ -388,14 +388,15 @@ int tux3_inode_is_orphan(struct tux3_inode *tuxnode)
 	return !!(tuxnode->flags & TUX3_INODE_ORPHANED);
 }
 
-static loff_t tux3_state_read_i_size(struct inode *inode, unsigned delta)
+static loff_t tux3_state_peek_i_size(struct inode *inode, unsigned *deleted,
+				     unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	loff_t i_size;
 
 	spin_lock(&tuxnode->lock);
 	/* Get iattr data */
-	i_size = tux3_iattr_read_i_size(inode, delta);
+	i_size = tux3_iattr_peek_i_size(inode, deleted, delta);
 	spin_unlock(&tuxnode->lock);
 
 	return i_size;
@@ -429,6 +430,7 @@ static void tux3_state_read_and_clear(struct inode *inode,
 
 static inline int tux3_flush_buffers(struct inode *inode,
 				     struct tux3_iattr_data *idata,
+				     unsigned deleted,
 				     unsigned delta, int req_flag)
 {
 	struct list_head *dirty_buffers = tux3_dirty_buffers(inode, delta);
@@ -436,10 +438,22 @@ static inline int tux3_flush_buffers(struct inode *inode,
 
 	/* FIXME: error handling */
 
-	/* Apply hole extents before page caches */
-	err = tux3_flush_hole(inode, delta);
-	if (err)
-		return err;
+	/*
+	 * If inode was marked as dead, we don't need to flush holes.
+	 * Instead of this, tux3_purge_inode() will remove holes later.
+	 */
+	if (!deleted) {
+		/* Apply hole extents before page caches */
+		err = tux3_flush_hole(inode, delta);
+		if (err)
+			return err;
+	} else {
+		/*
+		 * If inode was marked as dead, we don't need to flush data.
+		 * To skip to flush data, this sets fake i_size=0.
+		 */
+		idata->i_size = 0;
+	}
 
 	/* Apply page caches */
 	return flush_list(inode, idata, dirty_buffers, req_flag);
@@ -454,18 +468,15 @@ static inline int tux3_flush_buffers(struct inode *inode,
  */
 int tux3_flush_inode_data(struct inode *inode, unsigned delta, int req_flag)
 {
-	/* FIXME: linux writeback doesn't allow to control writeback
-	 * timing. */
 	struct tux3_iattr_data idata;
+	unsigned deleted;
 
-	idata.i_size = tux3_state_read_i_size(inode, delta);
-	return tux3_flush_buffers(inode, &idata, delta, req_flag);
+	idata.i_size = tux3_state_peek_i_size(inode, &deleted, delta);
+	return tux3_flush_buffers(inode, &idata, deleted, delta, req_flag);
 }
 
 int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
 {
-	/* FIXME: linux writeback doesn't allow to control writeback
-	 * timing. */
 	struct tux3_iattr_data idata;
 	unsigned dirty = 0, orphaned, deleted;
 	int ret = 0, err;
