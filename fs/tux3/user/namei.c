@@ -71,6 +71,9 @@ struct inode *__tuxmknod(struct inode *dir, const char *name, unsigned len,
 	if (S_ISDIR(iattr->mode) && dir->i_nlink >= dir->i_sb->s_max_links)
 		return ERR_PTR(-EMLINK);
 
+	if (!S_ISCHR(iattr->mode) && !S_ISBLK(iattr->mode))
+		rdev = 0;
+
 	err = __tux3_mknod(dir, &dentry, iattr, rdev);
 	if (err)
 		return ERR_PTR(err);
@@ -78,8 +81,8 @@ struct inode *__tuxmknod(struct inode *dir, const char *name, unsigned len,
 	return dentry.d_inode;
 }
 
-struct inode *tuxcreate(struct inode *dir, const char *name, unsigned len,
-			struct tux_iattr *iattr)
+struct inode *tuxmknod(struct inode *dir, const char *name, unsigned len,
+		       struct tux_iattr *iattr, dev_t rdev)
 {
 	struct qstr qstr = {
 		.name = (unsigned char *)name,
@@ -92,14 +95,17 @@ struct inode *tuxcreate(struct inode *dir, const char *name, unsigned len,
 	 */
 
 	err = tux_check_exist(dir, &qstr);
-	if (err) {
-		if (err == -EEXIST) {
-			// should allow create of a file that already exists!!!
-		}
+	if (err)
 		return ERR_PTR(err);
-	}
 
-	return __tuxmknod(dir, name, len, iattr, 0);
+	return __tuxmknod(dir, name, len, iattr, rdev);
+}
+
+struct inode *tuxcreate(struct inode *dir, const char *name, unsigned len,
+			struct tux_iattr *iattr)
+{
+	/* If a file exists, we should fall back to open? */
+	return tuxmknod(dir, name, len, iattr, 0);
 }
 
 struct inode *__tuxlink(struct inode *src_inode, struct inode *dir,
