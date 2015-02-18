@@ -1069,23 +1069,52 @@ static void test11(struct sb *sb)
 /* Test for reading saved inodes from disk  */
 static void test12(struct sb *sb)
 {
+#define NR_REG		10
+#define NR_NON_REG	4
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
 	struct entry {
 		struct inode inode;
 		char name[256];
 		int len;
-	} entries[10];
+	} entries[NR_REG + NR_NON_REG];
 
 	test_assert(make_tux3(sb) == 0);
 
 	/* Create and remember inode */
-	for (int i = 0; i < ARRAY_SIZE(entries); i++) {
+	for (int i = 0; i < NR_REG; i++) {
 		struct entry *e = &entries[i];
 		struct inode *inode;
 
 		e->len = snprintf(e->name, sizeof(e->name), "file%03d", i);
 		inode = tuxcreate(sb->rootdir, e->name, e->len, &iattr);
 		test_assert(!IS_ERR(inode));
+		test_assert(inode->i_mode == iattr.mode);
+
+		e->inode = *inode;
+
+		iput(inode);
+	}
+	/* Create non regular files */
+	struct {
+		struct tux_iattr iattr;
+		dev_t rdev;
+	} rdevs[NR_NON_REG] = {
+		{ .iattr = { .mode = S_IFIFO | 0644 }, .rdev = 0 },
+		{ .iattr = { .mode = S_IFSOCK | 0644 }, .rdev = 0 },
+		{ .iattr = { .mode = S_IFCHR | 0644 }, .rdev = MKDEV(10, 10) },
+		{ .iattr = { .mode = S_IFBLK | 0644 }, .rdev = MKDEV(11, 11) },
+	};
+	for (int i = NR_REG; i < (NR_REG + NR_NON_REG); i++) {
+		struct entry *e = &entries[i];
+		struct inode *inode;
+		struct tux_iattr *iattrp = &rdevs[i - NR_REG].iattr;
+		dev_t rdev = rdevs[i - NR_REG].rdev;
+
+		e->len = snprintf(e->name, sizeof(e->name), "file%03d", i);
+		inode = tuxmknod(sb->rootdir, e->name, e->len, iattrp, rdev);
+		test_assert(!IS_ERR(inode));
+		test_assert(inode->i_mode == iattrp->mode);
+		test_assert(inode->i_rdev == rdev);
 
 		e->inode = *inode;
 
