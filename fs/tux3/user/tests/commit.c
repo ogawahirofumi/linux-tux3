@@ -703,23 +703,39 @@ static void test05(struct sb *sb)
 /* Test for rename */
 static void test06(struct sb *sb)
 {
+	enum { F, D, C, B, A, B2, O, };
 	static struct open_result r[] = {
-		{
+		[F] = {
+			.name		= "file",
+			.namelen	= 4,
+			.err		= 0,
+		},
+		[D] = {
+			.name		= "dir",
+			.namelen	= 3,
+			.err		= 0,
+		},
+		[C] = {
+			.name		= "child",
+			.namelen	= 5,
+			.err		= 0,
+		},
+		[B] = {
 			.name		= "before",
 			.namelen	= 6,
 			.err		= -ENOENT,
 		},
-		{
+		[A] = {
 			.name		= "after",
 			.namelen	= 5,
 			.err		= 0,
 		},
-		{
+		[B2] = {
 			.name		= "before2",
 			.namelen	= 7,
 			.err		= -ENOENT,
 		},
-		{
+		[O] = {
 			.name		= "overwrite",
 			.namelen	= 9,
 			.err		= 0,
@@ -731,96 +747,120 @@ static void test06(struct sb *sb)
 	test_assert(make_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
+	/* Test create("file"). */
+	struct inode *inode;
+	iattr.mode = S_IFREG | 0755;
+	inode = tuxcreate(sb->rootdir, r[F].name, r[F].namelen, &iattr);
+	test_assert(!IS_ERR(inode));
+	r[F].inum = tux_inode(inode)->inum;
+	iput(inode);
+
+	/* Test create("dir"). */
+	struct inode *dir;
+	iattr.mode = S_IFDIR | 0755;
+	dir = tuxcreate(sb->rootdir, r[D].name, r[D].namelen, &iattr);
+	test_assert(!IS_ERR(dir));
+	r[D].inum = tux_inode(dir)->inum;
+	/* iput(dir); */
+
+	/* Test create("child"). */
+	struct inode *child;
+	iattr.mode = S_IFDIR | 0755;
+	child = tuxcreate(sb->rootdir, r[C].name, r[C].namelen, &iattr);
+	test_assert(!IS_ERR(child));
+	r[C].inum = tux_inode(child)->inum;
+	iput(child);
+
 	/* Test mkdir("before"), then rename("before", "after"). */
 	struct inode *subdir;
-	subdir = tuxcreate(sb->rootdir, r[0].name, r[0].namelen, &iattr);
+	subdir = tuxcreate(sb->rootdir, r[B].name, r[B].namelen, &iattr);
 	test_assert(!IS_ERR(subdir));
-	r[0].inum = tux_inode(subdir)->inum;
+	r[B].inum = tux_inode(subdir)->inum;
 	iput(subdir);
 
 	/*
 	 * Test mkdir("before2") and mkdir("overwrite"), then
 	 * rename("before2", "overwrite").
 	 */
-	subdir = tuxcreate(sb->rootdir, r[2].name, r[2].namelen, &iattr);
+	subdir = tuxcreate(sb->rootdir, r[B2].name, r[B2].namelen, &iattr);
 	test_assert(!IS_ERR(subdir));
-	r[2].inum = tux_inode(subdir)->inum;
+	r[B2].inum = tux_inode(subdir)->inum;
 	iput(subdir);
 
-	subdir = tuxcreate(sb->rootdir, r[3].name, r[3].namelen, &iattr);
+	subdir = tuxcreate(sb->rootdir, r[O].name, r[O].namelen, &iattr);
 	test_assert(!IS_ERR(subdir));
-	r[3].inum = tux_inode(subdir)->inum;
+	r[O].inum = tux_inode(subdir)->inum;
 	iput(subdir);
 	/* Check inum is not same */
-	test_assert(r[2].inum != r[3].inum);
+	test_assert(r[B2].inum != r[O].inum);
 
 	snapshot_volume(sb);
 
-	/* Test rename after flush */
-	if (test_start("test06.1")) {
-		test_assert(force_delta(sb) == 0);
+	const char *tests[] = {
+		"test06.1", /* Test rename after flush */
+		"test06.2", /* Test rename before flush */
+	};
+	for (int i = 0; i < 2; i++) {
+		if (test_start(tests[i])) {
+			if (i == 0)
+				test_assert(force_delta(sb) == 0);
 
-		int err;
-		/* Test rename("before", "after") */
-		err = tuxrename(sb->rootdir, r[0].name, r[0].namelen,
-				sb->rootdir, r[1].name, r[1].namelen);
-		test_assert(!err);
-		/* Update inum for rename test */
-		r[1].inum = r[0].inum;
+			int err;
+			/* Test rename("file", "dir") */
+			err = tuxrename(sb->rootdir, r[F].name, r[F].namelen,
+					sb->rootdir, r[D].name, r[D].namelen);
+			test_assert(err == -EISDIR);
 
-		/* Test rename("before2", "overwrite") */
-		err = tuxrename(sb->rootdir, r[2].name, r[2].namelen,
-				sb->rootdir, r[3].name, r[3].namelen);
-		test_assert(!err);
-		/* Update inum for rename test */
-		r[3].inum = r[2].inum;
+			/* Test rename("dir", "file") */
+			err = tuxrename(sb->rootdir, r[D].name, r[D].namelen,
+					sb->rootdir, r[F].name, r[F].namelen);
+			test_assert(err == -ENOTDIR);
 
-		check_dirty(sb);
+			/* Test rename("child", "dir/child") */
+			unsigned int nlink = dir->i_nlink;
+			err = tuxrename(sb->rootdir, r[C].name, r[C].namelen,
+					dir, r[C].name, r[C].namelen);
+			test_assert(err == 0);
+			test_assert(dir->i_nlink == nlink + 1);
 
-		/* Flush */
-		test_assert(force_delta(sb) == 0);
-		clean_sb(sb);
+			/* Test rename("dir/child", "child") */
+			err = tuxrename(dir, r[C].name, r[C].namelen,
+					sb->rootdir, r[C].name, r[C].namelen);
+			test_assert(err == 0);
+			test_assert(dir->i_nlink == nlink);
+			iput(dir);
 
-		fsck(sb);
+			/* Test rename("before", "after") */
+			err = tuxrename(sb->rootdir, r[B].name, r[B].namelen,
+					sb->rootdir, r[A].name, r[A].namelen);
+			test_assert(!err);
+			/* Update inum for rename test */
+			r[A].inum = r[B].inum;
 
-		check_files(sb, r, ARRAY_SIZE(r));
-		clean_main(sb);
+			/* Test rename("before2", "overwrite") */
+			err = tuxrename(sb->rootdir, r[B2].name, r[B2].namelen,
+					sb->rootdir, r[O].name, r[O].namelen);
+			test_assert(!err);
+			/* Update inum for rename test */
+			r[O].inum = r[B2].inum;
+
+			check_dirty(sb);
+
+			/* Flush */
+			test_assert(force_delta(sb) == 0);
+			clean_sb(sb);
+
+			fsck(sb);
+
+			check_files(sb, r, ARRAY_SIZE(r));
+			clean_main(sb);
+		}
+		test_end();
+
+		restore_volume(sb);
 	}
-	test_end();
 
-	restore_volume(sb);
-
-	/* Test rename before flush */
-	if (test_start("test06.2")) {
-		int err;
-		/* Test rename("before", "after") */
-		err = tuxrename(sb->rootdir, r[0].name, r[0].namelen,
-				sb->rootdir, r[1].name, r[1].namelen);
-		test_assert(!err);
-		/* Update inum for rename test */
-		r[1].inum = r[0].inum;
-
-		/* Test rename("before2", "overwrite") */
-		err = tuxrename(sb->rootdir, r[2].name, r[2].namelen,
-				sb->rootdir, r[3].name, r[3].namelen);
-		test_assert(!err);
-		/* Update inum for rename test */
-		r[3].inum = r[2].inum;
-
-		check_dirty(sb);
-
-		/* Flush */
-		test_assert(force_delta(sb) == 0);
-		clean_sb(sb);
-
-		fsck(sb);
-
-		check_files(sb, r, ARRAY_SIZE(r));
-		clean_main(sb);
-	}
-	test_end();
-
-	restore_volume(sb);
+	iput(dir);
 	test_assert(force_delta(sb) == 0);
 
 	clean_snapshot();
