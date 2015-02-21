@@ -92,7 +92,9 @@ static void test02(struct sb *sb, struct inode *dir)
 
 	change_begin_atomic(sb);
 
-	for (int i = 0; i < 10; i++) {
+	int i = 0, changed = 0;
+	loff_t size = 0;
+	while (changed < 2) {
 		struct inode *inode1 = rapid_open_inode(sb, NULL, S_IFREG);
 		tux_inode(inode1)->inum = i + 99;
 
@@ -107,6 +109,13 @@ static void test02(struct sb *sb, struct inode *dir)
 		test_assert(!err);
 
 		free_map(inode1->map);
+
+		if (size != dir->i_size) {
+			size = dir->i_size;
+			changed++;
+		}
+
+		i++;
 	}
 
 	struct dir_context ctx = {
