@@ -234,7 +234,19 @@ out:
 	return 1;
 }
 
-static int tux3_wait_for_transition(struct sb *sb, unsigned *result_delta)
+/* If umount path, doesn't allow to kill. */
+#define tux3_wait_event_may_killable(um, wq, cond)	({	\
+	int _ret;						\
+	if (um) {						\
+		wait_event(wq, cond);				\
+		_ret = 0;					\
+	} else							\
+		_ret = wait_event_killable(wq, cond);		\
+	_ret;							\
+})
+
+static int tux3_wait_for_transition(struct sb *sb, unsigned *result_delta,
+				    int is_umount)
 {
 	struct delta_ref *delta_ref;
 	unsigned delta;
@@ -270,28 +282,39 @@ static int tux3_wait_for_transition(struct sb *sb, unsigned *result_delta)
 	*result_delta = delta;
 
 	trace("delta %u", delta);
-	return wait_event_killable(sb->delta_transition_wq,
-				   transition_until_delta(sb, delta));
+	return tux3_wait_event_may_killable(is_umount, sb->delta_transition_wq,
+					    transition_until_delta(sb, delta));
 }
 
-static int tux3_wait_for_commit(struct sb *sb, unsigned delta)
+static int tux3_wait_for_commit(struct sb *sb, unsigned delta, int is_umount)
 {
 	trace("delta %u", delta);
-	return wait_event_killable(sb->delta_commit_wq,
-				   delta_after_eq(sb->delta_commit, delta));
+	return tux3_wait_event_may_killable(is_umount, sb->delta_commit_wq,
+				delta_after_eq(sb->delta_commit, delta));
 }
 
 static int sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
 {
 	unsigned delta;
-	int err;
+	int err, is_umount = (vfs_sb(sb)->s_root == NULL);
 
 	/* FORCE_UNIFY is not supported */
 	WARN_ON(unify_flag == FORCE_UNIFY);
 
-	err = tux3_wait_for_transition(sb, &delta);
+	err = tux3_wait_for_transition(sb, &delta, is_umount);
 	if (!err)
-		err = tux3_wait_for_commit(sb, delta);
+		err = tux3_wait_for_commit(sb, delta, is_umount);
+
+	if (is_umount) {
+		/*
+		 * On umount path: Wait for finishing backend completely,
+		 * and drain work items in the queue of flusher.
+		 *
+		 * NOTE: we ignore WB_REASON_SYNC, so no extra commit by this.
+		 */
+		sync_inodes_sb(vfs_sb(sb));
+	}
+
 	return err;
 }
 
