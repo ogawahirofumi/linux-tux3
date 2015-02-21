@@ -356,6 +356,7 @@ struct sb {
 #else
 	struct dev *dev;		/* userspace block device */
 	loff_t s_maxbytes;		/* maximum file size */
+	unsigned int s_max_links;	/* maximum link counts */
 #endif
 };
 
