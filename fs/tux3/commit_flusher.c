@@ -323,12 +323,17 @@ static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
 
 static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref)
 {
+	int flusher_is_waiting;
+
 	trace("delta waitref %u", delta_ref->delta);
 
 	/* Wake up if flusher is already waiting refcount. */
+	flusher_is_waiting = waitqueue_active(&delta_ref->waitref_done.wait);
 	complete(&delta_ref->waitref_done);
 
-	tux3_wb_queue_work(sb, delta_ref);
+	/* If flusher is already waiting for this delta, don't need to tell. */
+	if (!flusher_is_waiting)
+		tux3_wb_queue_work(sb, delta_ref);
 
 	/* Allow to start new transition */
 	sb->delta_pending++;
