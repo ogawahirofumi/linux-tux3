@@ -530,7 +530,7 @@ static int tux3_sync_fs(struct super_block *sb, int wait)
 		}
 		return 0;
 	}
-	return force_delta(tux_sb(sb));
+	return sync_current_delta(tux_sb(sb));
 }
 
 static void tux3_put_super(struct super_block *sb)

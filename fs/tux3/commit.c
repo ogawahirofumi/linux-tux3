@@ -448,8 +448,6 @@ static int need_unify(struct sb *sb)
 	return !(++crudehack % 3);
 }
 
-enum unify_flags { NO_UNIFY, ALLOW_UNIFY, FORCE_UNIFY, };
-
 /* For debugging */
 void tux3_start_backend(struct sb *sb)
 {
@@ -468,6 +466,8 @@ int tux3_under_backend(struct sb *sb)
 {
 	return current->journal_info == sb;
 }
+
+enum unify_flags { NO_UNIFY, ALLOW_UNIFY, FORCE_UNIFY, };
 
 static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 {
@@ -749,16 +749,6 @@ static void delta_setup(struct sb *sb)
 #ifdef TUX3_FLUSHER_SYNC
 	tux3_init_flusher(sb);
 #endif
-}
-
-int force_unify(struct sb *sb)
-{
-	return sync_current_delta(sb, FORCE_UNIFY);
-}
-
-int force_delta(struct sb *sb)
-{
-	return sync_current_delta(sb, NO_UNIFY);
 }
 
 unsigned tux3_get_current_delta(void)

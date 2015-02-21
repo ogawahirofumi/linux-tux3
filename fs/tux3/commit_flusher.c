@@ -96,7 +96,7 @@ static int try_flush_delta(struct sb *sb)
 	return err;
 }
 
-static int sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
+static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
 {
 	struct delta_ref *delta_ref;
 	unsigned delta;
@@ -232,7 +232,7 @@ static int tux3_wait_for_commit(struct sb *sb, unsigned delta, int is_umount)
 				delta_after_eq(sb->delta_commit, delta));
 }
 
-static int sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
+static int __sync_current_delta(struct sb *sb, enum unify_flags unify_flag)
 {
 	unsigned delta;
 	int err, is_umount = (vfs_sb(sb)->s_root == NULL);
@@ -283,6 +283,12 @@ static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
 	writeback_queue_work_sb(vfs_sb(sb), &wb_work->work);
 }
 #endif /* !TUX3_FLUSHER_SYNC */
+
+/* Synchronous flush (without unify if possible). */
+int sync_current_delta(struct sb *sb)
+{
+	return __sync_current_delta(sb, NO_UNIFY);
+}
 
 static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref)
 {
