@@ -467,12 +467,24 @@ int tux3_under_backend(struct sb *sb)
 	return current->journal_info == sb;
 }
 
-enum unify_flags { NO_UNIFY, ALLOW_UNIFY, FORCE_UNIFY, };
+enum flush_flags {
+	FLUSH_NORMAL	= 0,		/* Normal flush */
+	FLUSH_SYNC	= 1 << 0,	/* Synchronous flush (e.g. fsync(2)) */
+	__NO_UNIFY	= 1 << 1,	/* No unify */
+	__FORCE_DELTA	= 1 << 2,	/* Force delta even if no dirty */
+	__FORCE_UNIFY	= 1 << 3,	/* Force unify */
 
-static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
+	/* Debug: Force flush even without unify if no dirty */
+	FORCE_DELTA	= __FORCE_DELTA | __NO_UNIFY,
+	/* Debug: Force flush with unify even if no dirty */
+	FORCE_UNIFY	= __FORCE_DELTA | __FORCE_UNIFY,
+};
+
+static int do_commit(struct sb *sb, int flags)
 {
 	unsigned delta = sb->delta_staging;
-	int req_flag = (flags & COMMIT_SYNC ? REQ_SYNC : 0);
+	int req_flag = (flags & FLUSH_SYNC) ? REQ_SYNC : 0;
+	int no_unify = flags & __NO_UNIFY;
 	struct blk_plug plug;
 	struct iowait iowait;
 	int err = 0;
@@ -491,7 +503,7 @@ static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 	 * FIXME: there is no need to commit if normal inodes are not
 	 * dirty? better way?
 	 */
-	if (!tux3_has_dirty_inodes(sb, delta))
+	if (!(flags & __FORCE_DELTA) && !tux3_has_dirty_inodes(sb, delta))
 		goto out;
 
 	/* Prepare to wait I/O */
@@ -523,8 +535,17 @@ static int do_commit(struct sb *sb, int flags, enum unify_flags unify_flag)
 	if (err)
 		goto error; /* FIXME: error handling */
 
-	if ((unify_flag == ALLOW_UNIFY && need_unify(sb)) ||
-	    unify_flag == FORCE_UNIFY) {
+#if 0
+	/*
+	 * FIXME: If Synchronous flush, we would want to avoid unify
+	 * for better latency. But maybe, we should check the some
+	 * conditions of memory and freeblocks.
+	 */
+	if (flags & FLUSH_SYNC)
+		no_unify = 1;
+#endif
+
+	if ((!no_unify && need_unify(sb)) || (flags & __FORCE_UNIFY)) {
 		err = unify_log(sb);
 		if (err)
 			goto error; /* FIXME: error handling */
@@ -587,16 +608,8 @@ static struct delta_ref *to_delta_ref(struct sb *sb, unsigned delta)
 static int flush_delta(struct sb *sb, int flags)
 {
 	int err;
-#ifndef UNIFY_DEBUG
-	/* If synchronous flush, avoid unify. */
-	enum unify_flags unify_flag =
-		(flags == COMMIT_SYNC) ? NO_UNIFY : ALLOW_UNIFY;
-#else
-	struct delta_ref *delta_ref = to_delta_ref(sb, sb->delta_staging);
-	enum unify_flags unify_flag = delta_ref->unify_flag;
-#endif
 
-	err = do_commit(sb, flags, unify_flag);
+	err = do_commit(sb, flags);
 
 	/*
 	 * NOTE: We have to wakeup waiters even if error or skipped
@@ -671,9 +684,6 @@ static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref,
 	reinit_completion(&delta_ref->waitref_done);
 	/* Assign the delta number */
 	delta_ref->delta = new_delta;
-#ifdef UNIFY_DEBUG
-	delta_ref->unify_flag = ALLOW_UNIFY;
-#endif
 
 	/*
 	 * Update current delta, then release reference.

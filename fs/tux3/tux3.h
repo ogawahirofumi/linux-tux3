@@ -233,9 +233,6 @@ struct delta_ref {
 	atomic_t refcount;
 	unsigned delta;
 	struct completion waitref_done;
-#ifdef UNIFY_DEBUG
-	int unify_flag;	/* FIXME: is there better way? */
-#endif
 };
 
 /* Per-delta data structure for sb */
