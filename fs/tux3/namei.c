@@ -46,13 +46,10 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 			struct tux_iattr *iattr, dev_t rdev)
 {
 	struct inode *inode;
-	int err, is_dir = S_ISDIR(iattr->mode);
+	int err;
 
 	if (!huge_valid_dev(rdev))
 		return -EINVAL;
-
-	if (is_dir && dir->i_nlink >= TUX_LINK_MAX)
-		return -EMLINK;
 
 	change_begin(tux_sb(dir->i_sb));
 	inode = tux_new_inode(dir, iattr, rdev);
@@ -61,7 +58,7 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 		err = tux_add_dirent(dir, dentry, inode);
 		if (!err) {
 			unlock_new_inode(inode);
-			if (is_dir)
+			if (S_ISDIR(iattr->mode))
 				inode_inc_link_count(dir);
 		}
 	}
@@ -100,9 +97,6 @@ static int tux3_link(struct dentry *old_dentry, struct inode *dir,
 	struct inode *inode = old_dentry->d_inode;
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err;
-
-	if (inode->i_nlink >= TUX_LINK_MAX)
-		return -EMLINK;
 
 	change_begin(sb);
 	tux3_iattrdirty(inode);
@@ -289,17 +283,11 @@ static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
 			drop_nlink(new_inode);
 		inode_dec_link_count(new_inode);
 	} else {
-		new_subdir = S_ISDIR(old_inode->i_mode) && new_dir != old_dir;
-		if (new_subdir) {
-			if (new_dir->i_nlink >= TUX_LINK_MAX) {
-				err = -EMLINK;
-				goto error;
-			}
-		}
 		err = tux_create_dirent(new_dir, &new_dentry->d_name,
 					old_inode);
 		if (err)
 			goto error;
+		new_subdir = S_ISDIR(old_inode->i_mode) && new_dir != old_dir;
 		if (new_subdir)
 			inode_inc_link_count(new_dir);
 	}

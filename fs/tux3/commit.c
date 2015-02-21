@@ -131,6 +131,7 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 
 	/* vfs fields */
 	vfs_sb(sb)->s_maxbytes = calc_maxbytes(sb->blocksize);
+	vfs_sb(sb)->s_max_links = TUX_MAX_LINKS;
 
 	/* Probably does not belong here (maybe metablock) */
 	sb->freeinodes = MAX_INODES - be64_to_cpu(super->usedinodes);

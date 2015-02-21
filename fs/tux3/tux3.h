@@ -567,7 +567,7 @@ static inline struct btree *otree_btree(struct sb *sb)
 	return &sb->otree;
 }
 
-#define TUX_LINK_MAX (1 << 15) /* arbitrary limit, increase it */
+#define TUX_MAX_LINKS (1 << 15) /* arbitrary limit, increase it */
 
 #define TUX_NAME_LEN 255
 
