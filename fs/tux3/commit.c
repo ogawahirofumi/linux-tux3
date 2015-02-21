@@ -578,15 +578,20 @@ error:
 	 ((int)((a) - (b)) >= 0))
 #define delta_before_eq(a,b)	delta_after_eq(b,a)
 
+/* Internal use only */
+static struct delta_ref *to_delta_ref(struct sb *sb, unsigned delta)
+{
+	return &sb->delta_refs[tux3_delta(delta)];
+}
+
 static int flush_delta(struct sb *sb, int flags)
 {
 	int err;
 #ifndef UNIFY_DEBUG
 	enum unify_flags unify_flag = ALLOW_UNIFY;
 #else
-	struct delta_ref *delta_ref = sb->pending_delta;
+	struct delta_ref *delta_ref = to_delta_ref(sb, sb->delta_staging);
 	enum unify_flags unify_flag = delta_ref->unify_flag;
-	sb->pending_delta = NULL;
 #endif
 
 	err = do_commit(sb, flags, unify_flag);
@@ -621,12 +626,6 @@ static void tux3_wake_delta_free(struct sb *sb)
 	sb->delta_free++;
 	trace("delta_free %u", sb->delta_free);
 	wake_up_all(&sb->delta_transition_wq);
-}
-
-/* Internal use only */
-static struct delta_ref *to_delta_ref(struct sb *sb, unsigned delta)
-{
-	return &sb->delta_refs[tux3_delta(delta)];
 }
 
 /* Grab the reference of current delta */
@@ -712,6 +711,8 @@ static void delta_transition(struct sb *sb)
 	trace("prev %u, next %u", prev->delta, delta_ref->delta);
 }
 
+#include "commit_flusher.c"
+
 static void delta_init(struct sb *sb)
 {
 	int i;
@@ -720,17 +721,17 @@ static void delta_init(struct sb *sb)
 		atomic_set(&sb->delta_refs[i].refcount, 0);
 		init_completion(&sb->delta_refs[i].waitref_done);
 	}
+#ifdef TUX3_FLUSHER_SYNC
+	init_rwsem(&sb->delta_lock);
+#else
 	for (i = 0; i < ARRAY_SIZE(sb->wb_work); i++) {
 		init_completion(&sb->wb_work[i].dummy_done);
 		/* just for debug assert in schedule_flush_delta() */
 		complete(&sb->wb_work[i].dummy_done);
 	}
+#endif
 	init_waitqueue_head(&sb->delta_transition_wq);
 	init_waitqueue_head(&sb->delta_commit_wq);
-
-#ifdef TUX3_FLUSHER_SYNC
-	init_rwsem(&sb->delta_lock);
-#endif
 }
 
 static void delta_setup(struct sb *sb)
@@ -744,9 +745,11 @@ static void delta_setup(struct sb *sb)
 
 	/* Setup initial delta_ref */
 	__delta_transition(sb, &sb->delta_refs[0], TUX3_INIT_DELTA);
-}
 
-#include "commit_flusher.c"
+#ifdef TUX3_FLUSHER_SYNC
+	tux3_init_flusher(sb);
+#endif
+}
 
 int force_unify(struct sb *sb)
 {
@@ -833,12 +836,6 @@ void change_end_atomic_nested(struct sb *sb, void *ptr)
 	current->journal_info = ptr;
 }
 
-static int need_delta(struct sb *sb)
-{
-	static unsigned crudehack;
-	return !(++crudehack % 10);
-}
-
 /*
  * Normal version of change_begin/end. If there is no special
  * requirement, we should use this version.
@@ -863,16 +860,8 @@ int change_end(struct sb *sb)
 #ifdef TUX3_FLUSHER_SYNC
 	up_read(&sb->delta_lock);
 
-	down_write(&sb->delta_lock);
+	err = try_flush_delta(sb);
 #endif
-	if (need_delta(sb))
-		try_delta_transition(sb);
-
-#ifdef TUX3_FLUSHER_SYNC
-	err = flush_pending_delta(sb);
-	up_write(&sb->delta_lock);
-#endif
-
 	return err;
 }
 
