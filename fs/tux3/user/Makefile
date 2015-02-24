@@ -12,7 +12,7 @@ ifeq ($(ARCH),i686)
 CFLAGS	+= -m32
 endif
 
-CFLAGS	+= -std=gnu99 -Wall -g -rdynamic -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
+CFLAGS	+= -std=gnu99 -Wall -g -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
 CFLAGS	+= -I$(TOPDIR)
 # gcc warning options
 CFLAGS	+= -Wall -Wextra -Werror
@@ -20,6 +20,8 @@ CFLAGS	+= -Wundef -Wstrict-prototypes -Werror-implicit-function-declaration
 CFLAGS	+= -Wno-unused-parameter -Wno-sign-compare
 CFLAGS	+= -Wno-missing-field-initializers
 #CFLAGS += -Wp,-Wunused-macros
+# backtrace() would need this to see all symbols
+CFLAGS	+= -rdynamic
 # gcc checker (_FORTIFY_SOURCE requires optimize option >= 1)
 # Rethink about this when optimization become default
 #CFLAGS	+= -O1 -D_FORTIFY_SOURCE=2
