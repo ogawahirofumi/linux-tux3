@@ -134,12 +134,8 @@ static struct replay *replay_prepare(struct sb *sb)
 	while (i-- > 0) {
 		struct logblock *log;
 
+		/* logmap is allocated with __GFP_NOFAIL. */
 		buffer = blockget(mapping(sb->logmap), i);
-		if (!buffer) {
-			i++;
-			err = -ENOMEM;
-			goto error;
-		}
 		assert(bufindex(buffer) == i);
 		err = blockio_sync(READ, sb, buffer, logchain);
 		if (err)

@@ -90,7 +90,7 @@ unsigned log_size[] = {
 
 void log_next(struct sb *sb)
 {
-	/* FIXME: error handling of blockget() */
+	/* logmap is allocated with __GFP_NOFAIL. */
 	sb->logbuf = blockget(mapping(sb->logmap), sb->lognext++);
 	sb->logpos = bufdata(sb->logbuf) + sizeof(struct logblock);
 	sb->logtop = bufdata(sb->logbuf) + sb->blocksize;

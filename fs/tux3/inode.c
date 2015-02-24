@@ -759,6 +759,92 @@ void tux3_evict_inode(struct inode *inode)
 	free_xcache(inode);
 }
 
+static inline void tux_setup_inode_common(struct inode *inode)
+{
+	struct sb *sb = tux_sb(inode->i_sb);
+
+	assert(tux_inode(inode)->inum != TUX_INVALID_INO);
+
+	switch (inode->i_mode & S_IFMT) {
+	case S_IFSOCK:
+	case S_IFIFO:
+	case S_IFBLK:
+	case S_IFCHR:
+	case S_IFREG:
+	case S_IFLNK:
+		/* Use default gfp type */
+		break;
+	case S_IFDIR:
+		mapping_set_gfp_mask(mapping(inode), GFP_USER);
+		break;
+	case 0: /* internal inode */
+	{
+		inum_t inum = tux_inode(inode)->inum;
+		gfp_t gfp_mask = GFP_USER;
+
+		/* FIXME: bitmap, logmap, vtable, atable doesn't have S_IFMT */
+		switch (inum) {
+		case TUX_BITMAP_INO:
+		case TUX_COUNTMAP_INO:
+		case TUX_VTABLE_INO:
+		case TUX_ATABLE_INO:
+			/* set fake i_size to escape the check of block_* */
+			inode->i_size = vfs_sb(sb)->s_maxbytes;
+			/* Flushed by tux3_flush_inode_internal() */
+			tux3_set_inode_no_flush(inode);
+			break;
+		case TUX_VOLMAP_INO:
+		case TUX_LOGMAP_INO:
+			inode->i_size = (loff_t)sb->volblocks << sb->blockbits;
+			/* Flushed by tux3_flush_inode_internal() */
+			tux3_set_inode_no_flush(inode);
+			break;
+		default:
+			BUG();
+			break;
+		}
+
+		/*
+		 * FIXME: volmap inode is not always dirty. Because
+		 * tux3_mark_buffer_unify() doesn't mark tuxnode->flags
+		 * as dirty. But, it marks inode->i_state as dirty,
+		 * so this is called to prevent to add inode into
+		 * dirty list by replay for unify.
+		 *
+		 * See, FIXME in tux3_mark_buffer_unify().
+		 */
+		switch (inum) {
+		case TUX_BITMAP_INO:
+		case TUX_COUNTMAP_INO:
+		case TUX_VOLMAP_INO:
+			tux3_set_inode_always_dirty(inode);
+			break;
+		}
+
+		/* Prevent reentering into our fs recursively by mem reclaim */
+		switch (inum) {
+		case TUX_BITMAP_INO:
+		case TUX_COUNTMAP_INO:
+		case TUX_VOLMAP_INO:
+		case TUX_LOGMAP_INO:
+			/* FIXME: we should use non-__GFP_FS for all? */
+			gfp_mask &= ~__GFP_FS;
+
+			/* FIXME: can we guarantee forward progress? */
+			if (inum == TUX_LOGMAP_INO)
+				gfp_mask |= __GFP_NOFAIL;
+			break;
+		}
+		mapping_set_gfp_mask(mapping(inode), gfp_mask);
+		break;
+	}
+	default:
+		tux3_fs_error(sb, "Unknown mode: inum %Lx, mode %07ho",
+			      tux_inode(inode)->inum, inode->i_mode);
+		break;
+	}
+}
+
 #ifdef __KERNEL__
 /* This is used by tux3_clear_dirty_inodes() to tell inode state was changed */
 void iget_if_dirty(struct inode *inode)
@@ -988,9 +1074,7 @@ const struct inode_operations tux_symlink_iops = {
 
 static void tux_setup_inode(struct inode *inode)
 {
-	struct sb *sb = tux_sb(inode->i_sb);
-
-	assert(tux_inode(inode)->inum != TUX_INVALID_INO);
+	tux_setup_inode_common(inode);
 
 //	inode->i_generation = 0;
 //	inode->i_flags = 0;
@@ -1015,7 +1099,6 @@ static void tux_setup_inode(struct inode *inode)
 		inode->i_fop = &tux_dir_fops;
 		inode->i_mapping->a_ops = &tux_blk_aops;
 		tux_inode(inode)->io = tux3_filemap_redirect_io;
-		mapping_set_gfp_mask(inode->i_mapping, GFP_USER);
 		break;
 	case S_IFLNK:
 		inode->i_op = &tux_symlink_iops;
@@ -1023,72 +1106,24 @@ static void tux_setup_inode(struct inode *inode)
 		tux_inode(inode)->io = tux3_filemap_redirect_io;
 		break;
 	case 0: /* internal inode */
-	{
-		inum_t inum = tux_inode(inode)->inum;
-		gfp_t gfp_mask = GFP_USER;
-
 		/* FIXME: bitmap, logmap, vtable, atable doesn't have S_IFMT */
-		switch (inum) {
+		switch (tux_inode(inode)->inum) {
 		case TUX_BITMAP_INO:
 		case TUX_COUNTMAP_INO:
 		case TUX_VTABLE_INO:
 		case TUX_ATABLE_INO:
-			/* set fake i_size to escape the check of block_* */
-			inode->i_size = vfs_sb(sb)->s_maxbytes;
 			inode->i_mapping->a_ops = &tux_blk_aops;
 			tux_inode(inode)->io = tux3_filemap_redirect_io;
-			/* Flushed by tux3_flush_inode_internal() */
-			tux3_set_inode_no_flush(inode);
 			break;
 		case TUX_VOLMAP_INO:
 		case TUX_LOGMAP_INO:
-			inode->i_size = (loff_t)sb->volblocks << sb->blockbits;
 			inode->i_mapping->a_ops = &tux_vol_aops;
-			if (inum == TUX_VOLMAP_INO)
+			if (tux_inode(inode)->inum == TUX_VOLMAP_INO)
 				tux_inode(inode)->io = tux3_volmap_early_io;
 			else
 				tux_inode(inode)->io = tux3_logmap_io;
-			/* Flushed by tux3_flush_inode_internal() */
-			tux3_set_inode_no_flush(inode);
-			break;
-		default:
-			BUG();
 			break;
 		}
-
-		/* Prevent reentering into our fs recursively by mem reclaim */
-		switch (inum) {
-		case TUX_BITMAP_INO:
-		case TUX_COUNTMAP_INO:
-		case TUX_VOLMAP_INO:
-		case TUX_LOGMAP_INO:
-			/* FIXME: we should use non-__GFP_FS for all? */
-			gfp_mask &= ~__GFP_FS;
-			break;
-		}
-		mapping_set_gfp_mask(inode->i_mapping, gfp_mask);
-
-		/*
-		 * FIXME: volmap inode is not always dirty. Because
-		 * tux3_mark_buffer_unify() doesn't mark tuxnode->flags
-		 * as dirty. But, it marks inode->i_state as dirty,
-		 * so this is called to prevent to add inode into
-		 * dirty list by replay for unify.
-		 *
-		 * See, FIXME in tux3_mark_buffer_unify().
-		 */
-		switch (inum) {
-		case TUX_BITMAP_INO:
-		case TUX_COUNTMAP_INO:
-		case TUX_VOLMAP_INO:
-			tux3_set_inode_always_dirty(inode);
-			break;
-		}
-		break;
-	}
-	default:
-		tux3_fs_error(sb, "Unknown mode: inum %Lx, mode %07ho",
-			      tux_inode(inode)->inum, inode->i_mode);
 		break;
 	}
 }
