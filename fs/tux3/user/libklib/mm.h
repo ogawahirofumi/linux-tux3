@@ -7,9 +7,43 @@
  * gfp stuff
  */
 
-#define GFP_KERNEL	((__force gfp_t)0x10u)
-#define GFP_NOFS	((__force gfp_t)0x20u)
-#define __GFP_ZERO	((__force gfp_t)0x8000u)
+/* Plain integer GFP bitmasks. Do not use this directly. */
+#define ___GFP_HIGHMEM		0x02u
+#define ___GFP_MOVABLE		0x08u
+#define ___GFP_WAIT		0x10u
+#define ___GFP_HIGH		0x20u
+#define ___GFP_IO		0x40u
+#define ___GFP_FS		0x80u
+#define ___GFP_NOFAIL		0x800u
+#define ___GFP_ZERO		0x8000u
+#define ___GFP_HARDWALL		0x20000u
+
+#define __GFP_HIGHMEM	((__force gfp_t)___GFP_HIGHMEM)
+#define __GFP_MOVABLE	((__force gfp_t)___GFP_MOVABLE)  /* Page is movable */
+
+#define __GFP_WAIT	((__force gfp_t)___GFP_WAIT)
+#define __GFP_HIGH	((__force gfp_t)___GFP_HIGH)
+#define __GFP_IO	((__force gfp_t)___GFP_IO)
+#define __GFP_FS	((__force gfp_t)___GFP_FS)
+#define __GFP_REPEAT	((__force gfp_t)___GFP_REPEAT)
+#define __GFP_NOFAIL	((__force gfp_t)___GFP_NOFAIL)
+#define __GFP_NORETRY	((__force gfp_t)___GFP_NORETRY)
+#define __GFP_ZERO	((__force gfp_t)___GFP_ZERO)
+#define __GFP_HARDWALL	((__force gfp_t)___GFP_HARDWALL)
+
+#define __GFP_BITS_SHIFT 25	/* Room for N __GFP_FOO bits */
+#define __GFP_BITS_MASK ((__force gfp_t)((1 << __GFP_BITS_SHIFT) - 1))
+
+/* This equals 0, but use constants in case they ever change */
+#define GFP_NOWAIT	(GFP_ATOMIC & ~__GFP_HIGH)
+/* GFP_ATOMIC means both !wait (__GFP_WAIT not set) and use emergency pool */
+#define GFP_ATOMIC	(__GFP_HIGH)
+#define GFP_NOIO	(__GFP_WAIT)
+#define GFP_NOFS	(__GFP_WAIT | __GFP_IO)
+#define GFP_KERNEL	(__GFP_WAIT | __GFP_IO | __GFP_FS)
+#define GFP_USER	(__GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_HARDWALL)
+#define GFP_HIGHUSER	(GFP_USER | __GFP_HIGHMEM)
+#define GFP_HIGHUSER_MOVABLE	(GFP_HIGHUSER | __GFP_MOVABLE)
 
 struct page {
 	void *address;
