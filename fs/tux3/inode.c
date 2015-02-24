@@ -829,6 +829,10 @@ static inline void tux_setup_inode_common(struct inode *inode)
 		case TUX_LOGMAP_INO:
 			/* FIXME: we should use non-__GFP_FS for all? */
 			gfp_mask &= ~__GFP_FS;
+
+			/* FIXME: can we guarantee forward progress? */
+			if (inum == TUX_LOGMAP_INO)
+				gfp_mask |= __GFP_NOFAIL;
 			break;
 		}
 		mapping_set_gfp_mask(mapping(inode), gfp_mask);
