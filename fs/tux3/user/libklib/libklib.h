@@ -26,6 +26,7 @@
 #include <libklib/wait.h>
 #include <libklib/completion.h>
 #include <libklib/time.h>
+#include <libklib/stringify.h>
 
 #ifdef __CHECKER__
 #define BUILD_BUG_ON(condition)

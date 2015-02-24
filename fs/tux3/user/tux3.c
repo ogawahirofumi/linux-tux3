@@ -17,8 +17,6 @@
 #include "tux3_graph.c"
 
 #define VERSION 0.0
-#define STRINGIFY2(text) #text
-#define STRINGIFY(text) STRINGIFY2(text)
 
 static int open_volume(const char *volname)
 {
@@ -391,7 +389,7 @@ int main(int argc, char *argv[])
 			verbose++;
 			break;
 		case 'V':
-			printf("Tux3 tools version %s\n", STRINGIFY(VERSION));
+			printf("Tux3 tools version %s\n", __stringify(VERSION));
 			exit(0);
 		case '?':
 			usage(options, progname, NULL, blurb, " [OPTIONS]");
