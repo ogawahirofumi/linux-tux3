@@ -51,7 +51,6 @@ struct page {
 };
 
 #define PAGE_SIZE	(1 << 6)
-#define PAGE_CACHE_SIZE	PAGE_SIZE
 
 static inline void *page_address(struct page *page)
 {
@@ -82,6 +81,27 @@ static inline void __free_pages(struct page *page, unsigned order)
 	free(page);
 }
 #define __free_page(page) __free_pages((page), 0)
+
+/*
+ * pagemap stuff
+ */
+
+#define PAGE_CACHE_SIZE	PAGE_SIZE
+
+static inline gfp_t mapping_gfp_mask(map_t * mapping)
+{
+	return (__force gfp_t)mapping->flags & __GFP_BITS_MASK;
+}
+
+/*
+ * This is non-atomic.  Only to be used before the mapping is activated.
+ * Probably needs a barrier...
+ */
+static inline void mapping_set_gfp_mask(map_t *m, gfp_t mask)
+{
+	m->flags = (m->flags & ~(__force unsigned long)__GFP_BITS_MASK) |
+				(__force unsigned long)mask;
+}
 
 /*
  * mm stuff

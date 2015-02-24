@@ -71,14 +71,14 @@ static struct inode *new_inode(struct sb *sb)
 	if (!tuxnode)
 		goto error;
 
-	inode_init(tuxnode, sb, 0);
 	inode = &tuxnode->vfs_inode;
 
 	inode->map = new_map(sb->dev, NULL);
 	if (!inode->map)
 		goto error_map;
-
 	inode->map->inode = inode;
+
+	inode_init(tuxnode, sb, 0);
 
 	return inode;
 

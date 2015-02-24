@@ -29,6 +29,7 @@ static void inode_init_once(struct inode *inode)
 void inode_init(struct tux3_inode *tuxnode, struct sb *sb, umode_t mode)
 {
 	struct inode *inode = &tuxnode->vfs_inode;
+	map_t *map = inode->map;	/* inode is zeroed, so save here */
 
 	tux3_inode_init_once(tuxnode);
 	tux3_inode_init_always(tuxnode);
@@ -37,6 +38,8 @@ void inode_init(struct tux3_inode *tuxnode, struct sb *sb, umode_t mode)
 	inode->i_mode	= mode;
 	inode->i_nlink	= 1;
 	atomic_set(&inode->i_count, 1);
+	inode->map	= map;
+	mapping_set_gfp_mask(mapping(inode), GFP_HIGHUSER_MOVABLE);
 }
 
 void free_inode_check(struct tux3_inode *tuxnode)

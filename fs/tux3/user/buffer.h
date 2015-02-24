@@ -59,6 +59,7 @@ typedef int (blockio_t)(int rw, struct bufvec *bufvec);
 struct map {
 #ifdef TUX3_BUILD
 	struct inode *inode;
+	unsigned long flags;		/* error bits/gfp mask */
 #endif
 	struct dev *dev;
 	blockio_t *io;

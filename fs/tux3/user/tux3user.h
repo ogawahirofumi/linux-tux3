@@ -71,15 +71,16 @@ static inline struct timespec gettime(void)
 	struct tux3_inode *__tux = &(struct tux3_inode){};	\
 	struct inode *__inode = &__tux->vfs_inode;		\
 								\
+	__inode->map = new_map((sb)->dev, io);			\
+	assert(__inode->map);					\
+	__inode->map->inode = __inode;				\
+								\
 	inode_init(__tux, sb, mode);				\
 	/* Set TUX_INVALID_INO explicitly (tux_set_inum()) */	\
 	__tux->inum = TUX_INVALID_INO;				\
 	/* Initialize lock for convenience. */			\
 	init_rwsem(&__tux->btree.lock);				\
 								\
-	__inode->map = new_map((sb)->dev, io);			\
-	assert(__inode->map);					\
-	__inode->map->inode = __inode;				\
 	__inode;						\
 })
 
