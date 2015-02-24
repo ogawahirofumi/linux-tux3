@@ -19,6 +19,7 @@
 #include <libklib/byteorder.h>
 #include <libklib/hash.h>
 #include <libklib/kdev_t.h>
+#include <libklib/bug.h>
 #include <libklib/list_sort.h>
 #include <libklib/barrier.h>
 #include <libklib/log2.h>
