@@ -310,7 +310,7 @@ int main(int argc, char *argv[])
 	sb->logmap = tux_new_logmap(sb);
 	assert(sb->logmap);
 
-	err = make_tux3(sb);
+	err = mkfs_tux3(sb);
 	assert(!err);
 
 	test_init(argv[0]);

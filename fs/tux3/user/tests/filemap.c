@@ -467,7 +467,7 @@ int main(int argc, char *argv[])
 	sb->logmap = tux_new_logmap(sb);
 	assert(sb->logmap);
 
-	test_assert(make_tux3(sb) == 0);
+	test_assert(mkfs_tux3(sb) == 0);
 
 	struct tux_iattr iattr = { .mode = S_IFREG | 0644, };
 	struct inode *inode = tuxcreate(sb->rootdir, FOO, strlen(FOO), &iattr);

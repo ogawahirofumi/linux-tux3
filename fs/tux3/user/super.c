@@ -120,7 +120,7 @@ static int reserve_superblock(struct sb *sb)
 	return 0;
 }
 
-int make_tux3(struct sb *sb)
+int __mkfs_tux3(struct sb *sb)
 {
 	int err;
 
@@ -178,14 +178,6 @@ int make_tux3(struct sb *sb)
 
 	change_end_atomic(sb);
 
-	err = sync_super(sb);
-	if (err)
-		goto error;
-
-	show_buffers(mapping(sb->bitmap));
-	show_buffers(mapping(sb->rootdir));
-	show_buffers(sb->volmap->map);
-
 	return 0;
 
 error_change_end:
@@ -195,6 +187,30 @@ error:
 	iput(sb->bitmap);
 	sb->bitmap = NULL;
 
+	return err;
+}
+
+int mkfs_tux3(struct sb *sb)
+{
+	int err;
+
+	err = __mkfs_tux3(sb);
+	if (err)
+		goto error;
+
+	err = sync_super(sb);
+	if (err)
+		goto error_sync;
+
+	show_buffers(mapping(sb->bitmap));
+	show_buffers(mapping(sb->rootdir));
+	show_buffers(sb->volmap->map);
+
+	return 0;
+
+error_sync:
+	; /* FIXME: error */
+error:
 	return err;
 }
 

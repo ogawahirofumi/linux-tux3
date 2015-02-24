@@ -183,7 +183,7 @@ static int cmd_mkfs(struct sb *sb, const char *progname, const char *command,
 	if (!sb->logmap)
 		return -ENOMEM;
 
-	int err = make_tux3(sb);
+	int err = mkfs_tux3(sb);
 
 	free(argv2optv(args));
 
