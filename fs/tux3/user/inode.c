@@ -261,9 +261,8 @@ static int generic_drop_inode(struct inode *inode)
 
 static void tux_setup_inode(struct inode *inode)
 {
-	struct sb *sb = tux_sb(inode->i_sb);
+	tux_setup_inode_common(inode);
 
-	assert(tux_inode(inode)->inum != TUX_INVALID_INO);
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFSOCK:
 	case S_IFIFO:
@@ -286,30 +285,16 @@ static void tux_setup_inode(struct inode *inode)
 		case TUX_COUNTMAP_INO:
 		case TUX_VTABLE_INO:
 		case TUX_ATABLE_INO:
-			/* set fake i_size to escape the check of block_* */
-			inode->i_size = vfs_sb(sb)->s_maxbytes;
 			inode->map->io = tux3_filemap_redirect_io;
-			/* Flushed by tux3_flush_inode_internal() */
-			tux3_set_inode_no_flush(inode);
 			break;
 		case TUX_VOLMAP_INO:
 		case TUX_LOGMAP_INO:
-			inode->i_size = (loff_t)sb->volblocks << sb->blockbits;
 			if (tux_inode(inode)->inum == TUX_VOLMAP_INO)
 				/* use default handler (dev_blockio) */;
 			else
 				inode->map->io = tux3_logmap_io;
-			/* Flushed by tux3_flush_inode_internal() */
-			tux3_set_inode_no_flush(inode);
-			break;
-		default:
-			assert(0);
 			break;
 		}
-		break;
-	default:
-		tux3_fs_error(sb, "Unknown mode: inum %Lx, mode %07ho",
-			      tux_inode(inode)->inum, inode->i_mode);
 		break;
 	}
 }
