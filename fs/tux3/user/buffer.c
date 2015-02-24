@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <errno.h>
-#ifndef BUFFER_FOR_TUX3
+#ifndef TUX3_BUILD
 #include "diskio.h"
 #endif
 #include "buffer.h"
@@ -182,11 +182,13 @@ int tux3_set_buffer_dirty(map_t *map, struct buffer_head *buffer, int delta)
 	return tux3_set_buffer_dirty_list(map, buffer, delta, head);
 }
 
+#ifndef TUX3_BUILD
 struct buffer_head *set_buffer_dirty(struct buffer_head *buffer)
 {
 	tux3_set_buffer_dirty(buffer->map, buffer, BUFFER_INIT_DELTA);
 	return buffer;
 }
+#endif
 
 struct buffer_head *set_buffer_clean(struct buffer_head *buffer)
 {
@@ -209,7 +211,7 @@ struct buffer_head *set_buffer_empty(struct buffer_head *buffer)
 
 void tux3_clear_buffer_dirty(struct buffer_head *buffer, unsigned delta)
 {
-#ifdef BUFFER_FOR_TUX3
+#ifdef TUX3_BUILD
 	assert(buffer_can_modify(buffer, delta));
 #endif
 	/* FIXME: this should be set_buffer_empty()? */
@@ -246,7 +248,7 @@ void clear_buffer_dirty_for_endio(struct buffer_head *buffer, int err)
 /* Invalidate buffer, this must be called from frontend like truncate */
 static void tux3_invalidate_buffer(struct buffer_head *buffer)
 {
-#ifdef BUFFER_FOR_TUX3
+#ifdef TUX3_BUILD
 	unsigned delta = tux3_inode_delta(buffer->map->inode);
 	assert(buffer_can_modify(buffer, delta));
 #endif

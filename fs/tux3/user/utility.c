@@ -1,7 +1,7 @@
 #include "tux3user.h"
+#include "diskio.h"
 
 #include "buffer.c"
-#include "diskio.c"
 #include "hexdump.c"
 
 #ifndef trace

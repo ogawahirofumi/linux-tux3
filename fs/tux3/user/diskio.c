@@ -4,7 +4,7 @@
 #include <linux/fs.h> // for BLKGETSIZE
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include "trace.h"
+#include "libklib/libklib.h"
 #include "diskio.h"
 
 static ssize_t iov_length(struct iovec *iov, int iovcnt)
@@ -45,6 +45,7 @@ int iovabs(int fd, struct iovec *iov, int iovcnt, int out, off_t offset)
 	return 0;
 }
 
+#ifndef TUX3_BUILD
 int ioabs(int fd, void *data, size_t count, int out, off_t offset)
 {
 	while (count) {
@@ -107,6 +108,7 @@ int streamwrite(int fd, void *data, size_t count)
 {
 	return iorel(fd, data, count, 1);
 }
+#endif /* TUX3_BUILD */
 
 int fdsize64(int fd, loff_t *size)
 {

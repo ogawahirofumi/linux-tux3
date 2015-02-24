@@ -1,29 +1,28 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#define BUFFER_FOR_TUX3
-
-#ifdef BUFFER_FOR_TUX3
+#ifdef TUX3_BUILD
 #include "tux3user.h"
 #include "trace.h"
 
 static inline unsigned tux3_delta(unsigned delta);
-#endif
-#include "../tux3_fork.h"
-#include "libklib/list.h"
-#include <sys/uio.h>
 
-#ifdef BUFFER_FOR_TUX3
 /* Maximum delta number (must be power of 2) */
 #define BUFFER_DIRTY_STATES	2	/* 1 frontend + 1 backend */
 #define BUFFER_INIT_DELTA	0	/* initial delta number */
 #define TUX3_MAX_DELTA		BUFFER_DIRTY_STATES
 #define TUX3_INIT_DELTA		BUFFER_INIT_DELTA
-#else
+
+#else /* !TUX3_BUILD */
+
 /* Maximum delta number (must be power of 2) */
 #define BUFFER_DIRTY_STATES	4	/* 1 frontend + 1 backend */
 #define BUFFER_INIT_DELTA	0	/* initial delta number */
-#endif
+#endif /* !TUX3_BUILD */
+
+#include "../tux3_fork.h"
+#include "libklib/list.h"
+#include <sys/uio.h>
 
 enum {
 	BUFFER_FREED, BUFFER_EMPTY, BUFFER_CLEAN, BUFFER_DIRTY,
@@ -37,7 +36,7 @@ TUX3_DEFINE_STATE_FNS(unsigned, buf, BUFFER_DIRTY, BUFFER_STATE_BITS, 0);
 #define BUFFER_BUCKETS 999
 
 // disk io address range
-#ifdef BUFFER_FOR_TUX3
+#ifdef TUX3_BUILD
 /*
  * Choose carefully:
  * loff_t can be "long" or "long long" in userland. (not printf friendly)
@@ -58,7 +57,7 @@ struct bufvec;
 typedef int (blockio_t)(int rw, struct bufvec *bufvec);
 
 struct map {
-#ifdef BUFFER_FOR_TUX3
+#ifdef TUX3_BUILD
 	struct inode *inode;
 #endif
 	struct dev *dev;

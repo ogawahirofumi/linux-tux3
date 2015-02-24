@@ -13,7 +13,7 @@ CFLAGS	+= -m32
 endif
 
 CFLAGS	+= -std=gnu99 -Wall -g -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64
-CFLAGS	+= -I$(TOPDIR)
+CFLAGS	+= -I$(TOPDIR) -DTUX3_BUILD=1
 # gcc warning options
 CFLAGS	+= -Wall -Wextra -Werror
 CFLAGS	+= -Wundef -Wstrict-prototypes -Werror-implicit-function-declaration
@@ -88,8 +88,8 @@ LIBKLIB		= libklib/libklib.a
 ALL_LIBS	= $(LIBTUX3) $(LIBKLIB)
 
 # LIBTUX3 objects
-USER_OBJS	= commit.o current_task.o dir.o filemap.o inode.o namei.o \
-	options.o super.o utility.o writeback.o
+USER_OBJS	= commit.o current_task.o dir.o diskio.o filemap.o inode.o \
+	namei.o options.o super.o utility.o writeback.o
 KERN_OBJS	= ../balloc.o ../btree.o ../dleaf.o ../iattr.o ../ileaf.o \
 	../log.o ../orphan.o ../policy.o ../replay.o ../xattr.o
 TEST_LIB_OBJS	= tests/test.o
