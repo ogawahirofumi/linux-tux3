@@ -183,10 +183,7 @@ int __mkfs_tux3(struct sb *sb)
 error_change_end:
 	change_end_atomic(sb);
 error:
-	tux3_err(sb, "eek, %s", strerror(-err));
-	iput(sb->bitmap);
-	sb->bitmap = NULL;
-
+	/* Caller have responsibility to cleanup inodes. */
 	return err;
 }
 
