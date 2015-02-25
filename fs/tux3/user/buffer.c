@@ -34,13 +34,14 @@
 #define SECTOR_BITS		9
 #define SECTOR_SIZE		(1 << SECTOR_BITS)
 
-#define BUFFER_PARANOIA_DEBUG
+#ifdef BUFFER_PARANOIA_DEBUG
 /*
  * 0 - no debug
  * 1 - leak check
  * 2 - "1" and reclaim buffer early
  */
-static int debug_buffer;
+static int debug_level;
+#endif
 
 static struct list_head buffers[BUFFER_STATES], lru_buffers;
 static unsigned max_buffers = 10000, max_evict = 1000, buffer_count;
@@ -138,7 +139,7 @@ static int reclaim_buffer(struct buffer_head *buffer)
 static inline int reclaim_buffer_early(struct buffer_head *buffer)
 {
 #ifdef BUFFER_PARANOIA_DEBUG
-	if (debug_buffer >= 2)
+	if (debug_level >= 2)
 		return reclaim_buffer(buffer);
 #endif
 	return 0;
@@ -147,7 +148,7 @@ static inline int reclaim_buffer_early(struct buffer_head *buffer)
 static inline int is_reclaim_buffer_early(void)
 {
 #ifdef BUFFER_PARANOIA_DEBUG
-	if (debug_buffer >= 2)
+	if (debug_level >= 2)
 		return 1;
 #endif
 	return 0;
@@ -267,7 +268,7 @@ static void __free_buffer(struct buffer_head *buffer)
 static void free_buffer(struct buffer_head *buffer)
 {
 #ifdef BUFFER_PARANOIA_DEBUG
-	if (debug_buffer) {
+	if (debug_level) {
 		__free_buffer(buffer);
 		buffer_count--;
 		return;
@@ -546,7 +547,7 @@ static void destroy_buffers(void)
 
 	for (int i = 0; i < BUFFER_STATES; i++) {
 		head = buffers + i;
-		if (!debug_buffer) {
+		if (!debug_level) {
 			list_for_each_entry_safe(buffer, safe, head, link) {
 				list_del(&buffer->lru);
 				__free_buffer(buffer);
@@ -567,7 +568,7 @@ static void destroy_buffers(void)
 	 * If buffer is dirty, it may not be on buffers state list
 	 * (e.g. buffer may be on map->dirty).
 	 */
-	if (!debug_buffer) {
+	if (!debug_level) {
 		list_for_each_entry_safe(buffer, safe, &lru_buffers, lru) {
 			assert(buffer_dirty(buffer));
 			list_del(&buffer->lru);
@@ -636,7 +637,6 @@ error:
 
 void init_buffers(struct dev *dev, unsigned poolsize, int debug)
 {
-	debug_buffer = debug;
 	INIT_LIST_HEAD(&lru_buffers);
 	for (int i = 0; i < BUFFER_STATES; i++)
 		INIT_LIST_HEAD(buffers + i);
@@ -650,6 +650,7 @@ void init_buffers(struct dev *dev, unsigned poolsize, int debug)
 		max_buffers = min_buffers;
 
 #ifdef BUFFER_PARANOIA_DEBUG
+	debug_level = debug;
 	atexit(destroy_buffers);
 #else
 	preallocate_buffers(bufsize);

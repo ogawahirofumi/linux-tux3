@@ -20,8 +20,18 @@ CFLAGS	+= -Wundef -Wstrict-prototypes -Werror-implicit-function-declaration
 CFLAGS	+= -Wno-unused-parameter -Wno-sign-compare
 CFLAGS	+= -Wno-missing-field-initializers
 #CFLAGS += -Wp,-Wunused-macros
+
+# Debugging
+#
 # backtrace() would need this to see all symbols
 CFLAGS	+= -rdynamic
+# buffer debug
+CFLAGS	+= -DBUFFER_PARANOIA_DEBUG=1
+# cursor debug (this is defined in tux3.h)
+#CFLAGS	+= -DCURSOR_DEBUG=1
+# use LOCK_DEBUG
+CFLAGS	+= -DLOCK_DEBUG=1
+
 # gcc checker (_FORTIFY_SOURCE requires optimize option >= 1)
 # Rethink about this when optimization become default
 #CFLAGS	+= -O1 -D_FORTIFY_SOURCE=2
@@ -29,8 +39,6 @@ CFLAGS	+= -rdynamic
 ifneq ($(GCOV),)
 CFLAGS	+= --coverage
 endif
-# use LOCK_DEBUG
-CFLAGS	+= -DLOCK_DEBUG=1
 # userland can't use async, so use TUX3_FLUSHER_SYNC
 CFLAGS	+= -DTUX3_FLUSHER_SYNC
 # user flags
