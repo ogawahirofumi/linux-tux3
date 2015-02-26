@@ -176,6 +176,8 @@ static void test01(struct sb *sb, struct btree *btree)
 
 	ileaf_destroy(btree, leaf);
 	ileaf_destroy(btree, dest);
+
+	clean_main(sb);
 }
 
 int main(int argc, char *argv[])

@@ -89,6 +89,8 @@ static void test01(struct sb *sb)
 
 	rapid_free_inode(inode1);
 	rapid_free_inode(inode2);
+
+	clean_main(sb);
 }
 
 int main(int argc, char *argv[])
