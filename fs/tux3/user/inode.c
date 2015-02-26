@@ -62,43 +62,61 @@ void remove_inode_hash(struct inode *inode)
 		hlist_del_init(&inode->i_hash);
 }
 
+static void destroy_inode_nocheck(struct inode *inode)
+{
+	free_map(mapping(inode));
+	__destroy_inode_nocheck(inode);
+}
+
+static void destroy_inode(struct inode *inode)
+{
+	inode->i_state &= ~I_BAD;
+
+	assert(hlist_unhashed(&inode->i_hash));
+	assert(inode->i_state == I_FREEING);
+	assert(mapping(inode));
+
+	free_map(mapping(inode));
+	__destroy_inode(inode);
+}
+
+void inode_init_once(struct inode *inode)
+{
+	memset(inode, 0, sizeof(*inode));
+
+	spin_lock_init(&inode->i_lock);
+	mutex_init(&inode->i_mutex);
+	INIT_HLIST_NODE(&inode->i_hash);
+}
+
+static void inode_init_always(struct sb *sb, struct inode *inode)
+{
+	inode->i_sb	= sb;
+	inode->i_nlink	= 1;
+	atomic_set(&inode->i_count, 1);
+
+	mapping(inode)->inode = inode;
+	mapping_set_gfp_mask(mapping(inode), GFP_HIGHUSER_MOVABLE);
+}
+
 static struct inode *new_inode(struct sb *sb)
 {
-	struct tux3_inode *tuxnode;
-	struct inode *inode;
-
-	tuxnode = malloc(sizeof(*tuxnode));
-	if (!tuxnode)
+	struct inode *inode = __alloc_inode(sb);
+	if (!inode)
 		goto error;
-
-	inode = &tuxnode->vfs_inode;
 
 	inode->map = new_map(sb->dev, NULL);
 	if (!inode->map)
 		goto error_map;
-	inode->map->inode = inode;
 
-	inode_init(tuxnode, sb, 0);
+	inode_init_always(sb, inode);
 
 	return inode;
 
 error_map:
-	free(tuxnode);
+	__destroy_inode(inode);
 error:
 	return NULL;
-}
-
-static inline void __free_inode(struct inode *inode)
-{
-	free_map(mapping(inode));
-	free(tux_inode(inode));
-}
-
-static void free_inode(struct inode *inode)
-{
-	inode->i_state &= ~I_BAD;
-	free_inode_check(tux_inode(inode));
-	__free_inode(inode);
 }
 
 /* This is just to clean inode is partially initialized */
@@ -202,7 +220,7 @@ static struct inode *iget5_locked(struct sb *sb, inum_t inum,
 	if (!inode)
 		return NULL;
 	if (set(inode, data)) {
-		free_inode(inode);
+		destroy_inode(inode);
 		return NULL;
 	}
 
@@ -322,7 +340,7 @@ void iput(struct inode *inode)
 		tux3_evict_inode(inode);
 
 		remove_inode_hash(inode);
-		free_inode(inode);
+		destroy_inode(inode);
 	}
 }
 
@@ -364,5 +382,5 @@ struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode)
 
 void rapid_free_inode(struct inode *inode)
 {
-	__free_inode(inode);
+	destroy_inode_nocheck(inode);
 }

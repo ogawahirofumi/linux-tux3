@@ -15,42 +15,26 @@
 #define trace trace_off
 #endif
 
-static void inode_init_once(struct inode *inode)
-{
-	memset(inode, 0, sizeof(*inode));
-
-	spin_lock_init(&inode->i_lock);
-	mutex_init(&inode->i_mutex);
-	INIT_HLIST_NODE(&inode->i_hash);
-}
+/* FIXME: maybe, we are better to use same structure with kernel? */
+struct super_block {
+	struct sb sb;
+};
 
 #include "../super.c"
 
-void inode_init(struct tux3_inode *tuxnode, struct sb *sb, umode_t mode)
+struct inode *__alloc_inode(struct sb *sb)
 {
-	struct inode *inode = &tuxnode->vfs_inode;
-	map_t *map = inode->map;	/* inode is zeroed, so save here */
-
-	tux3_inode_init_once(tuxnode);
-	tux3_inode_init_always(tuxnode);
-
-	inode->i_sb	= sb;
-	inode->i_mode	= mode;
-	inode->i_nlink	= 1;
-	atomic_set(&inode->i_count, 1);
-	inode->map	= map;
-	mapping_set_gfp_mask(mapping(inode), GFP_HIGHUSER_MOVABLE);
+	return tux3_alloc_inode((struct super_block *)sb);
 }
 
-void free_inode_check(struct tux3_inode *tuxnode)
+void __destroy_inode_nocheck(struct inode *inode)
 {
-	struct inode *inode = &tuxnode->vfs_inode;
+	call_rcu(&inode->i_rcu, tux3_i_callback);
+}
 
-	tux3_check_destroy_inode(inode);
-
-	assert(hlist_unhashed(&inode->i_hash));
-	assert(inode->i_state == I_FREEING);
-	assert(mapping(inode));
+void __destroy_inode(struct inode *inode)
+{
+	tux3_destroy_inode(inode);
 }
 
 int put_super(struct sb *sb)
@@ -322,6 +306,10 @@ int tux3_init_mem(unsigned poolsize, int debug)
 {
 	int err;
 
+	err = tux3_init_inodecache();
+	if (err)
+		goto error;
+
 	err = tux3_init_hole_cache();
 	if (err)
 		goto error_hole;
@@ -337,6 +325,8 @@ int tux3_init_mem(unsigned poolsize, int debug)
 error_idefer:
 	tux3_destroy_hole_cache();
 error_hole:
+	tux3_destroy_inodecache();
+error:
 	return err;
 }
 
@@ -344,4 +334,5 @@ void tux3_exit_mem(void)
 {
 	tux3_destroy_idefer_cache();
 	tux3_destroy_hole_cache();
+	tux3_destroy_inodecache();
 }

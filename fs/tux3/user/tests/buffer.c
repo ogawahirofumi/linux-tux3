@@ -3,6 +3,11 @@
 
 #define NR_BUF		100
 
+static void clean_main(void)
+{
+	tux3_exit_mem();
+}
+
 static void test01(void)
 {
 	struct dev *dev = &(struct dev){ .bits = 12 };
@@ -91,6 +96,8 @@ static void test01(void)
 
 	rapid_free_inode(inode1);
 	rapid_free_inode(inode2);
+
+	clean_main();
 }
 
 /* Test for bufvec */
@@ -152,6 +159,8 @@ static void test02(void)
 	bufvec_free(&bufvec);
 
 	free_map(map);
+
+	clean_main();
 }
 
 static void test03(void)
@@ -175,10 +184,15 @@ static void test03(void)
 
 		free_map(map);
 	}
+
+	clean_main();
 }
 
 int main(int argc, char *argv[])
 {
+	int err = tux3_init_mem(1 << 20, 2);
+	assert(!err);
+
 	test_init(argv[0]);
 
 	if (test_start("test01"))
@@ -193,5 +207,6 @@ int main(int argc, char *argv[])
 		test03();
 	test_end();
 
+	clean_main();
 	return test_failures();
 }

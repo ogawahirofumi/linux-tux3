@@ -90,6 +90,7 @@ int page_readlink(struct inode *inode, void *buf, unsigned size);
 /* inode.c */
 void inode_leak_check(void);
 void remove_inode_hash(struct inode *inode);
+void inode_init_once(struct inode *inode);
 void unlock_new_inode(struct inode *inode);
 void __iget(struct inode *inode);
 void ihold(struct inode *inode);
@@ -125,8 +126,9 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 	      struct inode *new_dir, const char *new_name, unsigned new_len);
 
 /* super.c */
-void inode_init(struct tux3_inode *tuxnode, struct sb *sb, umode_t mode);
-void free_inode_check(struct tux3_inode *tuxnode);
+struct inode *__alloc_inode(struct sb *sb);
+void __destroy_inode_nocheck(struct inode *inode);
+void __destroy_inode(struct inode *inode);
 int put_super(struct sb *sb);
 int setup_sb(struct sb *sb, struct disksuper *super);
 struct replay *__load_fs(struct sb *sb);
