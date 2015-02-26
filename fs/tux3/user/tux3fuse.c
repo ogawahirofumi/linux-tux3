@@ -65,7 +65,7 @@ static void tux3fuse_init(void *userdata, struct fuse_conn_info *conn)
 	if (fd < 0)
 		strerror_exit(1, errno, "volume %s not found", volname);
 
-	err = tux3_init_mem();
+	err = tux3_init_mem(50 << 20, 2);
 	if (err)
 		goto error;
 
@@ -86,7 +86,9 @@ static void tux3fuse_init(void *userdata, struct fuse_conn_info *conn)
 		goto error;
 
 	dev->bits = sb->blockbits;
-	init_buffers(dev, 50 << 20, 2);
+	err = set_blocksize(1 << sb->blockbits);
+	if (err)
+		goto error;
 
 	struct replay *rp = tux3_init_fs(sb);
 	if (IS_ERR(rp)) {

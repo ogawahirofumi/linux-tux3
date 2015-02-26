@@ -9,7 +9,8 @@ static void test01(void)
 	struct sb sb = { .dev = dev, };
 
 	/* This expect buffer is never reclaimed */
-	init_buffers(dev, NR_BUF << dev->bits, 1);
+	init_buffer_params(NR_BUF << dev->bits, 1);
+	set_blocksize(1 << dev->bits);
 
 	struct inode *inode1 = rapid_open_inode(&sb, NULL, 0);
 	struct inode *inode2 = rapid_open_inode(&sb, NULL, 0);
@@ -108,7 +109,8 @@ static void test02(void)
 	unsigned count, index = 0;
 
 	/* This expect buffer is never reclaimed */
-	init_buffers(dev, 10 << 20, 2);
+	init_buffer_params(10 << 20, 2);
+	set_blocksize(1 << dev->bits);
 	map_t *map = new_map(dev, NULL);
 	test_assert(map);
 
@@ -152,6 +154,29 @@ static void test02(void)
 	free_map(map);
 }
 
+static void test03(void)
+{
+	/* This expect buffer is never reclaimed */
+	init_buffer_params(10 << 20, 2);
+
+	unsigned bits[] = { 12, 8, 9, };
+	for (int i = 0; i < ARRAY_SIZE(bits); i++) {
+		struct dev *dev = &(struct dev){ .bits = bits[i], };
+		struct buffer_head *buffer;
+
+		set_blocksize(1 << bits[i]);
+
+		map_t *map = new_map(dev, NULL);
+		test_assert(map);
+
+		buffer = blockget(map, 0);
+		test_assert(buffer);
+		blockput(buffer);
+
+		free_map(map);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	test_init(argv[0]);
@@ -162,6 +187,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test02"))
 		test02();
+	test_end();
+
+	if (test_start("test03"))
+		test03();
 	test_end();
 
 	return test_failures();

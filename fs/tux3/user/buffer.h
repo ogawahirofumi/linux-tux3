@@ -162,7 +162,8 @@ void insert_buffer_hash(struct buffer_head *buffer);
 void remove_buffer_hash(struct buffer_head *buffer);
 void truncate_buffers_range(map_t *map, loff_t lstart, loff_t lend);
 void invalidate_buffers(map_t *map);
-void init_buffers(struct dev *dev, unsigned poolsize, int debug);
+int set_blocksize(unsigned bufsize);
+void init_buffer_params(unsigned poolsize, int debug);
 int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t block,
 		     unsigned count);
 int dev_errio(int rw, struct bufvec *bufvec);

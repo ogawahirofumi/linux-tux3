@@ -30,9 +30,9 @@
  * add async IO.
  */
 
-#define MIN_SECTOR_BITS		6
-#define SECTOR_BITS		9
-#define SECTOR_SIZE		(1 << SECTOR_BITS)
+#define BUF_ALIGN_BITS		9
+#define BUF_ALIGN_SIZE		(1 << BUF_ALIGN_BITS)
+#define MAX_BUFFERS_MIN		100U
 
 #ifdef BUFFER_PARANOIA_DEBUG
 /*
@@ -44,7 +44,8 @@ static int debug_level;
 #endif
 
 static struct list_head buffers[BUFFER_STATES], lru_buffers;
-static unsigned max_buffers = 10000, max_evict = 1000, buffer_count;
+static unsigned buffer_poolsize, buffer_blocksize;
+static unsigned max_buffers, max_evict, buffer_count;
 
 void show_buffer(struct buffer_head *buffer)
 {
@@ -348,6 +349,19 @@ static void evict_buffer(struct buffer_head *buffer)
 	reclaim_buffer(buffer);
 }
 
+static void try_reclaim_buffers(unsigned max_reclaims)
+{
+	struct buffer_head *safe, *victim;
+	int count = 0;
+
+	list_for_each_entry_safe(victim, safe, &lru_buffers, lru) {
+		if (reclaim_buffer(victim)) {
+			if (++count == max_reclaims)
+				break;
+		}
+	}
+}
+
 struct buffer_head *new_buffer(map_t *map)
 {
 	struct buffer_head *buffer = NULL;
@@ -361,15 +375,7 @@ struct buffer_head *new_buffer(map_t *map)
 
 	if (buffer_count >= max_buffers) {
 		buftrace("try to evict buffers");
-		struct buffer_head *safe, *victim;
-		int count = 0;
-	
-		list_for_each_entry_safe(victim, safe, &lru_buffers, lru) {
-			if (reclaim_buffer(victim)) {
-				if (++count == max_evict)
-					break;
-			}
-		}
+		try_reclaim_buffers(max_evict);
 
 		if (!list_empty(freed_list)) {
 			buffer = list_entry(freed_list->next, struct buffer_head, link);
@@ -384,6 +390,9 @@ struct buffer_head *new_buffer(map_t *map)
 		return ERR_PTR(-ENOMEM);
 	}
 
+	if (buffer_blocksize != 1 << map->dev->bits)
+		return ERR_PTR(-EINVAL);
+
 	buffer = malloc(sizeof(struct buffer_head));
 	if (!buffer)
 		return ERR_PTR(-ENOMEM);
@@ -394,7 +403,7 @@ struct buffer_head *new_buffer(map_t *map)
 	};
 	INIT_HLIST_NODE(&buffer->hashlink);
 
-	err = posix_memalign(&buffer->data, SECTOR_SIZE, 1 << map->dev->bits);
+	err = posix_memalign(&buffer->data, BUF_ALIGN_SIZE, buffer_blocksize);
 	if (err) {
 		printf("Error: unable to expand buffer pool: %s\n",
 		       strerror(err));
@@ -541,21 +550,29 @@ void invalidate_buffers(map_t *map)
 }
 
 #ifdef BUFFER_PARANOIA_DEBUG
+static void free_state_buffers(int state)
+{
+	struct list_head *head = buffers + state;
+	struct buffer_head *buffer, *safe;
+
+	list_for_each_entry_safe(buffer, safe, head, link) {
+		list_del(&buffer->lru);
+		__free_buffer(buffer);
+	}
+}
+
 static void destroy_buffers(void)
 {
 	struct buffer_head *buffer, *safe;
-	struct list_head *head;
 
 	/* If debug_buffer, buffer should already be freed */
 
 	for (int i = 0; i < BUFFER_STATES; i++) {
-		head = buffers + i;
-		if (!debug_level) {
-			list_for_each_entry_safe(buffer, safe, head, link) {
-				list_del(&buffer->lru);
-				__free_buffer(buffer);
-			}
-		}
+		struct list_head *head = buffers + i;
+
+		if (!debug_level)
+			free_state_buffers(i);
+
 		if (!list_empty(head)) {
 			printf("Error: state %d: buffer leak, or list corruption?\n", i);
 			list_for_each_entry(buffer, head, link) {
@@ -590,6 +607,16 @@ static void destroy_buffers(void)
 		assert(list_empty(&lru_buffers));
 	}
 }
+
+static int preallocate_buffers(unsigned bufsize)
+{
+	return 0;
+}
+
+static void free_old_buffers(void)
+{
+	free_state_buffers(BUFFER_FREED);
+}
 #else /* !BUFFER_PARANOIA_DEBUG */
 
 static struct buffer_head *prealloc_heads;
@@ -609,7 +636,7 @@ static int preallocate_buffers(unsigned bufsize)
 	}
 
 	buftrace("Pre-allocating data for buffers...");
-	err = posix_memalign(&data_pool, SECTOR_SIZE, max_buffers * bufsize);
+	err = posix_memalign(&data_pool, BUF_ALIGN_SIZE, max_buffers * bufsize);
 	if (err) {
 		printf("Error: unable to allocate space for buffer data: %s\n",
 		       strerror(err));
@@ -636,27 +663,54 @@ error_memalign:
 error:
 	return err;
 }
+
+static void free_old_buffers(void)
+{
+	if (prealloc_heads)
+		free(prealloc_heads);
+	if (data_pool)
+		free(data_pool);
+
+	INIT_LIST_HEAD(&buffers[BUFFER_FREED]);
+}
 #endif /* !BUFFER_PARANOIA_DEBUG */
 
-void init_buffers(struct dev *dev, unsigned poolsize, int debug)
+/* Note, this doesn't invalidate dirty buffers unlike kernel. */
+int set_blocksize(unsigned blocksize)
 {
+	if (blocksize == 0)
+		return -EINVAL;
+	if (blocksize == buffer_blocksize)
+		return 0;
+
+	/* Try reclaim all buffers */
+	try_reclaim_buffers(buffer_count);
+	/* All buffer is BUFFER_FREED? */
+	if (buffer_count != 0)
+		return -EBUSY;
+
+	/* Free old buffers */
+	free_old_buffers();
+
+	/* Initialize buffers */
+	buffer_blocksize = blocksize;
+	max_buffers = max(buffer_poolsize / buffer_blocksize, MAX_BUFFERS_MIN);
+	max_evict = max_buffers / 10;
+
+	return preallocate_buffers(buffer_blocksize);
+}
+
+void init_buffer_params(unsigned poolsize, int debug)
+{
+	buffer_poolsize = poolsize;
+
 	INIT_LIST_HEAD(&lru_buffers);
 	for (int i = 0; i < BUFFER_STATES; i++)
 		INIT_LIST_HEAD(buffers + i);
 
-	unsigned bufsize = 1 << dev->bits;
-	max_buffers = poolsize / bufsize;
-	max_evict = max_buffers / 10;
-
-	int min_buffers = 100;
-	if (max_buffers < min_buffers)
-		max_buffers = min_buffers;
-
 #ifdef BUFFER_PARANOIA_DEBUG
 	debug_level = debug;
 	atexit(destroy_buffers);
-#else
-	preallocate_buffers(bufsize);
 #endif
 }
 

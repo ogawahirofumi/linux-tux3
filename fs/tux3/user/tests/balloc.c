@@ -353,16 +353,16 @@ int main(int argc, char *argv[])
 {
 	enum { BITMAP_BLOCKS = 10, groupbits = 5 };
 	struct dev *dev = &(struct dev){ .bits = 3 };
-	/* This expect buffer is never reclaimed */
-	init_buffers(dev, 1 << 20, 1);
 
-	int err = tux3_init_mem();
+	/* This expect buffer is never reclaimed */
+	int err = tux3_init_mem(1 << 20, 1);
 	assert(!err);
 
 	block_t volblocks = (BITMAP_BLOCKS << (dev->bits + 3)) - 3;
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, volblocks);
 	assert(!setup_sb(sb, &sb->super));
+	assert(!set_blocksize(sb->blocksize));
 	sb->groupbits = groupbits;
 
 	test_init(argv[0]);

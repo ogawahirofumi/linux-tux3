@@ -243,7 +243,7 @@ ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
 	return seq.count + 1;
 }
 
-int tux3_init_mem(void)
+int tux3_init_mem(unsigned poolsize, int debug)
 {
 	int err;
 
@@ -254,6 +254,8 @@ int tux3_init_mem(void)
 	err = tux3_init_idefer_cache();
 	if (err)
 		goto error_idefer;
+
+	init_buffer_params(poolsize, debug);
 
 	return 0;
 

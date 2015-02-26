@@ -33,7 +33,7 @@ static int open_sb(const char *volname, struct sb *sb)
 	int err = load_sb(sb);
 	if (!err) {
 		sb->dev->bits = sb->blockbits;
-		init_buffers(sb->dev, 1 << 20, 2);
+		set_blocksize(1 << sb->dev->bits);
 	}
 	return err;
 }
@@ -170,7 +170,9 @@ static int cmd_mkfs(struct sb *sb, const char *progname, const char *command,
 
 	sb->dev->fd = fd;
 	sb->dev->bits = blockbits;
-	init_buffers(sb->dev, 1 << 20, 2);
+	int err = set_blocksize(1 << blockbits);
+	if (err)
+		error_exit("set_blocksize was failed");
 
 	sb->super = INIT_DISKSB(blockbits, volsize >> blockbits);
 	assert(!setup_sb(sb, &sb->super));
@@ -183,7 +185,7 @@ static int cmd_mkfs(struct sb *sb, const char *progname, const char *command,
 	if (!sb->logmap)
 		return -ENOMEM;
 
-	int err = mkfs_tux3(sb);
+	err = mkfs_tux3(sb);
 
 	free(argv2optv(args));
 
@@ -411,7 +413,7 @@ int main(int argc, char *argv[])
 	struct inode *inode = NULL;
 	struct file *file = NULL;
 
-	int err = tux3_init_mem();
+	int err = tux3_init_mem(1 << 20, 2);
 	if (err)
 		goto error;
 

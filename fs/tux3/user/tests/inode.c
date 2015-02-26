@@ -198,15 +198,15 @@ int main(int argc, char *argv[])
 	int err = fdsize64(fd, &size);
 	assert(!err);
 
-	err = tux3_init_mem();
-	assert(!err);
-
 	struct dev *dev = &(struct dev){ .fd = fd, .bits = 12 };
-	init_buffers(dev, 1 << 24, 2);
+
+	err = tux3_init_mem(1 << 24, 2);
+	assert(!err);
 
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, size >> dev->bits);
 	assert(!setup_sb(sb, &sb->super));
+	assert(!set_blocksize(sb->blocksize));
 
 	sb->volmap = tux_new_volmap(sb);
 	assert(sb->volmap);

@@ -292,15 +292,15 @@ int main(int argc, char *argv[])
 	fd = open(argv[1], O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR);
 	assert(!ftruncate(fd, volsize));
 
-	err = tux3_init_mem();
-	assert(!err);
-
 	struct dev *dev = &(struct dev){ .bits = 8, .fd = fd, };
-	init_buffers(dev, volsize, 2);
+
+	err = tux3_init_mem(volsize, 2);
+	assert(!err);
 
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, volsize >> dev->bits);
 	assert(!setup_sb(sb, &sb->super));
+	assert(!set_blocksize(sb->blocksize));
 
 	sb->atomref_base = 1 << 10;
 	sb->unatom_base = 1 << 11;

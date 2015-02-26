@@ -94,14 +94,14 @@ static void test01(struct sb *sb)
 int main(int argc, char *argv[])
 {
 	struct dev *dev = &(struct dev){ .bits = 8 };
-	init_buffers(dev, 1 << 20, 2);
 
-	int err = tux3_init_mem();
+	int err = tux3_init_mem(1 << 20, 2);
 	assert(!err);
 
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, 2048);
 	assert(!setup_sb(sb, &sb->super));
+	assert(!set_blocksize(sb->blocksize));
 
 	sb->logmap = tux_new_logmap(sb);
 	assert(sb->logmap);

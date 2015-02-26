@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
 {
 	struct dev *dev = &(struct dev){ .bits = 9 };
 
-	int err = tux3_init_mem();
+	int err = tux3_init_mem(1 << 20, 2);
 	assert(!err);
 
 	struct sb *sb = rapid_sb(dev);
