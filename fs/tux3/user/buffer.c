@@ -761,13 +761,15 @@ int dev_errio(int rw, struct bufvec *bufvec)
 
 map_t *new_map(struct dev *dev, blockio_t *io)
 {
-	map_t *map = malloc(sizeof(*map)); // error???
-	*map = (map_t){
-		.dev	= dev,
-		.io	= io ? io : dev_blockio
-	};
-	for (int i = 0; i < BUFFER_BUCKETS; i++)
-		INIT_HLIST_HEAD(&map->hash[i]);
+	map_t *map = malloc(sizeof(*map));
+	if (map) {
+		*map = (map_t){
+			.dev	= dev,
+			.io	= io ? io : dev_blockio
+		};
+		for (int i = 0; i < BUFFER_BUCKETS; i++)
+			INIT_HLIST_HEAD(&map->hash[i]);
+	}
 	return map;
 }
 
