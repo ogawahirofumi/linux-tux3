@@ -398,7 +398,7 @@ static int init_sb(struct sb *sb)
 static void setup_roots(struct sb *sb, struct disksuper *super)
 {
 	u64 iroot_val = be64_to_cpu(super->iroot);
-	u64 oroot_val = be64_to_cpu(sb->super.oroot);
+	u64 oroot_val = be64_to_cpu(super->oroot);
 	init_btree(itree_btree(sb), sb, unpack_root(iroot_val), &itree_ops);
 	init_btree(otree_btree(sb), sb, unpack_root(oroot_val), &otree_ops);
 }
