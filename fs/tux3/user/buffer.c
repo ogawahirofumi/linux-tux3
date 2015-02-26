@@ -246,16 +246,6 @@ void clear_buffer_dirty_for_endio(struct buffer_head *buffer, int err)
 	}
 }
 
-/* Invalidate buffer, this must be called from frontend like truncate */
-static void tux3_invalidate_buffer(struct buffer_head *buffer)
-{
-#ifdef TUX3_BUILD
-	unsigned delta = tux3_inode_delta(buffer->map->inode);
-	assert(buffer_can_modify(buffer, delta));
-#endif
-	set_buffer_empty(buffer);
-}
-
 #ifdef BUFFER_PARANOIA_DEBUG
 static void __free_buffer(struct buffer_head *buffer)
 {
@@ -479,6 +469,26 @@ struct buffer_head *blockread(map_t *map, block_t block)
 	return buffer;
 }
 
+/* Invalidate check, this must be called from frontend like truncate */
+static void tux3_invalidate_check(struct buffer_head *buffer)
+{
+#ifdef TUX3_BUILD
+	unsigned delta = tux3_inode_delta(buffer->map->inode);
+	assert(buffer_can_modify(buffer, delta));
+#endif
+}
+
+static void invalidate_buffer(struct buffer_head *buffer, int check)
+{
+	if (!buffer_empty(buffer)) {
+		if (check)
+			tux3_invalidate_check(buffer);
+		set_buffer_empty(buffer);
+	}
+	if (!is_reclaim_buffer_early())
+		reclaim_buffer(buffer);
+}
+
 void truncate_buffers_range(map_t *map, loff_t lstart, loff_t lend)
 {
 	unsigned blockbits = map->dev->bits;
@@ -509,10 +519,7 @@ void truncate_buffers_range(map_t *map, loff_t lstart, loff_t lend)
 				continue;
 
 			/* Invalidate buffers */
-			if (!buffer_empty(buffer))
-				tux3_invalidate_buffer(buffer);
-			if (!is_reclaim_buffer_early())
-				reclaim_buffer(buffer);
+			invalidate_buffer(buffer, 1);
 		}
 	}
 }
@@ -527,12 +534,8 @@ void invalidate_buffers(map_t *map)
 		struct hlist_node *n;
 
 		hlist_for_each_entry_safe(buffer, n, bucket, hashlink) {
-			if (buffer->count == 1) {
-				if (!buffer_empty(buffer))
-					set_buffer_empty(buffer);
-				if (!is_reclaim_buffer_early())
-					evict_buffer(buffer);
-			}
+			if (buffer->count == 1)
+				invalidate_buffer(buffer, 0);
 		}
 	}
 }
