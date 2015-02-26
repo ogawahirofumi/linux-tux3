@@ -950,8 +950,8 @@ void replay_iput_orphan_inodes(struct sb *sb,
 int replay_load_orphan_inodes(struct replay *rp);
 
 /* super.c */
-extern const struct tux3_mount_opt tux3_default_mopt;
 struct replay *tux3_init_fs(struct sb *sbi);
+extern const struct tux3_mount_opt tux3_default_mopt;
 
 /* policy.c */
 inum_t policy_inum(struct inode *dir, loff_t where, struct inode *inode);
