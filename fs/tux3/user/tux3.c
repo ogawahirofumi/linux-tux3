@@ -26,28 +26,10 @@ static int open_volume(const char *volname)
 	return fd;
 }
 
-static int open_sb(const char *volname, struct sb *sb)
-{
-	sb->dev->fd = open_volume(volname);
-
-	int err = load_sb(sb);
-	if (!err) {
-		sb->dev->bits = sb->blockbits;
-		set_blocksize(1 << sb->dev->bits);
-	}
-	return err;
-}
-
 static int open_fs(const char *volname, struct sb *sb)
 {
-	int err = open_sb(volname, sb);
-	if (err)
-		return err;
-
-	struct replay *rp = tux3_init_fs(sb);
-	if (IS_ERR(rp))
-		return PTR_ERR(rp);
-	return replay_stage3(rp, 1);
+	sb->dev->fd = open_volume(volname);
+	return load_fs(sb, 1);
 }
 
 static void usage(struct options *options, const char *progname,
@@ -187,9 +169,8 @@ static int cmd_fsck(struct sb *sb, const char *progname, const char *command,
 
 	common_options(&argc, &args, onlyhelp, 3, progname, "fsck",
 		       "<volume>", &vars);
-	err = open_sb(vars.volname, sb);
-	if (err)
-		return err;
+
+	sb->dev->fd = open_volume(vars.volname);
 
 	err = fsck_main(sb);
 
@@ -236,9 +217,7 @@ static int cmd_dump(struct sb *sb, const char *progname, const char *command,
 		}
 	}
 
-	err = open_sb(volname, sb);
-	if (err)
-		return err;
+	sb->dev->fd = open_volume(volname);
 
 	err = dump_main(sb, &opts);
 
@@ -284,9 +263,7 @@ static int cmd_image(struct sb *sb, const char *progname, const char *command,
 	}
 	opts.dst_name = args[3];
 
-	err = open_sb(volname, sb);
-	if (err)
-		return err;
+	sb->dev->fd = open_volume(volname);
 
 	err = image_main(sb, &opts);
 
@@ -302,9 +279,8 @@ static int cmd_graph(struct sb *sb, const char *progname, const char *command,
 
 	common_options(&argc, &args, onlyhelp, 3, progname, command,
 		       "<volume>", &vars);
-	err = open_sb(vars.volname, sb);
-	if (err)
-		return err;
+
+	sb->dev->fd = open_volume(vars.volname);
 
 	err = graph_main(sb, vars.volname, vars.verbose);
 

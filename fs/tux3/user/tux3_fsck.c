@@ -490,7 +490,7 @@ static int fsck_main(struct sb *sb)
 	};
 	int err;
 
-	struct replay *rp = tux3_init_fs(sb);
+	struct replay *rp = __load_fs(sb);
 	if (IS_ERR(rp)) {
 		err = PTR_ERR(rp);
 		return err;

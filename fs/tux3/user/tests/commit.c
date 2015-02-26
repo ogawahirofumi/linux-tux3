@@ -138,7 +138,6 @@ struct open_result {
 
 static void fsck(struct sb *sb)
 {
-	test_assert(load_sb(sb) == 0);
 	test_assert(fsck_main(sb) == 0);
 	put_super(sb);
 }
@@ -146,18 +145,14 @@ static void fsck(struct sb *sb)
 static struct replay *check_replay(struct sb *sb)
 {
 	/* Replay, and read file back */
-	test_assert(load_sb(sb) == 0);
-
-	struct replay *rp = tux3_init_fs(sb);
+	struct replay *rp = __load_fs(sb);
 	assert(!IS_ERR(rp));
-
 	return rp;
 }
 
 static void reload_sb(struct sb *sb, int apply)
 {
-	struct replay *rp = check_replay(sb);
-	test_assert(replay_stage3(rp, apply) == 0);
+	test_assert(load_fs(sb, apply) == 0);
 }
 
 static void check_files(struct sb *sb, struct open_result *results, int nr)

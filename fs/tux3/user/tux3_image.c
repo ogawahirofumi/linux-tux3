@@ -268,7 +268,7 @@ static int image_main(struct sb *sb, struct image_opts *opts)
 	opt_verbose = opts->verbose;
 	opt_need_data = opts->need_data;
 
-	struct replay *rp = tux3_init_fs(sb);
+	struct replay *rp = __load_fs(sb);
 	if (IS_ERR(rp)) {
 		err = PTR_ERR(rp);
 		return err;

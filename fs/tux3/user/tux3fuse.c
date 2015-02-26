@@ -81,22 +81,7 @@ static void tux3fuse_init(void *userdata, struct fuse_conn_info *conn)
 		goto error;
 	*sb = *rapid_sb(dev);
 
-	err = load_sb(sb);
-	if (err)
-		goto error;
-
-	dev->bits = sb->blockbits;
-	err = set_blocksize(1 << sb->blockbits);
-	if (err)
-		goto error;
-
-	struct replay *rp = tux3_init_fs(sb);
-	if (IS_ERR(rp)) {
-		err = PTR_ERR(rp);
-		goto error;
-	}
-
-	err = replay_stage3(rp, 1);
+	err = load_fs(sb, 1);
 	if (err)
 		goto error;
 

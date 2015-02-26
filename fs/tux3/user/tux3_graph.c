@@ -1213,7 +1213,7 @@ static int graph_main(struct sb *sb, const char *volname, int verbose)
 
 	opt_verbose = verbose;
 
-	struct replay *rp = tux3_init_fs(sb);
+	struct replay *rp = __load_fs(sb);
 	if (IS_ERR(rp))
 		return PTR_ERR(rp);
 

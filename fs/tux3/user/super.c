@@ -81,6 +81,44 @@ int setup_sb(struct sb *sb, struct disksuper *super)
 	return 0;
 }
 
+struct replay *__load_fs(struct sb *sb)
+{
+	int err = load_sb(sb);
+	if (err)
+		return ERR_PTR(err);
+
+	sb->dev->bits = sb->blockbits;
+	set_blocksize(sb->blocksize);
+
+	return tux3_init_fs(sb);
+}
+
+int load_fs(struct sb *sb, int apply_orphan)
+{
+	struct replay *rp;
+	int err;
+
+	rp = __load_fs(sb);
+	if (IS_ERR(rp)) {
+		err = PTR_ERR(rp);
+		goto error;
+	}
+
+	err = replay_stage3(rp, apply_orphan);
+	if (err) {
+		rp = NULL;
+		goto error;
+	}
+
+	return 0;
+
+error:
+	if (!IS_ERR_OR_NULL(rp))
+		replay_stage3(rp, 0);
+	put_super(sb);
+	return err;
+}
+
 /* Clear first and last block to get rid of other magic */
 static int clear_other_magic(struct sb *sb)
 {

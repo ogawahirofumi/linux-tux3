@@ -739,7 +739,7 @@ static int dump_main(struct sb *sb, struct dump_opts *opts)
 			return errno;
 	}
 
-	struct replay *rp = tux3_init_fs(sb);
+	struct replay *rp = __load_fs(sb);
 	if (IS_ERR(rp)) {
 		err = PTR_ERR(rp);
 		return err;
