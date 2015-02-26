@@ -1,4 +1,6 @@
-VG	= valgrind --error-exitcode=200 --leak-check=full
+VG	= valgrind $(VGFLAGS)
+VGFLAGS	+= --error-exitcode=200
+VGFLAGS	+= --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all
 
 # test rules
 .NOTPARALLEL: tests
