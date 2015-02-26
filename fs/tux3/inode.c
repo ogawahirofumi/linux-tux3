@@ -280,7 +280,7 @@ static void tux_assign_inum_failed(struct inode *inode)
 	 * If inode was initialized and hashed already, it would be
 	 * better to use deferred deletion path.
 	 */
-	assert(!inode_unhashed(inode));
+	assert(inode_unhashed(inode));
 
 	cancel_defer_alloc_inum(inode);
 
@@ -288,7 +288,6 @@ static void tux_assign_inum_failed(struct inode *inode)
 	make_bad_inode(inode);
 
 	clear_nlink(inode);
-	unlock_new_inode(inode);
 	iput(inode);
 }
 
