@@ -63,11 +63,12 @@ static int bitmap_all_clear(struct sb *sb, block_t start, unsigned count)
 static void clean_main(struct sb *sb)
 {
 	invalidate_buffers(sb->bitmap->map);
-	free_map(sb->bitmap->map);
+	rapid_free_inode(sb->bitmap);
 
 	countmap_put(&sb->countmap_pin);
 	invalidate_buffers(sb->countmap->map);
-	free_map(sb->countmap->map);
+	rapid_free_inode(sb->countmap);
+
 	tux3_free_idefer_map(sb->idefer_map);
 	tux3_exit_mem();
 }
@@ -367,10 +368,8 @@ int main(int argc, char *argv[])
 
 	test_init(argv[0]);
 
-	struct inode *bitmap = rapid_open_inode(sb, NULL, 0);
-	sb->bitmap = bitmap;
-	struct inode *countmap = rapid_open_inode(sb, NULL, 0);
-	sb->countmap = countmap;
+	sb->bitmap = rapid_new_inode(sb, NULL, 0);
+	sb->countmap = rapid_new_inode(sb, NULL, 0);
 
 	block_t groups = (volblocks + (1 << groupbits) - 1) >> groupbits;
 	block_t groupblocks = (2 * groups + sb->blocksize - 1) >> sb->blockbits;

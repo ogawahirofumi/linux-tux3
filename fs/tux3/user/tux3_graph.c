@@ -817,7 +817,7 @@ static void draw_ileaf_attr(struct graph_info *gi, struct btree *btree,
 			    void *attrs, u16 size)
 {
 	struct sb *sb = btree->sb;
-	struct inode *inode = rapid_open_inode(sb, NULL, 0);
+	struct inode *inode = rapid_new_inode(sb, NULL, 0);
 
 	/* Check there is orphaned inode */
 	struct inode *cache_inode = tux3_ilookup(sb, inum);
@@ -843,7 +843,7 @@ static void draw_ileaf_attr(struct graph_info *gi, struct btree *btree,
 		orphan ? "</font>" : "");
 
 	free_xcache(inode);
-	free_map(inode->map);
+	rapid_free_inode(inode);
 }
 
 static void __draw_ileaf(struct graph_info *gi, struct btree *btree,

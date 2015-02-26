@@ -67,23 +67,6 @@ static inline struct timespec gettime(void)
 	.logcount	= 0,					\
 }
 
-#define rapid_open_inode(sb, io, mode) ({			\
-	struct tux3_inode *__tux = &(struct tux3_inode){};	\
-	struct inode *__inode = &__tux->vfs_inode;		\
-								\
-	__inode->map = new_map((sb)->dev, io);			\
-	assert(__inode->map);					\
-	__inode->map->inode = __inode;				\
-								\
-	inode_init(__tux, sb, mode);				\
-	/* Set TUX_INVALID_INO explicitly (tux_set_inum()) */	\
-	__tux->inum = TUX_INVALID_INO;				\
-	/* Initialize lock for convenience. */			\
-	init_rwsem(&__tux->btree.lock);				\
-								\
-	__inode;						\
-})
-
 #define rapid_sb(x)	(&(struct sb){		\
 	.dev = x,				\
 	.mopt = tux3_default_mopt,		\
@@ -115,6 +98,8 @@ void i_size_write(struct inode *inode, loff_t i_size);
 void iput(struct inode *inode);
 int __tuxtruncate(struct inode *inode, loff_t size);
 int tuxtruncate(struct inode *inode, loff_t size);
+struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode);
+void rapid_free_inode(struct inode *inode);
 
 /* namei.c */
 struct inode *tuxopen(struct inode *dir, const char *name, unsigned len);

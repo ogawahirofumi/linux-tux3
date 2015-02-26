@@ -23,7 +23,7 @@ static void clean_main(struct sb *sb, struct inode *inode)
 {
 	log_finish(sb);
 	log_finish_cycle(sb, 1);
-	free_map(inode->map);
+	rapid_free_inode(inode);
 	destroy_defer_bfree(&sb->deunify);
 	destroy_defer_bfree(&sb->defree);
 	tux3_clear_dirty_inode(sb->logmap);
@@ -780,7 +780,7 @@ int main(int argc, char *argv[])
 	sb->logmap = tux_new_logmap(sb);
 	assert(sb->logmap);
 
-	struct inode *inode = rapid_open_inode(sb, dev_errio, 0);
+	struct inode *inode = rapid_new_inode(sb, dev_errio, 0);
 	assert(inode);
 
 	test_init(argv[0]);

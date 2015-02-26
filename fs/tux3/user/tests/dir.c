@@ -10,7 +10,7 @@
 static void clean_main(struct sb *sb, struct inode *dir)
 {
 	invalidate_buffers(dir->map);
-	free_map(dir->map);
+	rapid_free_inode(dir);
 	put_super(sb);
 	tux3_exit_mem();
 }
@@ -24,9 +24,9 @@ static void test01(struct sb *sb, struct inode *dir)
 
 	struct qstr name1 = { .name = (unsigned char *)"hello", .len = 5, };
 	struct qstr name2 = { .name = (unsigned char *)"world", .len = 5, };
-	struct inode *inode1 = rapid_open_inode(sb, NULL, S_IFREG);
+	struct inode *inode1 = rapid_new_inode(sb, NULL, S_IFREG);
 	tux_inode(inode1)->inum = 0x666;
-	struct inode *inode2 = rapid_open_inode(sb, NULL, S_IFLNK);
+	struct inode *inode2 = rapid_new_inode(sb, NULL, S_IFLNK);
 	tux_inode(inode2)->inum = 0x777;
 
 	change_begin_atomic(sb);
@@ -62,8 +62,8 @@ static void test01(struct sb *sb, struct inode *dir)
 
 	change_end_atomic(sb);
 
-	free_map(inode1->map);
-	free_map(inode2->map);
+	rapid_free_inode(inode1);
+	rapid_free_inode(inode2);
 	clean_main(sb, dir);
 }
 
@@ -95,7 +95,7 @@ static void test02(struct sb *sb, struct inode *dir)
 	int i = 0, changed = 0;
 	loff_t size = 0;
 	while (changed < 2) {
-		struct inode *inode1 = rapid_open_inode(sb, NULL, S_IFREG);
+		struct inode *inode1 = rapid_new_inode(sb, NULL, S_IFREG);
 		tux_inode(inode1)->inum = i + 99;
 
 		char name[100];
@@ -108,7 +108,7 @@ static void test02(struct sb *sb, struct inode *dir)
 		err = tux_create_dirent(dir, &qstr, inode1);
 		test_assert(!err);
 
-		free_map(inode1->map);
+		rapid_free_inode(inode1);
 
 		if (size != dir->i_size) {
 			size = dir->i_size;
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
 	assert(!setup_sb(sb, &sb->super));
 	assert(!set_blocksize(sb->blocksize));
 
-	struct inode *dir = rapid_open_inode(sb, NULL, S_IFDIR);
+	struct inode *dir = rapid_new_inode(sb, NULL, S_IFDIR);
 
 	test_init(argv[0]);
 

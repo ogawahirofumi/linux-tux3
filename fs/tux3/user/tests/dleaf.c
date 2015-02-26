@@ -28,7 +28,7 @@ static void clean_main(struct sb *sb, struct btree *btree)
 	destroy_defer_bfree(&sb->deunify);
 	destroy_defer_bfree(&sb->defree);
 	tux3_clear_dirty_inode(sb->logmap);
-	free_map(btree_inode(btree)->map);
+	rapid_free_inode(btree_inode(btree));
 	put_super(sb);
 	tux3_exit_mem();
 }
@@ -1133,7 +1133,7 @@ int main(int argc, char *argv[])
 
 	test_init(argv[0]);
 
-	struct inode *inode = rapid_open_inode(sb, NULL, S_IFREG);
+	struct inode *inode = rapid_new_inode(sb, NULL, S_IFREG);
 	struct btree *btree = &tux_inode(inode)->btree;
 	init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
 

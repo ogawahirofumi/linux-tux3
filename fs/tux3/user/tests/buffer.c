@@ -12,8 +12,8 @@ static void test01(void)
 	init_buffer_params(NR_BUF << dev->bits, 1);
 	set_blocksize(1 << dev->bits);
 
-	struct inode *inode1 = rapid_open_inode(&sb, NULL, 0);
-	struct inode *inode2 = rapid_open_inode(&sb, NULL, 0);
+	struct inode *inode1 = rapid_new_inode(&sb, NULL, 0);
+	struct inode *inode2 = rapid_new_inode(&sb, NULL, 0);
 	map_t *map1 = inode1->map;
 	map_t *map2 = inode2->map;
 
@@ -89,8 +89,8 @@ static void test01(void)
 		blockput(map2_bufs[i]);
 	invalidate_buffers(map2);
 
-	free_map(map1);
-	free_map(map2);
+	rapid_free_inode(inode1);
+	rapid_free_inode(inode2);
 }
 
 /* Test for bufvec */

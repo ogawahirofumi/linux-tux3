@@ -28,8 +28,8 @@ static void clean_main(struct sb *sb)
 static void test01(struct sb *sb)
 {
 	unsigned abits = RDEV_BIT|MODE_OWNER_BIT|CTIME_SIZE_BIT|LINK_COUNT_BIT|MTIME_BIT;
-	struct inode *inode1 = rapid_open_inode(sb, NULL, S_IFCHR | 0644);
-	struct inode *inode2 = rapid_open_inode(sb, NULL, 0x666);
+	struct inode *inode1 = rapid_new_inode(sb, NULL, S_IFCHR | 0644);
+	struct inode *inode2 = rapid_new_inode(sb, NULL, 0x666);
 	unsigned delta;
 
 	change_begin_atomic(sb);
@@ -87,8 +87,8 @@ static void test01(struct sb *sb)
 	test_assert(tuxnode1->btree.root.block == tuxnode2->btree.root.block);
 	test_assert(tuxnode1->btree.root.depth == tuxnode2->btree.root.depth);
 
-	free_map(inode1->map);
-	free_map(inode2->map);
+	rapid_free_inode(inode1);
+	rapid_free_inode(inode2);
 }
 
 int main(int argc, char *argv[])

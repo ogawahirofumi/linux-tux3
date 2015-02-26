@@ -594,7 +594,7 @@ static void dump_ileaf_attr(struct dump_info *di, struct btree *btree,
 			    void *attrs, u16 size)
 {
 	struct sb *sb = btree->sb;
-	struct inode *inode = rapid_open_inode(sb, NULL, 0);
+	struct inode *inode = rapid_new_inode(sb, NULL, 0);
 #if 0
 	/* Check there is orphaned inode */
 	struct inode *cache_inode = tux3_ilookup(sb, inum);
@@ -613,7 +613,7 @@ static void dump_ileaf_attr(struct dump_info *di, struct btree *btree,
 	}
 
 	free_xcache(inode);
-	free_map(inode->map);
+	rapid_free_inode(inode);
 }
 
 static void __dump_ileaf(struct dump_info *di, struct btree *btree,

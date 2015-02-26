@@ -88,16 +88,17 @@ error:
 	return NULL;
 }
 
+static inline void __free_inode(struct inode *inode)
+{
+	free_map(mapping(inode));
+	free(tux_inode(inode));
+}
+
 static void free_inode(struct inode *inode)
 {
-	struct tux3_inode *tuxnode = tux_inode(inode);
-
 	inode->i_state &= ~I_BAD;
-
-	free_inode_check(tuxnode);
-
-	free_map(mapping(inode));
-	free(tuxnode);
+	free_inode_check(tux_inode(inode));
+	__free_inode(inode);
 }
 
 /* This is just to clean inode is partially initialized */
@@ -340,4 +341,28 @@ int tuxtruncate(struct inode *inode, loff_t size)
 	change_end(sb);
 
 	return err;
+}
+
+/* Easy way to make a dummy inode. */
+struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode)
+{
+	static struct inode dir;
+	static struct tux_iattr iattr;
+	struct inode *inode;
+
+	dir.i_sb = sb;
+	iattr.mode = mode;
+	inode = tux_new_inode(&dir, &iattr, 0);
+	assert(inode);
+
+	inode->map->io = io;
+	/* Initialize lock for convenience. */
+	init_rwsem(&tux_inode(inode)->btree.lock);
+
+	return inode;
+}
+
+void rapid_free_inode(struct inode *inode)
+{
+	__free_inode(inode);
 }
