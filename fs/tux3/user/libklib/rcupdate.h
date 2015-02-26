@@ -1,6 +1,25 @@
 #ifndef LIBKLIB_RCUPDATE_H
 #define LIBKLIB_RCUPDATE_H
 
+struct rcu_head {
+	/* stub */
+};
+
+static inline void rcu_barrier_sched(void)
+{
+}
+
+static inline void rcu_barrier(void)
+{
+	rcu_barrier_sched();
+}
+
+static inline void call_rcu(struct rcu_head *head,
+			    void (*func)(struct rcu_head *rcu))
+{
+	func(head);
+}
+
 #define rcu_lockdep_assert(c, s) do { } while (0)
 
 /*

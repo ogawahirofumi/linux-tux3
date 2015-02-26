@@ -31,6 +31,9 @@ struct inode {
 
 	map_t			*map;
 	struct hlist_node	i_hash;
+	union {
+		struct rcu_head		i_rcu;
+	};
 };
 
 /*
