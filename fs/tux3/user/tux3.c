@@ -170,22 +170,9 @@ static int cmd_mkfs(struct sb *sb, const char *progname, const char *command,
 
 	sb->dev->fd = fd;
 	sb->dev->bits = blockbits;
-	int err = set_blocksize(1 << blockbits);
-	if (err)
-		error_exit("set_blocksize was failed");
-
 	sb->super = INIT_DISKSB(blockbits, volsize >> blockbits);
-	assert(!setup_sb(sb, &sb->super));
 
-	sb->volmap = tux_new_volmap(sb);
-	if (!sb->volmap)
-		return -ENOMEM;
-
-	sb->logmap = tux_new_logmap(sb);
-	if (!sb->logmap)
-		return -ENOMEM;
-
-	err = mkfs_tux3(sb);
+	int err = mkfs_tux3(sb);
 
 	free(argv2optv(args));
 

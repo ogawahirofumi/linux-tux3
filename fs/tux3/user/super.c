@@ -137,7 +137,7 @@ static int reserve_superblock(struct sb *sb)
 	return 0;
 }
 
-int __mkfs_tux3(struct sb *sb)
+static int do_mkfs_tux3(struct sb *sb)
 {
 	int err;
 
@@ -202,6 +202,29 @@ error_change_end:
 error:
 	/* Caller have responsibility to cleanup inodes. */
 	return err;
+}
+
+int __mkfs_tux3(struct sb *sb)
+{
+	int err;
+
+	err = setup_sb(sb, &sb->super);
+	if (err)
+		return err;
+
+	err = set_blocksize(sb->blocksize);
+	if (err)
+		return err;
+
+	sb->volmap = tux_new_volmap(sb);
+	if (!sb->volmap)
+		return -ENOMEM;
+
+	sb->logmap = tux_new_logmap(sb);
+	if (!sb->logmap)
+		return -ENOMEM;
+
+	return do_mkfs_tux3(sb);
 }
 
 int mkfs_tux3(struct sb *sb)

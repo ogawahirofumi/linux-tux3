@@ -183,11 +183,9 @@ static void clean_sb(struct sb *sb)
 {
 	/* Check if it didn't make strange dirty buffer */
 	check_dirty(sb);
-
 	put_super(sb);
 }
 
-/* cleanup of main() */
 static void clean_main(struct sb *sb)
 {
 	clean_sb(sb);
@@ -205,14 +203,14 @@ static void clean_main_and_fsck(struct sb *sb)
 /* Generate all type of logs, and replay. */
 static void test01(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+
 #define NUM_FILES	100
 #define NUM_FAIL	5
 	static struct open_result results[NUM_FILES + NUM_FAIL];
 
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
 	struct inode *inode;
-
-	test_assert(mkfs_tux3(sb) == 0);
 
 	/*
 	 * This should make at least:
@@ -306,12 +304,12 @@ static void test01(struct sb *sb)
 /*  FIXME: check if I/O is nothing for inode */
 static void test02(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+	test_assert(force_unify(sb) == 0);
+
 	static struct open_result r;
 
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
-
-	test_assert(mkfs_tux3(sb) == 0);
-	test_assert(force_unify(sb) == 0);
 
 	r.namelen = snprintf(r.name, sizeof(r.name), "file%03d", 1);
 	r.err = -ENOENT;
@@ -345,12 +343,12 @@ static void test02(struct sb *sb)
 /* Test to unlink file after flushing */
 static void test03(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+	test_assert(force_unify(sb) == 0);
+
 	static struct open_result r;
 
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
-
-	test_assert(mkfs_tux3(sb) == 0);
-	test_assert(force_unify(sb) == 0);
 
 	r.namelen = snprintf(r.name, sizeof(r.name), "file%03d", 1);
 	r.err = -ENOENT;
@@ -469,11 +467,11 @@ static void check_orphan_inum(struct replay *rp, struct orphan_data *data,
 /* Test for orphan inodes */
 static void test04(struct sb *sb)
 {
-#define NR_ORPHAN	5
-	struct orphan_data *data = test_alloc_shm(sizeof(*data) * NR_ORPHAN);
-
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
+
+#define NR_ORPHAN	5
+	struct orphan_data *data = test_alloc_shm(sizeof(*data) * NR_ORPHAN);
 
 	/* Create on disk image to test lived orphan */
 	pid_t pid = fork();
@@ -628,12 +626,12 @@ static void test04(struct sb *sb)
 /* Test for mkdir/rmdir */
 static void test05(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+	test_assert(force_unify(sb) == 0);
+
 	static struct open_result r;
 
 	struct tux_iattr iattr = { .mode = S_IFDIR | 0755 };
-
-	test_assert(mkfs_tux3(sb) == 0);
-	test_assert(force_unify(sb) == 0);
 
 	r.namelen = snprintf(r.name, sizeof(r.name), "dir%03d", 1);
 	r.err = -ENOENT;
@@ -703,6 +701,9 @@ static void test05(struct sb *sb)
 /* Test for rename */
 static void test06(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+	test_assert(force_unify(sb) == 0);
+
 	enum { F, D, C, B, A, B2, O, };
 	static struct open_result r[] = {
 		[F] = {
@@ -743,9 +744,6 @@ static void test06(struct sb *sb)
 	};
 
 	struct tux_iattr iattr = { .mode = S_IFDIR | 0755 };
-
-	test_assert(mkfs_tux3(sb) == 0);
-	test_assert(force_unify(sb) == 0);
 
 	/* Test create("file"). */
 	struct inode *inode;
@@ -949,11 +947,11 @@ static void test08(struct sb *sb)
 /* Test for cross boundary allocation on countmap group and fsck */
 static void test09(struct sb *sb)
 {
-	unsigned align = 1 << sb->groupbits;
-	block_t start = align * 3;	/* pick free blocks on boundary */
-
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
+
+	unsigned align = 1 << sb->groupbits;
+	block_t start = align * 3;	/* pick free blocks on boundary */
 
 	/* Make dirty inode to workaround tux3_has_dirty_inodes() check */
 	add_dirty_inode(sb);
@@ -984,12 +982,13 @@ static void test09(struct sb *sb)
 /* Test for mount options */
 static void test10(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+
 	char options[512];
 	char buf[512];
 	ssize_t size_all, size;
 	int err;
 
-	test_assert(mkfs_tux3(sb) == 0);
 	/* Should have default options */
 	test_assert(sb->mopt.flags == tux3_default_mopt.flags);
 
@@ -1109,6 +1108,8 @@ static void test11(struct sb *sb)
 /* Test for reading saved inodes from disk  */
 static void test12(struct sb *sb)
 {
+	test_assert(mkfs_tux3(sb) == 0);
+
 #define NR_REG		10
 #define NR_NON_REG	4
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
@@ -1117,8 +1118,6 @@ static void test12(struct sb *sb)
 		char name[256];
 		int len;
 	} entries[NR_REG + NR_NON_REG];
-
-	test_assert(mkfs_tux3(sb) == 0);
 
 	/* Create and remember inode */
 	for (int i = 0; i < NR_REG; i++) {
@@ -1210,20 +1209,12 @@ int main(int argc, char *argv[])
 	int err = ftruncate(fd, volsize);
 	assert(!err);
 
-	struct dev *dev = &(struct dev){ .fd = fd, .bits = 8 };
-
 	err = tux3_init_mem(1 << 24, 2);
 	assert(!err);
 
+	struct dev *dev = &(struct dev){ .fd = fd, .bits = 8 };
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, volsize >> dev->bits);
-	assert(!setup_sb(sb, &sb->super));
-	assert(!set_blocksize(sb->blocksize));
-
-	sb->volmap = tux_new_volmap(sb);
-	assert(sb->volmap);
-	sb->logmap = tux_new_logmap(sb);
-	assert(sb->logmap);
 
 	test_init(argv[0]);
 
@@ -1275,6 +1266,6 @@ int main(int argc, char *argv[])
 		test12(sb);
 	test_end();
 
-	clean_main(sb);
+	tux3_exit_mem();
 	return test_failures();
 }
