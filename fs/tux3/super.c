@@ -26,10 +26,117 @@ int tux3_trace;
 module_param(tux3_trace, int, 0644);
 #endif
 
-/* Default mount options */
-const struct tux3_mount_opt tux3_default_mopt = {
-	.flags		= TUX3_MOPT_BARRIER,
-};
+static struct kmem_cache *tux_inode_cachep;
+
+static void tux3_inode_init_once(void *mem)
+{
+	struct tux3_inode *tuxnode = mem;
+	struct inode *inode = &tuxnode->vfs_inode;
+	int i;
+
+	INIT_LIST_HEAD(&tuxnode->alloc_list);
+	INIT_LIST_HEAD(&tuxnode->orphan_list);
+	spin_lock_init(&tuxnode->hole_extents_lock);
+	INIT_LIST_HEAD(&tuxnode->hole_extents);
+	init_rwsem(&tuxnode->truncate_lock);
+	spin_lock_init(&tuxnode->lock);
+	/* Initialize inode_delta_dirty */
+	for (i = 0; i < ARRAY_SIZE(tuxnode->i_ddc); i++) {
+		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_buffers);
+		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_holes);
+		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_list);
+		/* For debugging, set invalid value to ->present */
+		tuxnode->i_ddc[i].idata.present = TUX3_INVALID_PRESENT;
+	}
+
+	/* Initialize generic part */
+	inode_init_once(inode);
+}
+
+static void tux3_inode_init_always(struct tux3_inode *tuxnode)
+{
+	static struct timespec epoch;
+	struct inode *inode = &tuxnode->vfs_inode;
+
+	tuxnode->btree		= (struct btree){ };
+	tuxnode->present	= 0;
+	tuxnode->xcache		= NULL;
+	tuxnode->flags		= 0;
+#ifdef __KERNEL__
+	tuxnode->io		= NULL;
+#endif
+
+	/* uninitialized stuff by alloc_inode() */
+	inode->i_version	= 1;
+	inode->i_atime		= epoch;
+	inode->i_mtime		= epoch;
+	inode->i_ctime		= epoch;
+	inode->i_mode		= 0;
+}
+
+static struct inode *tux3_alloc_inode(struct super_block *sb)
+{
+	struct tux3_inode *tuxnode;
+
+	tuxnode = kmem_cache_alloc(tux_inode_cachep, GFP_KERNEL);
+	if (!tuxnode)
+		return NULL;
+
+	tux3_inode_init_always(tuxnode);
+
+	return &tuxnode->vfs_inode;
+}
+
+static void tux3_i_callback(struct rcu_head *head)
+{
+	struct inode *inode = container_of(head, struct inode, i_rcu);
+	kmem_cache_free(tux_inode_cachep, tux_inode(inode));
+}
+
+static int i_ddc_is_clean(struct inode *inode)
+{
+	struct tux3_inode *tuxnode = tux_inode(inode);
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(tuxnode->i_ddc); i++) {
+		if (!list_empty(&tuxnode->i_ddc[i].dirty_buffers) ||
+		    !list_empty(&tuxnode->i_ddc[i].dirty_list))
+			return 0;
+	}
+
+	return 1;
+}
+
+static void tux3_destroy_inode(struct inode *inode)
+{
+	tux3_check_destroy_inode_flags(inode);
+	assert(list_empty(&tux_inode(inode)->alloc_list));
+	assert(list_empty(&tux_inode(inode)->orphan_list));
+	assert(i_ddc_is_clean(inode));
+
+	call_rcu(&inode->i_rcu, tux3_i_callback);
+}
+
+static int __init tux3_init_inodecache(void)
+{
+	tux_inode_cachep = kmem_cache_create("tux3_inode_cache",
+			sizeof(struct tux3_inode), 0,
+			(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD),
+			tux3_inode_init_once);
+	if (tux_inode_cachep == NULL)
+		return -ENOMEM;
+	return 0;
+}
+
+static void tux3_destroy_inodecache(void)
+{
+	/*
+	 * Make sure all delayed rcu free inodes are flushed before we
+	 * destroy cache.
+	 */
+	rcu_barrier();
+	kmem_cache_destroy(tux_inode_cachep);
+}
 
 #ifdef __KERNEL__
 #define BUFFER_LINK	b_assoc_buffers
@@ -255,74 +362,6 @@ error:
 	return ERR_PTR(err);
 }
 
-static void tux3_inode_init_once(void *mem)
-{
-	struct tux3_inode *tuxnode = mem;
-	struct inode *inode = &tuxnode->vfs_inode;
-	int i;
-
-	INIT_LIST_HEAD(&tuxnode->alloc_list);
-	INIT_LIST_HEAD(&tuxnode->orphan_list);
-	spin_lock_init(&tuxnode->hole_extents_lock);
-	INIT_LIST_HEAD(&tuxnode->hole_extents);
-	init_rwsem(&tuxnode->truncate_lock);
-	spin_lock_init(&tuxnode->lock);
-	/* Initialize inode_delta_dirty */
-	for (i = 0; i < ARRAY_SIZE(tuxnode->i_ddc); i++) {
-		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_buffers);
-		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_holes);
-		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_list);
-		/* For debugging, set invalid value to ->present */
-		tuxnode->i_ddc[i].idata.present = TUX3_INVALID_PRESENT;
-	}
-
-	/* Initialize generic part */
-	inode_init_once(inode);
-}
-
-static void tux3_inode_init_always(struct tux3_inode *tuxnode)
-{
-	static struct timespec epoch;
-	struct inode *inode = &tuxnode->vfs_inode;
-
-	tuxnode->btree		= (struct btree){ };
-	tuxnode->present	= 0;
-	tuxnode->xcache		= NULL;
-	tuxnode->flags		= 0;
-#ifdef __KERNEL__
-	tuxnode->io		= NULL;
-#endif
-
-	/* uninitialized stuff by alloc_inode() */
-	inode->i_version	= 1;
-	inode->i_atime		= epoch;
-	inode->i_mtime		= epoch;
-	inode->i_ctime		= epoch;
-	inode->i_mode		= 0;
-}
-
-static int i_ddc_is_clean(struct inode *inode)
-{
-	struct tux3_inode *tuxnode = tux_inode(inode);
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(tuxnode->i_ddc); i++) {
-		if (!list_empty(&tuxnode->i_ddc[i].dirty_buffers) ||
-		    !list_empty(&tuxnode->i_ddc[i].dirty_list))
-			return 0;
-	}
-
-	return 1;
-}
-
-static void tux3_check_destroy_inode(struct inode *inode)
-{
-	tux3_check_destroy_inode_flags(inode);
-	assert(list_empty(&tux_inode(inode)->alloc_list));
-	assert(list_empty(&tux_inode(inode)->orphan_list));
-	assert(i_ddc_is_clean(inode));
-}
-
 /* Initialize the lock and list */
 static int init_sb(struct sb *sb)
 {
@@ -440,6 +479,11 @@ static int load_sb(struct sb *sb)
 
 	return 0;
 }
+
+/* Default mount options */
+const struct tux3_mount_opt tux3_default_mopt = {
+	.flags		= TUX3_MOPT_BARRIER,
+};
 
 #define MOPT_SET	(1 << 0)
 #define MOPT_CLEAR	(1 << 1)
@@ -584,54 +628,6 @@ static int __tux3_show_options(struct seq_file *seq, struct dentry *root,
 }
 
 #ifdef __KERNEL__
-static struct kmem_cache *tux_inode_cachep;
-
-static int __init tux3_init_inodecache(void)
-{
-	tux_inode_cachep = kmem_cache_create("tux3_inode_cache",
-			sizeof(struct tux3_inode), 0,
-			(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD),
-			tux3_inode_init_once);
-	if (tux_inode_cachep == NULL)
-		return -ENOMEM;
-	return 0;
-}
-
-static void tux3_destroy_inodecache(void)
-{
-	/*
-	 * Make sure all delayed rcu free inodes are flushed before we
-	 * destroy cache.
-	 */
-	rcu_barrier();
-	kmem_cache_destroy(tux_inode_cachep);
-}
-
-static struct inode *tux3_alloc_inode(struct super_block *sb)
-{
-	struct tux3_inode *tuxnode;
-
-	tuxnode = kmem_cache_alloc(tux_inode_cachep, GFP_KERNEL);
-	if (!tuxnode)
-		return NULL;
-
-	tux3_inode_init_always(tuxnode);
-
-	return &tuxnode->vfs_inode;
-}
-
-static void tux3_i_callback(struct rcu_head *head)
-{
-	struct inode *inode = container_of(head, struct inode, i_rcu);
-	kmem_cache_free(tux_inode_cachep, tux_inode(inode));
-}
-
-static void tux3_destroy_inode(struct inode *inode)
-{
-	tux3_check_destroy_inode(inode);
-	call_rcu(&inode->i_rcu, tux3_i_callback);
-}
-
 static int tux3_sync_fs(struct super_block *sb, int wait)
 {
 	/*
