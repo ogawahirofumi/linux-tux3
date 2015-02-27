@@ -70,13 +70,10 @@ static void destroy_inode_nocheck(struct inode *inode)
 
 static void destroy_inode(struct inode *inode)
 {
-	inode->i_state &= ~I_BAD;
-
 	assert(hlist_unhashed(&inode->i_hash));
-	assert(inode->i_state == I_FREEING);
-	assert(mapping(inode));
 
-	free_map(mapping(inode));
+	if (mapping(inode))
+		free_map(mapping(inode));
 	__destroy_inode(inode);
 }
 
@@ -114,7 +111,7 @@ static struct inode *new_inode(struct sb *sb)
 	return inode;
 
 error_map:
-	__destroy_inode(inode);
+	destroy_inode(inode);
 error:
 	return NULL;
 }
