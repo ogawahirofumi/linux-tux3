@@ -799,11 +799,11 @@ int replay_bnode_del(struct replay *rp, block_t bnode, tuxkey_t key, unsigned co
 int replay_bnode_adjust(struct replay *rp, block_t bnode, tuxkey_t from, tuxkey_t to);
 
 /* commit.c */
-int setup_sb(struct sb *sb, struct disksuper *super);
-int load_sb(struct sb *sb);
 void tux3_start_backend(struct sb *sb);
 void tux3_end_backend(void);
 int tux3_under_backend(struct sb *sb);
+void tux3_delta_init(struct sb *sb);
+void tux3_delta_setup(struct sb *sb);
 unsigned tux3_get_current_delta(void);
 unsigned tux3_inode_delta(struct inode *inode);
 int sync_current_delta(struct sb *sb);
