@@ -143,6 +143,7 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 void inode_init(struct tux3_inode *tuxnode, struct sb *sb, umode_t mode);
 void free_inode_check(struct tux3_inode *tuxnode);
 int put_super(struct sb *sb);
+int setup_sb(struct sb *sb, struct disksuper *super);
 int __mkfs_tux3(struct sb *sb);
 int mkfs_tux3(struct sb *sb);
 int setup_mount_options(struct sb *sb, void *data);

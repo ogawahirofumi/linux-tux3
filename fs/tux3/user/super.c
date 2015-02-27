@@ -67,6 +67,20 @@ int put_super(struct sb *sb)
 	return 0;
 }
 
+/* Initialize and setup sb by on-disk super block. */
+int setup_sb(struct sb *sb, struct disksuper *super)
+{
+	int err;
+
+	err = init_sb(sb);
+	if (err)
+		return err;
+
+	__setup_sb(sb, super);
+
+	return 0;
+}
+
 /* Clear first and last block to get rid of other magic */
 static int clear_other_magic(struct sb *sb)
 {
