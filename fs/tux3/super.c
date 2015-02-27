@@ -100,6 +100,7 @@ static int i_ddc_is_clean(struct inode *inode)
 
 	for (i = 0; i < ARRAY_SIZE(tuxnode->i_ddc); i++) {
 		if (!list_empty(&tuxnode->i_ddc[i].dirty_buffers) ||
+		    !list_empty(&tuxnode->i_ddc[i].dirty_holes) ||
 		    !list_empty(&tuxnode->i_ddc[i].dirty_list))
 			return 0;
 	}
@@ -109,9 +110,10 @@ static int i_ddc_is_clean(struct inode *inode)
 
 static void tux3_destroy_inode(struct inode *inode)
 {
-	tux3_check_destroy_inode_flags(inode);
+	/* Those must be clean, tux3_inode_init_always() doesn't init. */
 	assert(list_empty(&tux_inode(inode)->alloc_list));
 	assert(list_empty(&tux_inode(inode)->orphan_list));
+	assert(list_empty(&tux_inode(inode)->hole_extents));
 	assert(i_ddc_is_clean(inode));
 
 	call_rcu(&inode->i_rcu, tux3_i_callback);
@@ -398,7 +400,7 @@ static int init_sb(struct sb *sb)
 static void setup_roots(struct sb *sb, struct disksuper *super)
 {
 	u64 iroot_val = be64_to_cpu(super->iroot);
-	u64 oroot_val = be64_to_cpu(sb->super.oroot);
+	u64 oroot_val = be64_to_cpu(super->oroot);
 	init_btree(itree_btree(sb), sb, unpack_root(iroot_val), &itree_ops);
 	init_btree(otree_btree(sb), sb, unpack_root(oroot_val), &otree_ops);
 }
