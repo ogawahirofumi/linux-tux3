@@ -323,6 +323,124 @@ static void tux3_check_destroy_inode(struct inode *inode)
 	assert(i_ddc_is_clean(inode));
 }
 
+/* Initialize the lock and list */
+static int init_sb(struct sb *sb)
+{
+	int i;
+
+	/* Initialize sb */
+
+	tux3_delta_init(sb);
+
+	INIT_LIST_HEAD(&sb->orphan_add);
+	INIT_LIST_HEAD(&sb->orphan_del);
+	stash_init(&sb->defree);
+	stash_init(&sb->deunify);
+	INIT_LIST_HEAD(&sb->unify_buffers);
+	INIT_LIST_HEAD(&sb->phase2_buffers);
+
+	INIT_LIST_HEAD(&sb->alloc_inodes);
+	spin_lock_init(&sb->countmap_lock);
+	spin_lock_init(&sb->forked_buffers_lock);
+	init_link_circular(&sb->forked_buffers);
+	spin_lock_init(&sb->dirty_inodes_lock);
+
+	/* Initialize sb_delta_dirty */
+	for (i = 0; i < ARRAY_SIZE(sb->s_ddc); i++)
+		INIT_LIST_HEAD(&sb->s_ddc[i].dirty_inodes);
+
+	sb->idefer_map = tux3_alloc_idefer_map();
+	if (!sb->idefer_map)
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void setup_roots(struct sb *sb, struct disksuper *super)
+{
+	u64 iroot_val = be64_to_cpu(super->iroot);
+	u64 oroot_val = be64_to_cpu(sb->super.oroot);
+	init_btree(itree_btree(sb), sb, unpack_root(iroot_val), &itree_ops);
+	init_btree(otree_btree(sb), sb, unpack_root(oroot_val), &otree_ops);
+}
+
+static loff_t calc_maxbytes(loff_t blocksize)
+{
+	return min_t(loff_t, blocksize << MAX_BLOCKS_BITS, MAX_LFS_FILESIZE);
+}
+
+/* FIXME: Should goes into core */
+static inline u64 roundup_pow_of_two64(u64 n)
+{
+	return 1ULL << fls64(n - 1);
+}
+
+/* Setup sb by on-disk super block */
+static void __setup_sb(struct sb *sb, struct disksuper *super)
+{
+	tux3_delta_setup(sb);
+
+	sb->blockbits = be16_to_cpu(super->blockbits);
+	sb->volblocks = be64_to_cpu(super->volblocks);
+	sb->version = 0;	/* FIXME: not yet implemented */
+
+	sb->blocksize = 1 << sb->blockbits;
+	sb->blockmask = (1 << sb->blockbits) - 1;
+	sb->groupbits = 13; // FIXME: put in disk super?
+	sb->volmask = roundup_pow_of_two64(sb->volblocks) - 1;
+	sb->entries_per_node = calc_entries_per_node(sb->blocksize);
+	/* Initialize base indexes for atable */
+	atable_init_base(sb);
+
+	/* vfs fields */
+	vfs_sb(sb)->s_maxbytes = calc_maxbytes(sb->blocksize);
+	vfs_sb(sb)->s_max_links = TUX_MAX_LINKS;
+
+	/* Probably does not belong here (maybe metablock) */
+	sb->freeinodes = MAX_INODES - be64_to_cpu(super->usedinodes);
+	sb->freeblocks = sb->volblocks;
+	sb->nextblock = be64_to_cpu(super->nextblock);
+	sb->nextinum = TUX_NORMAL_INO;
+	sb->atomdictsize = be64_to_cpu(super->atomdictsize);
+	sb->atomgen = be32_to_cpu(super->atomgen);
+	sb->freeatom = be32_to_cpu(super->freeatom);
+	/* logchain and logcount are read from super directly */
+	trace("blocksize %u, blockbits %u, blockmask %08x, groupbits %u",
+	      sb->blocksize, sb->blockbits, sb->blockmask, sb->groupbits);
+	trace("volblocks %Lu, volmask %Lx",
+	      sb->volblocks, sb->volmask);
+	trace("freeblocks %Lu, freeinodes %Lu, nextblock %Lu",
+	      sb->freeblocks, sb->freeinodes, sb->nextblock);
+	trace("atom_dictsize %Lu, freeatom %u, atomgen %u",
+	      (s64)sb->atomdictsize, sb->freeatom, sb->atomgen);
+	trace("logchain %Lu, logcount %u",
+	      be64_to_cpu(super->logchain), be32_to_cpu(super->logcount));
+
+	setup_roots(sb, super);
+}
+
+/* Load on-disk super block, and call setup_sb() with it */
+static int load_sb(struct sb *sb)
+{
+	struct disksuper *super = &sb->super;
+	int err;
+
+	/* At least initialize sb, even if load is failed */
+	err = init_sb(sb);
+	if (err)
+		return err;
+
+	err = devio_sync(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
+	if (err)
+		return err;
+	if (memcmp(super->magic, TUX3_MAGIC_STR, sizeof(super->magic)))
+		return -EINVAL;
+
+	__setup_sb(sb, super);
+
+	return 0;
+}
+
 #define MOPT_SET	(1 << 0)
 #define MOPT_CLEAR	(1 << 1)
 #define MOPT_STRING	(1 << 2)
