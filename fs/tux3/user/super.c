@@ -37,18 +37,10 @@ void __destroy_inode(struct inode *inode)
 	tux3_destroy_inode(inode);
 }
 
-int put_super(struct sb *sb)
+void put_super(struct sb *sb)
 {
-	/*
-	 * FIXME: Some test programs may not be loading inodes.
-	 * All programs should load all internal inodes.
-	 */
-
 	__tux3_put_super(sb);
-
 	inode_leak_check();
-
-	return 0;
 }
 
 /* Initialize and setup sb by on-disk super block. */
@@ -161,6 +153,7 @@ static int reserve_superblock(struct sb *sb)
 
 static int do_mkfs_tux3(struct sb *sb)
 {
+	struct inode *inode;
 	int err;
 
 	err = clear_other_magic(sb);
@@ -170,17 +163,19 @@ static int do_mkfs_tux3(struct sb *sb)
 	change_begin_atomic(sb);
 
 	trace("create bitmap");
-	sb->bitmap = create_internal_inode(sb, TUX_BITMAP_INO, NULL);
-	if (IS_ERR(sb->bitmap)) {
-		err = PTR_ERR(sb->bitmap);
+	inode = create_internal_inode(sb, TUX_BITMAP_INO, NULL);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
 		goto error_change_end;
 	}
+	sb->bitmap = inode;
 
-	sb->countmap = create_internal_inode(sb, TUX_COUNTMAP_INO, NULL);
-	if (IS_ERR(sb->countmap)) {
-		err = PTR_ERR(sb->countmap);
+	inode = create_internal_inode(sb, TUX_COUNTMAP_INO, NULL);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
 		goto error_change_end;
 	}
+	sb->countmap = inode;
 
 	change_end_atomic(sb);
 
@@ -194,26 +189,29 @@ static int do_mkfs_tux3(struct sb *sb)
 	change_begin_atomic(sb);
 #if 0
 	trace("create version table");
-	sb->vtable = create_internal_inode(sb, TUX_VTABLE_INO, NULL);
-	if (IS_ERR(sb->vtable)) {
-		err = PTR_ERR(sb->vtable);
+	inode = create_internal_inode(sb, TUX_VTABLE_INO, NULL);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
 		goto error_change_end;
 	}
+	sb->vtable = inode;
 #endif
 	trace("create atom dictionary");
-	sb->atable = create_internal_inode(sb, TUX_ATABLE_INO, NULL);
-	if (IS_ERR(sb->atable)) {
-		err = PTR_ERR(sb->atable);
+	inode = create_internal_inode(sb, TUX_ATABLE_INO, NULL);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
 		goto error_change_end;
 	}
+	sb->atable = inode;
 
 	trace("create root directory");
 	struct tux_iattr root_iattr = { .mode = S_IFDIR | 0755, };
-	sb->rootdir = create_internal_inode(sb, TUX_ROOTDIR_INO, &root_iattr);
-	if (IS_ERR(sb->rootdir)) {
-		err = PTR_ERR(sb->rootdir);
+	inode = create_internal_inode(sb, TUX_ROOTDIR_INO, &root_iattr);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
 		goto error_change_end;
 	}
+	sb->rootdir = inode;
 
 	change_end_atomic(sb);
 

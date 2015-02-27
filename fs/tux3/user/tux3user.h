@@ -129,7 +129,7 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 struct inode *__alloc_inode(struct sb *sb);
 void __destroy_inode_nocheck(struct inode *inode);
 void __destroy_inode(struct inode *inode);
-int put_super(struct sb *sb);
+void put_super(struct sb *sb);
 int setup_sb(struct sb *sb, struct disksuper *super);
 struct replay *__load_fs(struct sb *sb);
 int load_fs(struct sb *sb, int apply_orphan);
