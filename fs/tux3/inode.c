@@ -693,22 +693,22 @@ int tux3_drop_inode(struct inode *inode)
 			tux3_mark_inode_to_delete(inode);
 
 		/* If inode is dirty, we still keep in-core inode. */
-		if (inode->i_state & I_DIRTY) {
-#ifdef __KERNEL__
-			/* If unmount path, inode should be clean */
-			if (!(inode->i_sb->s_flags & MS_ACTIVE)) {
-				tux3_err(tux_sb(inode->i_sb),
-					 "inode %p, inum %Lu, state %lx/%x",
-					 inode, tux_inode(inode)->inum,
-					 inode->i_state,
-					 tux_inode(inode)->flags);
-				assert(inode->i_sb->s_flags & MS_ACTIVE);
-			}
-#endif
+		if (inode->i_state & I_DIRTY)
 			return 0;
-		}
 	}
 	return generic_drop_inode(inode);
+}
+
+static inline void tux3_evict_inode_check(struct inode *inode)
+{
+	/* inode should be clean */
+	if ((inode->i_state & I_DIRTY) || tux3_check_tuxinode_flags(inode)) {
+		tux3_err(tux_sb(inode->i_sb),
+			 "inode %p, inum %Lu, state %lx/%x",
+			 inode, tux_inode(inode)->inum, inode->i_state,
+			 tux_inode(inode)->flags);
+		assert(0);
+	}
 }
 
 /*
@@ -719,10 +719,12 @@ void tux3_evict_inode(struct inode *inode)
 	struct sb *sb = tux_sb(inode->i_sb);
 	void *ptr;
 
+	tux3_evict_inode_check(inode);
+
 	/*
 	 * evict_inode() should be called only if there is no
-	 * in-progress buffers in backend. So we don't have to call
-	 * tux3_truncate_inode_pages_range() here.
+	 * in-progress buffers in backend. So we would not need to
+	 * care about the page forking here.
 	 *
 	 * We don't change anything here though, change_{begin,end}
 	 * are needed to provide the current delta for debugging in

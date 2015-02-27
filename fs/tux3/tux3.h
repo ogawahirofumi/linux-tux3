@@ -1015,7 +1015,7 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag);
 int tux3_flush_inodes(struct sb *sb, unsigned delta);
 int tux3_has_dirty_inodes(struct sb *sb, unsigned delta);
 void tux3_clear_dirty_inodes(struct sb *sb, unsigned delta);
-void tux3_check_destroy_inode_flags(struct inode *inode);
+unsigned tux3_check_tuxinode_flags(struct inode *inode);
 
 /* xattr.c */
 #ifndef ENOATTR

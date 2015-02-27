@@ -100,6 +100,7 @@ static int i_ddc_is_clean(struct inode *inode)
 
 	for (i = 0; i < ARRAY_SIZE(tuxnode->i_ddc); i++) {
 		if (!list_empty(&tuxnode->i_ddc[i].dirty_buffers) ||
+		    !list_empty(&tuxnode->i_ddc[i].dirty_holes) ||
 		    !list_empty(&tuxnode->i_ddc[i].dirty_list))
 			return 0;
 	}
@@ -109,9 +110,10 @@ static int i_ddc_is_clean(struct inode *inode)
 
 static void tux3_destroy_inode(struct inode *inode)
 {
-	tux3_check_destroy_inode_flags(inode);
+	/* Those must be clean, tux3_inode_init_always() doesn't init. */
 	assert(list_empty(&tux_inode(inode)->alloc_list));
 	assert(list_empty(&tux_inode(inode)->orphan_list));
+	assert(list_empty(&tux_inode(inode)->hole_extents));
 	assert(i_ddc_is_clean(inode));
 
 	call_rcu(&inode->i_rcu, tux3_i_callback);

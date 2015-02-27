@@ -683,9 +683,7 @@ void tux3_clear_dirty_inodes(struct sb *sb, unsigned delta)
 	assert(list_empty(dirty_inodes)); /* someone redirtied own inode? */
 }
 
-void tux3_check_destroy_inode_flags(struct inode *inode)
+unsigned tux3_check_tuxinode_flags(struct inode *inode)
 {
-	struct tux3_inode *tuxnode = tux_inode(inode);
-	tuxnode->flags &= ~NON_DIRTY_FLAGS;
-	assert(tuxnode->flags == 0);
+	return tux_inode(inode)->flags & ~NON_DIRTY_FLAGS;
 }
