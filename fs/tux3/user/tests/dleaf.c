@@ -23,7 +23,6 @@
 
 static void clean_main(struct sb *sb, struct btree *btree)
 {
-	log_finish(sb);
 	log_finish_cycle(sb, 1);
 	destroy_defer_bfree(&sb->deunify);
 	destroy_defer_bfree(&sb->defree);

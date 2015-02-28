@@ -21,7 +21,6 @@
 
 static void clean_main(struct sb *sb, struct inode *inode)
 {
-	log_finish(sb);
 	log_finish_cycle(sb, 1);
 	rapid_free_inode(inode);
 	destroy_defer_bfree(&sb->deunify);
