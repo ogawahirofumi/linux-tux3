@@ -354,9 +354,7 @@ struct sb {
 #ifdef __KERNEL__
 	struct super_block *vfs_sb;	/* Generic kernel superblock */
 #else
-	struct dev *dev;		/* userspace block device */
-	loff_t s_maxbytes;		/* maximum file size */
-	unsigned int s_max_links;	/* maximum link counts */
+	struct super_block vfs_sb;	/* Userland superblock */
 #endif
 };
 
@@ -487,9 +485,7 @@ static inline struct super_block *vfs_sb(struct sb *sb)
 	return sb->vfs_sb;
 }
 
-typedef struct address_space map_t;
-
-static inline map_t *mapping(struct inode *inode)
+static inline struct address_space *mapping(struct inode *inode)
 {
 	return inode->i_mapping;
 }
@@ -497,26 +493,6 @@ static inline map_t *mapping(struct inode *inode)
 static inline struct block_device *sb_dev(struct sb *sb)
 {
 	return sb->vfs_sb->s_bdev;
-}
-#else /* !__KERNEL__ */
-static inline struct sb *tux_sb(struct sb *sb)
-{
-	return sb;
-}
-
-static inline struct sb *vfs_sb(struct sb *sb)
-{
-	return sb;
-}
-
-static inline map_t *mapping(struct inode *inode)
-{
-	return inode->map;
-}
-
-static inline struct dev *sb_dev(struct sb *sb)
-{
-	return sb->dev;
 }
 #endif /* !__KERNEL__ */
 
