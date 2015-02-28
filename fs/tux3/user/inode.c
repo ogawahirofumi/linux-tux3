@@ -325,9 +325,12 @@ void iput(struct inode *inode)
 		return;
 
 	if (atomic_dec_and_lock(&inode->i_count, &inode->i_lock)) {
+		int drop;
+
 		assert(!(inode->i_state & I_NEW));
 
-		if (!tux3_drop_inode(inode)) {
+		drop = tux3_drop_inode(inode);
+		if (!drop && (inode->i_sb->s_flags & MS_ACTIVE)) {
 			/* Keep the inode on dirty list */
 			spin_unlock(&inode->i_lock);
 			return;

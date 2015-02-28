@@ -6,6 +6,9 @@
 #include <libklib/lockdebug.h>
 #include <libklib/uidgid.h>
 
+/* These sb flags are internal to the kernel */
+#define MS_ACTIVE	(1<<30)
+
 struct nameidata {
 };
 

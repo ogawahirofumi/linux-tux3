@@ -47,6 +47,7 @@ static inline struct timespec gettime(void)
 struct super_block {
 	struct dev *dev;		/* userspace block device */
 	loff_t s_maxbytes;		/* maximum file size */
+	unsigned long s_flags;
 	unsigned int s_max_links;	/* maximum link counts */
 };
 
