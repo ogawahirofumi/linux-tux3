@@ -116,8 +116,8 @@ void log_finish(struct sb *sb)
 
 void log_finish_cycle(struct sb *sb, int discard)
 {
-	/* ->logbuf must be finished */
-	assert(sb->logbuf == NULL);
+	/* Finish log if not finished yet. */
+	log_finish(sb);
 
 	if (discard) {
 		struct buffer_head *logbuf;
