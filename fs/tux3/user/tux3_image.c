@@ -60,7 +60,7 @@ static void image_write(struct image_context *context,
 	ssize_t ret;
 
 	while (count--) {
-		ret = pread(sb->dev->fd, buf, sb->blocksize, pos);
+		ret = pread(sb_dev(sb)->fd, buf, sb->blocksize, pos);
 		if (ret != sb->blocksize)
 			strerror_exit(1, errno, "pread %zd", ret);
 

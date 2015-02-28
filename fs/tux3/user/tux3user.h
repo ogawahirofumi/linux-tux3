@@ -44,7 +44,35 @@ static inline struct timespec gettime(void)
 	return (struct timespec){ .tv_sec = now.tv_sec, .tv_nsec = now.tv_usec * 1000 };
 }
 
+struct super_block {
+	struct dev *dev;		/* userspace block device */
+	loff_t s_maxbytes;		/* maximum file size */
+	unsigned int s_max_links;	/* maximum link counts */
+};
+
+static inline map_t *mapping(struct inode *inode);
+
 #include "../tux3.h"
+
+static inline struct sb *tux_sb(struct super_block *sb)
+{
+	return container_of(sb, struct sb, vfs_sb);
+}
+
+static inline struct super_block *vfs_sb(struct sb *sb)
+{
+	return &sb->vfs_sb;
+}
+
+static inline map_t *mapping(struct inode *inode)
+{
+	return inode->map;
+}
+
+static inline struct dev *sb_dev(struct sb *sb)
+{
+	return vfs_sb(sb)->dev;
+}
 
 #define READAHEAD_BLOCKS (1 << 6)
 
@@ -68,8 +96,10 @@ static inline struct timespec gettime(void)
 }
 
 #define rapid_sb(x)	(&(struct sb){		\
-	.dev = x,				\
 	.mopt = tux3_default_mopt,		\
+	.vfs_sb = {				\
+		.dev = x,			\
+	},					\
 })
 
 /* commit.c */
@@ -126,7 +156,7 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 	      struct inode *new_dir, const char *new_name, unsigned new_len);
 
 /* super.c */
-struct inode *__alloc_inode(struct sb *sb);
+struct inode *__alloc_inode(struct super_block *sb);
 void __destroy_inode_nocheck(struct inode *inode);
 void __destroy_inode(struct inode *inode);
 void put_super(struct sb *sb);

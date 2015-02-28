@@ -11,14 +11,14 @@ static void clean_main(void)
 static void test01(void)
 {
 	struct dev *dev = &(struct dev){ .bits = 12 };
-	struct sb sb = { .dev = dev, };
+	struct sb *sb = rapid_sb(dev);
 
 	/* This expect buffer is never reclaimed */
 	init_buffer_params(NR_BUF << dev->bits, 1);
 	set_blocksize(1 << dev->bits);
 
-	struct inode *inode1 = rapid_new_inode(&sb, NULL, 0);
-	struct inode *inode2 = rapid_new_inode(&sb, NULL, 0);
+	struct inode *inode1 = rapid_new_inode(sb, NULL, 0);
+	struct inode *inode2 = rapid_new_inode(sb, NULL, 0);
 	map_t *map1 = inode1->map;
 	map_t *map2 = inode2->map;
 
@@ -75,7 +75,7 @@ static void test01(void)
 	}
 	/* Clear dirty and reclaim again */
 	buf = blockget(map1, 0);
-	blockput_free(&sb, buf);
+	blockput_free(sb, buf);
 
 	map2_bufs[last] = blockget(map2, last);
 	test_assert(map2_bufs[last]);

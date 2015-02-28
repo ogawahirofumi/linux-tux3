@@ -71,7 +71,7 @@ static int filemap_bufvec_check(struct bufvec *bufvec, enum map_mode mode)
 static int guess_readahead(struct bufvec *bufvec, struct inode *inode,
 			   block_t index)
 {
-	struct sb *sb = inode->i_sb;
+	struct sb *sb = tux_sb(inode->i_sb);
 	struct buffer_head *buffer;
 	block_t limit;
 	int ret;
@@ -232,7 +232,7 @@ static int tuxio(struct file *file, void *data, unsigned len, int write)
 	trace("%s %u bytes at %Lu, isize = 0x%Lx",
 	      write ? "write" : "read", len, (s64)pos, (s64)inode->i_size);
 
-	if (write && pos + len > sb->s_maxbytes)
+	if (write && pos + len > inode->i_sb->s_maxbytes)
 		return -EFBIG;
 	if (!write && pos + len > inode->i_size) {
 		if (pos >= inode->i_size)
@@ -307,7 +307,7 @@ int tuxread(struct file *file, void *data, unsigned len)
 
 int tuxwrite(struct file *file, const void *data, unsigned len)
 {
-	struct sb *sb = file->f_inode->i_sb;
+	struct sb *sb = tux_sb(file->f_inode->i_sb);
 	int ret;
 	change_begin(sb);
 	ret = tuxio(file, (void *)data, len, 1);

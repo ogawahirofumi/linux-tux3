@@ -15,16 +15,11 @@
 #define trace trace_off
 #endif
 
-/* FIXME: maybe, we are better to use same structure with kernel? */
-struct super_block {
-	struct sb sb;
-};
-
 #include "../super.c"
 
-struct inode *__alloc_inode(struct sb *sb)
+struct inode *__alloc_inode(struct super_block *sb)
 {
-	return tux3_alloc_inode((struct super_block *)sb);
+	return tux3_alloc_inode(sb);
 }
 
 void __destroy_inode_nocheck(struct inode *inode)
@@ -63,7 +58,7 @@ struct replay *__load_fs(struct sb *sb)
 	if (err)
 		return ERR_PTR(err);
 
-	sb->dev->bits = sb->blockbits;
+	sb_dev(sb)->bits = sb->blockbits;
 	set_blocksize(sb->blocksize);
 
 	return tux3_init_fs(sb);
@@ -118,7 +113,7 @@ static int clear_other_magic(struct sb *sb)
 	memset(data, 0, maxlen);
 
 	for (int i = 0; i < ARRAY_SIZE(area); i++) {
-		err = devio_sync(WRITE, sb->dev, area[i].loc, data,
+		err = devio_sync(WRITE, sb_dev(sb), area[i].loc, data,
 				 area[i].len);
 		if (err)
 			break;
@@ -279,7 +274,7 @@ int setup_mount_options(struct sb *sb, void *data)
 ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
 {
 	struct dentry dummy = {
-		.d_sb = sb,
+		.d_sb = vfs_sb(sb),
 	};
 	struct seq_file seq = {
 		.buf = buf,

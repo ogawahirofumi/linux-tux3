@@ -37,7 +37,7 @@ static void snapshot_volume(struct sb *sb)
 	while (1) {
 		ssize_t ret, ret2;
 
-		ret = pread(sb->dev->fd, buf, sizeof(buf), offset);
+		ret = pread(sb_dev(sb)->fd, buf, sizeof(buf), offset);
 		assert(ret >= 0);
 		if (!ret)
 			break;
@@ -66,7 +66,7 @@ static void restore_volume(struct sb *sb)
 		if (!ret)
 			break;
 
-		ret2 = pwrite(sb->dev->fd, buf, ret, offset);
+		ret2 = pwrite(sb_dev(sb)->fd, buf, ret, offset);
 		assert(ret == ret2);
 
 		offset += ret;

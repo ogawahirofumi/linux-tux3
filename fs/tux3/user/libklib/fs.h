@@ -11,7 +11,7 @@ struct nameidata {
 
 /* Generic inode */
 struct inode {
-	struct sb		*i_sb;
+	struct super_block	*i_sb;
 
 	struct mutex		i_mutex;
 	unsigned long		i_state;
@@ -75,7 +75,7 @@ struct qstr {
 struct dentry {
 	struct qstr d_name;
 	struct inode *d_inode;
-	struct sb *d_sb;
+	struct super_block *d_sb;
 };
 
 void d_instantiate(struct dentry *dentry, struct inode *inode);

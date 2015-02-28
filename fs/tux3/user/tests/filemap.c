@@ -23,9 +23,9 @@ static void add_maps(struct inode *inode, block_t index,
 		struct block_segment *s = &seg[i];
 		for (unsigned j = 0; j < s->count; j++) {
 			struct buffer_head *buf;
-			buf = blockget(inode->map, index + j);
+			buf = blockget(mapping(inode), index + j);
 			buf = blockdirty(buf, delta);
-			memset(buf->data, 0, inode->i_sb->blocksize);
+			memset(buf->data, 0, tux_sb(inode->i_sb)->blocksize);
 			*(block_t *)buf->data = s->block + j;
 			mark_buffer_dirty_non(buf);
 			blockput(buf);

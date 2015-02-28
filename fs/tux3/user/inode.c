@@ -86,7 +86,7 @@ void inode_init_once(struct inode *inode)
 	INIT_HLIST_NODE(&inode->i_hash);
 }
 
-static void inode_init_always(struct sb *sb, struct inode *inode)
+static void inode_init_always(struct super_block *sb, struct inode *inode)
 {
 	inode->i_sb	= sb;
 	inode->i_nlink	= 1;
@@ -96,13 +96,13 @@ static void inode_init_always(struct sb *sb, struct inode *inode)
 	mapping_set_gfp_mask(mapping(inode), GFP_HIGHUSER_MOVABLE);
 }
 
-static struct inode *new_inode(struct sb *sb)
+static struct inode *new_inode(struct super_block *sb)
 {
 	struct inode *inode = __alloc_inode(sb);
 	if (!inode)
 		goto error;
 
-	inode->map = new_map(sb->dev, NULL);
+	inode->map = new_map(sb_dev(tux_sb(sb)), NULL);
 	if (!inode->map)
 		goto error_map;
 
@@ -167,7 +167,7 @@ void ihold(struct inode *inode)
 	atomic_inc(&inode->i_count);
 }
 
-static struct inode *find_inode(struct sb *sb, struct hlist_head *head,
+static struct inode *find_inode(struct super_block *sb, struct hlist_head *head,
 				int (*test)(struct inode *, void *),
 				void *data)
 {
@@ -182,7 +182,7 @@ static struct inode *find_inode(struct sb *sb, struct hlist_head *head,
 	return NULL;
 }
 
-static struct inode *ilookup5_nowait(struct sb *sb, inum_t inum,
+static struct inode *ilookup5_nowait(struct super_block *sb, inum_t inum,
 		int (*test)(struct inode *, void *), void *data)
 {
 	struct hlist_head *head = inode_hashtable + hash(inum);
@@ -193,7 +193,7 @@ static struct inode *ilookup5_nowait(struct sb *sb, inum_t inum,
 	return inode;
 }
 
-static struct inode *ilookup5(struct sb *sb, inum_t inum,
+static struct inode *ilookup5(struct super_block *sb, inum_t inum,
 		int (*test)(struct inode *, void *), void *data)
 {
 	struct inode *inode = ilookup5_nowait(sb, inum, test, data);
@@ -202,7 +202,7 @@ static struct inode *ilookup5(struct sb *sb, inum_t inum,
 	return inode;
 }
 
-static struct inode *iget5_locked(struct sb *sb, inum_t inum,
+static struct inode *iget5_locked(struct super_block *sb, inum_t inum,
 			   int (*test)(struct inode *, void *),
 			   int (*set)(struct inode *, void *), void *data)
 {
@@ -365,7 +365,7 @@ struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode)
 	static struct tux_iattr iattr;
 	struct inode *inode;
 
-	dir.i_sb = sb;
+	dir.i_sb = vfs_sb(sb);
 	iattr.mode = mode;
 	inode = tux_new_inode(&dir, &iattr, 0);
 	assert(inode);

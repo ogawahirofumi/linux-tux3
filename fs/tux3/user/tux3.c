@@ -28,7 +28,7 @@ static int open_volume(const char *volname)
 
 static int open_fs(const char *volname, struct sb *sb)
 {
-	sb->dev->fd = open_volume(volname);
+	sb_dev(sb)->fd = open_volume(volname);
 	return load_fs(sb, 1);
 }
 
@@ -150,8 +150,8 @@ static int cmd_mkfs(struct sb *sb, const char *progname, const char *command,
 	if (1 << blockbits != blocksize)
 		error_exit("blocksize must be a power of two");
 
-	sb->dev->fd = fd;
-	sb->dev->bits = blockbits;
+	sb_dev(sb)->fd = fd;
+	sb_dev(sb)->bits = blockbits;
 	sb->super = INIT_DISKSB(blockbits, volsize >> blockbits);
 
 	int err = mkfs_tux3(sb);
@@ -170,7 +170,7 @@ static int cmd_fsck(struct sb *sb, const char *progname, const char *command,
 	common_options(&argc, &args, onlyhelp, 3, progname, "fsck",
 		       "<volume>", &vars);
 
-	sb->dev->fd = open_volume(vars.volname);
+	sb_dev(sb)->fd = open_volume(vars.volname);
 
 	err = fsck_main(sb);
 
@@ -217,7 +217,7 @@ static int cmd_dump(struct sb *sb, const char *progname, const char *command,
 		}
 	}
 
-	sb->dev->fd = open_volume(volname);
+	sb_dev(sb)->fd = open_volume(volname);
 
 	err = dump_main(sb, &opts);
 
@@ -263,7 +263,7 @@ static int cmd_image(struct sb *sb, const char *progname, const char *command,
 	}
 	opts.dst_name = args[3];
 
-	sb->dev->fd = open_volume(volname);
+	sb_dev(sb)->fd = open_volume(volname);
 
 	err = image_main(sb, &opts);
 
@@ -280,7 +280,7 @@ static int cmd_graph(struct sb *sb, const char *progname, const char *command,
 	common_options(&argc, &args, onlyhelp, 3, progname, command,
 		       "<volume>", &vars);
 
-	sb->dev->fd = open_volume(vars.volname);
+	sb_dev(sb)->fd = open_volume(vars.volname);
 
 	err = graph_main(sb, vars.volname, vars.verbose);
 

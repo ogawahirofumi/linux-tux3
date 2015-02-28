@@ -102,8 +102,8 @@ static void tux3fuse_destroy(void *userdata)
 	put_super(sb);
 	tux3_exit_mem();
 
-	if (tux3fuse->sb->dev)
-		free(tux3fuse->sb->dev);
+	if (sb_dev(tux3fuse->sb))
+		free(sb_dev(tux3fuse->sb));
 	if (tux3fuse->sb)
 		free(tux3fuse->sb);
 }
