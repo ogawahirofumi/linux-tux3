@@ -1,5 +1,6 @@
 #include "tux3user.h"
 #include "diskio.h"
+#include "fault_inject.h"
 
 #include "buffer.c"
 #include "hexdump.c"
@@ -32,6 +33,11 @@ int devio_vec(int rw, struct dev *dev, loff_t offset, struct iovec *iov,
 	      unsigned iovcnt)
 {
 	int err;
+
+	if (rw & WRITE)
+		fault_return("io:write:", -EIO);
+	else
+		fault_return("io:read:", -EIO);
 
 	err = preflush(rw, dev);
 	if (err)

@@ -8,6 +8,7 @@
 #include "trace.h"
 #include "libklib/err.h"
 #include "libklib/list_sort.h"
+#include "fault_inject.h"
 
 #define buftrace trace_off
 
@@ -366,7 +367,11 @@ struct buffer_head *new_buffer(map_t *map)
 {
 	struct buffer_head *buffer = NULL;
 	struct list_head *freed_list = &buffers[BUFFER_FREED];
+	int nofail = !!(mapping_gfp_mask(map) & __GFP_NOFAIL);
 	int err;
+
+	if (!nofail)
+		fault_return("io:memory:", ERR_PTR(-ENOMEM));
 
 	if (!list_empty(freed_list)) {
 		buffer = list_entry(freed_list->next, struct buffer_head, link);
@@ -387,15 +392,22 @@ struct buffer_head *new_buffer(map_t *map)
 	if (buffer_count == max_buffers) {
 		printf("Warning: maximum buffer count exceeded (%i)\n",
 		       buffer_count);
+		if (nofail)
+			goto error_nofail;
 		return ERR_PTR(-ENOMEM);
 	}
 
 	if (buffer_blocksize != 1 << map->dev->bits)
 		return ERR_PTR(-EINVAL);
 
+	fault_disable_injection();
 	buffer = malloc(sizeof(struct buffer_head));
-	if (!buffer)
+	fault_enable_injection();
+	if (!buffer) {
+		if (nofail)
+			goto error_nofail;
 		return ERR_PTR(-ENOMEM);
+	}
 	*buffer = (struct buffer_head){
 		.state	= BUFFER_FREED,
 		.link	= LIST_HEAD_INIT(buffer->link),
@@ -403,11 +415,15 @@ struct buffer_head *new_buffer(map_t *map)
 	};
 	INIT_HLIST_NODE(&buffer->hashlink);
 
+	fault_disable_injection();
 	err = posix_memalign(&buffer->data, BUF_ALIGN_SIZE, buffer_blocksize);
+	fault_enable_injection();
 	if (err) {
 		printf("Error: unable to expand buffer pool: %s\n",
 		       strerror(err));
 		free(buffer);
+		if (nofail)
+			goto error_nofail;
 		return ERR_PTR(-err);
 	}
 
@@ -419,6 +435,10 @@ have_buffer:
 	set_buffer_empty(buffer);
 	buffer_count++;
 	return buffer;
+
+error_nofail:
+	printf("Error: failed memory allocation with __GFP_NOFAIL\n");
+	exit(1);
 }
 
 struct buffer_head *peekblk(map_t *map, block_t block)
