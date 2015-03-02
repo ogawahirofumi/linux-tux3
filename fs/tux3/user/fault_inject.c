@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <fnmatch.h>
+#include <malloc.h>
 
 #include "fault_inject.h"
 
@@ -17,6 +18,7 @@ static struct fault_manager {
 	struct list_head patterns;
 	struct fault_info *last_fault;
 
+	unsigned recursive;
 	long random_seed;
 	struct drand48_data random_buf;
 } fault_manager = {
@@ -49,7 +51,7 @@ static struct fault_state *check_call_path(struct fault_info *info)
 	exit(1);
 }
 
-int fault_should_fail(struct fault_info *info)
+static int __fault_should_fail(struct fault_info *info)
 {
 	/* __fault_enable() changed config */
 	if (FAULT_SEQ(info->seq_and_enable) != fault_manager_seq) {
@@ -113,6 +115,33 @@ check:;
 	return 0;
 }
 
+void fault_disable_injection(void)
+{
+	fault_manager.recursive++;
+}
+
+void fault_enable_injection(void)
+{
+	fault_manager.recursive--;
+}
+
+int fault_should_fail(struct fault_info *info)
+{
+	int ret = 0;
+
+	/*
+	 * If recursive, don't inject failure. This requires to use
+	 * some functions in __fault_should_fail(). For example,
+	 * libgcc may call malloc(), and goes our hook via backtrace().
+	 */
+	if (!fault_manager.recursive) {
+		fault_disable_injection();
+		ret = __fault_should_fail(info);
+		fault_enable_injection();
+	}
+	return ret;
+}
+
 struct fault_info *fault_last_inject(void)
 {
 	return fault_manager.last_fault;
@@ -138,5 +167,28 @@ void __fault_do_enable(struct fault_pattern *pattern)
 		fi_print("seed (%ld)\n",
 			 fault_manager.random_seed);
 	}
+}
+
+/*
+ * Memory fault injection hooks for glibc
+ */
+
+#define HOOK_TO_GLIBC(err, rettype, name, proto, ...)			\
+rettype __libc_##name proto;						\
+rettype name proto							\
+{									\
+	fault_return("memory:", NULL);					\
+	return __libc_##name(__VA_ARGS__);				\
+}
+
+HOOK_TO_GLIBC(NULL, void *, malloc, (size_t size), size);
+HOOK_TO_GLIBC(NULL, void *, calloc, (size_t nmemb, size_t size), nmemb, size);
+HOOK_TO_GLIBC(NULL, void *, realloc, (void *ptr, size_t size), ptr, size);
+
+void *__libc_memalign(size_t alignment, size_t size);
+void *aligned_alloc(size_t alignment, size_t size)
+{
+	fault_return("memory:", NULL);
+	return __libc_memalign(alignment, size);
 }
 #endif /* !FAULT_INJECTION */

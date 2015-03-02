@@ -7,6 +7,10 @@
 /*
  * Fault injection interfaces.
  *
+ * fault_disable_injection():
+ * fault_enable_injection():
+ * Enable/disable fault injection temporary.
+ *
  * fault_return(category_str, default_ret):
  * @category_str: identifier to enable/disable this fault injection.
  * full identifier become @category_str + __func__.
@@ -94,6 +98,8 @@ struct fault_info {
 	struct fault_state state[MAX_CALL_PATH];
 };
 
+void fault_disable_injection(void);
+void fault_enable_injection(void);
 int fault_should_fail(struct fault_info *info);
 struct fault_info *fault_last_inject(void);
 void fault_clear_last(void);
@@ -117,6 +123,8 @@ void fault_clear_last(void);
 #define fault_enable_ret(str, t, p, r)	do {} while (0)
 #define fault_last_inject()		NULL
 #define fault_clear_last()		do {} while (0)
+#define fault_disable_injection()	do {} while (0)
+#define fault_enable_injection()	do {} while (0)
 #define fault_return(id_str, ret)	do {} while (0)
 #endif /* !FAULT_INJECTION */
 
