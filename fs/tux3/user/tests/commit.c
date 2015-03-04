@@ -890,7 +890,7 @@ static void test07(struct sb *sb)
 			test_assert(!balloc_use(sb, &seg, 1));
 	}
 	/* Make 3 logblocks, at least */
-	while (sb->lognext <= 3)
+	while (sb->logpos.next <= 3)
 		log_delta(sb);
 	tux3_end_backend();
 

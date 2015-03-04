@@ -22,12 +22,13 @@ static void clean_main(struct sb *sb)
 
 static void check(struct sb *sb, u8 intent)
 {
+	struct logpos *logpos = &sb->logpos;
 	struct logblock *log;
 
-	test_assert(sb->logbuf);
-	log = bufdata(sb->logbuf);
-	test_assert(sb->logtop >= sb->logpos);
-	test_assert((sb->logpos - log->data) == log_size[intent]);
+	test_assert(logpos->buf);
+	log = bufdata(logpos->buf);
+	test_assert(logpos->top >= logpos->pos);
+	test_assert((logpos->pos - log->data) == log_size[intent]);
 	log_finish(sb);
 }
 
