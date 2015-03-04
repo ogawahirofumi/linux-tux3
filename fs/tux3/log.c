@@ -26,12 +26,12 @@
  *    are read only at replay on mount and written only at delta transition.
  *
  *  - sb->super.logcount: count of log blocks in unify cycle
- *  - sb->lognext: Logmap index of next log block in delta cycle
- *  - sb->logpos/logtop: Pointer/limit to write next log entry
- *  - sb->logbuf: Cached log block referenced by logpos/logtop
+ *  - logpos->next: Logmap index of next log block in delta cycle
+ *  - logpos->pos/top: Pointer/limit to write next log entry
+ *  - logpos->buf: Cached log block referenced by pos/top
  *
  *  - At delta staging, physical addresses are assigned for log blocks from
- *    0 to lognext, reverse chain pointers are set in the log blocks, and
+ *    0 to logpos->next, reverse chain pointers are set in the log blocks, and
  *    all log blocks for the delta are submitted for writeout.
  *
  *  - At delta commit, count of log blocks is recorded in superblock
@@ -90,70 +90,80 @@ unsigned log_size[] = {
 
 void log_next(struct sb *sb)
 {
+	struct logpos *logpos = &sb->logpos;
 	/* logmap is allocated with __GFP_NOFAIL. */
-	sb->logbuf = blockget(mapping(sb->logmap), sb->lognext++);
-	sb->logpos = bufdata(sb->logbuf) + sizeof(struct logblock);
-	sb->logtop = bufdata(sb->logbuf) + sb->blocksize;
+	logpos->buf = blockget(mapping(sb->logmap), logpos->next++);
+	logpos->pos = bufdata(logpos->buf) + sizeof(struct logblock);
+	logpos->top = bufdata(logpos->buf) + sb->blocksize;
 }
 
 void log_drop(struct sb *sb)
 {
-	blockput(sb->logbuf);
-	sb->logbuf = NULL;
-	sb->logtop = sb->logpos = NULL;
+	struct logpos *logpos = &sb->logpos;
+	blockput(logpos->buf);
+	logpos->buf = NULL;
+	logpos->top = logpos->pos = NULL;
 }
 
 void log_finish(struct sb *sb)
 {
-	if (sb->logbuf) {
-		struct logblock *log = bufdata(sb->logbuf);
-		assert(sb->logtop >= sb->logpos);
-		log->bytes = cpu_to_be16(sb->logpos - log->data);
-		memset(sb->logpos, 0, sb->logtop - sb->logpos);
+	struct logpos *logpos = &sb->logpos;
+	if (logpos->buf) {
+		struct logblock *log = bufdata(logpos->buf);
+		assert(logpos->top >= logpos->pos);
+		log->bytes = cpu_to_be16(logpos->pos - log->data);
+		memset(logpos->pos, 0, logpos->top - logpos->pos);
 		log_drop(sb);
 	}
 }
 
+static void log_discard_buffer(struct sb *sb, unsigned index)
+{
+	struct buffer_head *logbuf = blockget(mapping(sb->logmap), index);
+	blockput_free(sb, logbuf);
+}
+
 void log_finish_cycle(struct sb *sb, int discard)
 {
+	struct logpos *logpos = &sb->logpos;
+
 	/* Finish log if not finished yet. */
 	log_finish(sb);
 
 	if (discard) {
-		struct buffer_head *logbuf;
-		unsigned i, logcount = sb->lognext;
+		unsigned i, logcount = logpos->next;
 
 		/* Clear dirty of buffer */
-		for (i = 0; i < logcount; i++) {
-			logbuf = blockget(mapping(sb->logmap), i);
-			blockput_free(sb, logbuf);
-		}
+		for (i = 0; i < logcount; i++)
+			log_discard_buffer(sb, i);
 	}
 
 	/* Initialize for new delta cycle */
-	sb->lognext = 0;
+	logpos->next = 0;
 }
 
 static void *log_begin(struct sb *sb, unsigned bytes)
 {
+	struct logpos *logpos = &sb->logpos;
+
 	assert(tux3_under_backend(sb));
-	if (sb->logpos + bytes > sb->logtop) {
+	if (logpos->pos + bytes > logpos->top) {
 		log_finish(sb);
 		log_next(sb);
 
-		*(struct logblock *)bufdata(sb->logbuf) = (struct logblock){
+		*(struct logblock *)bufdata(logpos->buf) = (struct logblock){
 			.magic = cpu_to_be16(TUX3_MAGIC_LOG),
 		};
 
 		/* Dirty for write, and prevent to be reclaimed */
-		mark_buffer_dirty_atomic(sb->logbuf);
+		mark_buffer_dirty_atomic(logpos->buf);
 	}
-	return sb->logpos;
+	return logpos->pos;
 }
 
 static void log_end(struct sb *sb, void *pos)
 {
-	sb->logpos = pos;
+	sb->logpos.pos = pos;
 }
 
 /*

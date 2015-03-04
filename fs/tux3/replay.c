@@ -169,8 +169,8 @@ static void replay_done(struct replay *rp)
 	clean_orphan_list(&rp->log_orphan_add);	/* for error path */
 	free_replay(rp);
 
-	sb->lognext = be32_to_cpu(sb->super.logcount);
-	replay_unpin_logblocks(sb, 0, sb->lognext);
+	sb->logpos.next = be32_to_cpu(sb->super.logcount);
+	replay_unpin_logblocks(sb, 0, sb->logpos.next);
 	log_finish_cycle(sb, 0);
 }
 
@@ -513,14 +513,17 @@ static int replay_logblock_mark(struct replay *rp, struct buffer_head *logbuf)
 static int replay_logblocks(struct replay *rp, replay_log_t replay_log_func)
 {
 	struct sb *sb = rp->sb;
+	struct logpos *logpos = &sb->logpos;
 	unsigned logcount = be32_to_cpu(sb->super.logcount);
 	int err;
 
-	sb->lognext = 0;
-	while (sb->lognext < logcount) {
-		trace("log block %i, blocknr %Lx, unify %Lx", sb->lognext, rp->blocknrs[sb->lognext], rp->unify_index);
+	logpos->next = 0;
+	while (logpos->next < logcount) {
+		trace("log block %i, blocknr %Lx, unify %Lx",
+		      logpos->next, rp->blocknrs[logpos->next],
+		      rp->unify_index);
 		log_next(sb);
-		err = replay_log_func(rp, sb->logbuf);
+		err = replay_log_func(rp, logpos->buf);
 		log_drop(sb);
 
 		if (err)

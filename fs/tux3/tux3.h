@@ -215,6 +215,47 @@ struct cursor {
 	} path[];
 };
 
+/* Logging  */
+
+struct logpos {
+	unsigned next;			/* Index of next log block in log map */
+	struct buffer_head *buf;	/* Cached log block */
+	unsigned char *pos;		/* Where to emit next log entry */
+	unsigned char *top;		/* End of logbuf */
+};
+
+struct logblock {
+	__be16 magic;		/* Magic number */
+	__be16 bytes;		/* Total data bytes on this block */
+	u32 unused;		/* padding */
+	__be64 logchain;	/* Block number to previous logblock */
+	unsigned char data[];	/* Log data */
+};
+
+enum {
+	LOG_BALLOC = 0x33,	/* Log of block allocation */
+	LOG_BFREE,		/* Log of freeing block after delta */
+	LOG_BFREE_ON_UNIFY,	/* Log of freeing block after unify */
+	LOG_BFREE_RELOG,	/* LOG_BFREE, but re-log of free after unify */
+	LOG_LEAF_REDIRECT,	/* Log of leaf redirect */
+	LOG_LEAF_FREE,		/* Log of freeing leaf */
+	LOG_BNODE_REDIRECT,	/* Log of bnode redirect */
+	LOG_BNODE_ROOT,		/* Log of new bnode root allocation */
+	LOG_BNODE_SPLIT,	/* Log of spliting bnode to new bnode */
+	LOG_BNODE_ADD,		/* Log of adding bnode index */
+	LOG_BNODE_UPDATE,	/* Log of bnode index ->block update */
+	LOG_BNODE_MERGE,	/* Log of merging 2 bnodes */
+	LOG_BNODE_DEL,		/* Log of deleting bnode index */
+	LOG_BNODE_ADJUST,	/* Log of bnode index ->key adjust */
+	LOG_BNODE_FREE,		/* Log of freeing bnode */
+	LOG_ORPHAN_ADD,		/* Log of adding orphan inode */
+	LOG_ORPHAN_DEL,		/* Log of deleting orphan inode */
+	LOG_FREEBLOCKS,		/* Log of freeblocks in bitmap on unify */
+	LOG_UNIFY,		/* Log of marking unify */
+	LOG_DELTA,		/* just for debugging */
+	LOG_TYPES
+};
+
 struct stash { struct flink_head head; u64 *pos, *top; };
 
 #ifndef TUX3_FLUSHER_SYNC
@@ -321,9 +362,7 @@ struct sb {
 	 * For backend only
 	 */
 	struct inode *logmap;	/* Log block cache */
-	unsigned lognext;	/* Index of next log block in log map */
-	struct buffer_head *logbuf; /* Cached log block */
-	unsigned char *logpos, *logtop; /* Where to emit next log entry */
+	struct logpos logpos;
 
 	struct list_head orphan_add; /* defered orphan inode add list */
 	struct list_head orphan_del; /* defered orphan inode del list */
@@ -373,40 +412,6 @@ struct block_segment {
  */
 /* Allow fewer allocation than requested */
 #define BALLOC_PARTIAL		(1 << 0)
-
-/* logging  */
-
-struct logblock {
-	__be16 magic;		/* Magic number */
-	__be16 bytes;		/* Total data bytes on this block */
-	u32 unused;		/* padding */
-	__be64 logchain;	/* Block number to previous logblock */
-	unsigned char data[];	/* Log data */
-};
-
-enum {
-	LOG_BALLOC = 0x33,	/* Log of block allocation */
-	LOG_BFREE,		/* Log of freeing block after delta */
-	LOG_BFREE_ON_UNIFY,	/* Log of freeing block after unify */
-	LOG_BFREE_RELOG,	/* LOG_BFREE, but re-log of free after unify */
-	LOG_LEAF_REDIRECT,	/* Log of leaf redirect */
-	LOG_LEAF_FREE,		/* Log of freeing leaf */
-	LOG_BNODE_REDIRECT,	/* Log of bnode redirect */
-	LOG_BNODE_ROOT,		/* Log of new bnode root allocation */
-	LOG_BNODE_SPLIT,	/* Log of spliting bnode to new bnode */
-	LOG_BNODE_ADD,		/* Log of adding bnode index */
-	LOG_BNODE_UPDATE,	/* Log of bnode index ->block update */
-	LOG_BNODE_MERGE,	/* Log of merging 2 bnodes */
-	LOG_BNODE_DEL,		/* Log of deleting bnode index */
-	LOG_BNODE_ADJUST,	/* Log of bnode index ->key adjust */
-	LOG_BNODE_FREE,		/* Log of freeing bnode */
-	LOG_ORPHAN_ADD,		/* Log of adding orphan inode */
-	LOG_ORPHAN_DEL,		/* Log of deleting orphan inode */
-	LOG_FREEBLOCKS,		/* Log of freeblocks in bitmap on unify */
-	LOG_UNIFY,		/* Log of marking unify */
-	LOG_DELTA,		/* just for debugging */
-	LOG_TYPES
-};
 
 /* For debugging, MAX_ATTRS is smaller than 31, so present never be -1 */
 #define TUX3_INVALID_PRESENT		(-1U)
