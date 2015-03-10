@@ -279,7 +279,11 @@ static int commit_delta(struct sb *sb, int req_flag)
 	 * can start next delta more early.
 	 */
 	if (barrier) {
-		/* Don't add REQ_SYNC here to avoid CFQ's idle_slice_timer. */
+		/*
+		 * Don't add REQ_SYNC explicitly here to use the same
+		 * CFQ-queue with previous, and to avoid CFQ's
+		 * idle_slice_timer between CFQ-queues.
+		 */
 		req_flag |= REQ_NOIDLE | REQ_FLUSH | REQ_FUA;
 	}
 
