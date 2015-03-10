@@ -1,6 +1,8 @@
 #ifndef LIBKLIB_ATOMIC_H
 #define LIBKLIB_ATOMIC_H
 
+#include <libklib/bug.h>
+
 typedef struct {
 	int counter;
 } atomic_t;
@@ -166,7 +168,7 @@ static inline int atomic_inc_and_test(atomic_t *v)
  */
 static inline int atomic_dec_and_test(atomic_t *v)
 {
-	assert(atomic_read(v) > 0);
+	WARN_ON(atomic_read(v) <= 0);
 	return atomic_dec_return(v) == 0;
 }
 
