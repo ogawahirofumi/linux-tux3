@@ -197,7 +197,7 @@ int tux3_clear_hole(struct inode *inode, unsigned delta)
 	struct hole_extent *hole, *safe;
 	int has_hole = 0;
 
-	/* This is iput path, so we don't need locks. */
+	/* This inode should not have referencer, so we don't need locks. */
 	list_for_each_entry_safe(hole, safe, &i_ddc->dirty_holes, dirty_list) {
 		list_del_init(&hole->dirty_list);
 		list_del_init(&hole->list);
