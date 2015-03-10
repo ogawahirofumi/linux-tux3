@@ -1128,4 +1128,4 @@ static void tux_setup_inode(struct inode *inode)
 		break;
 	}
 }
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */

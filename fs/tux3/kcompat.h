@@ -17,5 +17,5 @@
 #define bio_bi_size(x)		(x)->bi_iter.bi_size
 #endif
 
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 #endif /* !TUX3_KCOMPAT_H */
