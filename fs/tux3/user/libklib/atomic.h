@@ -329,4 +329,8 @@ static inline void atomic_or(int i, atomic_t *v)
 		new = old | i;
 	} while (atomic_cmpxchg(v, old, new) != old);
 }
+
+#include <libklib/atomic64.h>
+#include <libklib/atomic-long.h>
+
 #endif /* !LIBKLIB_ATOMIC_H */
