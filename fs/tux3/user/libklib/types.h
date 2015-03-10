@@ -1,6 +1,8 @@
 #ifndef LIBKLIB_TYPES_H
 #define LIBKLIB_TYPES_H
 
+#include <stdint.h>
+
 typedef unsigned short		umode_t;
 
 typedef signed char		__s8;

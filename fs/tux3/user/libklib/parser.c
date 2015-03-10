@@ -6,9 +6,10 @@
  */
 
 #include <ctype.h>
+#include <string.h>
 
-#include <tux3user.h>
 #include <libklib/libklib.h>
+#include <libklib/slab.h>
 #include <libklib/parser.h>
 
 #define simple_strtoul(a, b, c)		strtoul(a, b, c)

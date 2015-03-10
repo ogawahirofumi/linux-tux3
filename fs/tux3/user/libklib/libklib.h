@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <limits.h>
 #include <endian.h>
+#include <errno.h>
 #include <sys/types.h>
 
 #include <libklib/typecheck.h>

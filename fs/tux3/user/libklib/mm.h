@@ -1,8 +1,6 @@
 #ifndef LIBKLIB_MM_H
 #define LIBKLIB_MM_H
 
-/* depending on tux3 */
-
 /*
  * gfp stuff
  */
@@ -82,6 +80,11 @@ static inline void __free_pages(struct page *page, unsigned order)
 }
 #define __free_page(page) __free_pages((page), 0)
 
+#ifdef TUX3_BUILD
+/* depending on tux3 */
+
+#include <tux3user.h>
+
 /*
  * pagemap stuff
  */
@@ -129,5 +132,6 @@ static inline void pagecache_isize_extended(struct inode *inode, loff_t from,
 {
 	/* Nothing need to do. */
 }
+#endif /* TUX3_BUILD */
 
 #endif /* !LIBKLIB_MM_H */
