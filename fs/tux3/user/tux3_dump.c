@@ -102,7 +102,7 @@ static void free_stats_btree(struct stats_btree *stats)
 
 static struct stats_fs init_stats_fs(struct btree *btree)
 {
-	int depth = btree->root.depth;
+	int depth = has_direct_extent(btree) ? 1 : btree->root.depth;
 
 	if (!opt_stats)
 		return (struct stats_fs){};

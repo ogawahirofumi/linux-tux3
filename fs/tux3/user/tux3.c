@@ -376,7 +376,7 @@ int main(int argc, char *argv[])
 	struct inode *inode = NULL;
 	struct file *file = NULL;
 
-	int err = tux3_init_mem(1 << 20, 2);
+	int err = tux3_init_mem(1 << 28, 2);
 	if (err)
 		goto error;
 
