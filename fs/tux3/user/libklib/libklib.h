@@ -1,6 +1,9 @@
 #ifndef LIBKLIB_H
 #define LIBKLIB_H
 
+/* Prevent to include linux/types.h */
+#define _LINUX_TYPES_H
+
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -18,6 +21,7 @@
 #include <libklib/types.h>
 #include <libklib/bitops.h>
 #include <libklib/byteorder.h>
+#include <libklib/unaligned.h>
 #include <libklib/hash.h>
 #include <libklib/kdev_t.h>
 #include <libklib/bug.h>
