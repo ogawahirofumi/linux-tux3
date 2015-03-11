@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/xattr.h>
 #include <linux/list_sort.h>
+#include <asm/unaligned.h>
 
 #include "trace.h"
 #include "buffer.h"
@@ -32,19 +33,19 @@ typedef u64 tuxkey_t;
 
 static inline void *encode16(void *at, unsigned val)
 {
-	*(__be16 *)at = cpu_to_be16(val);
+	put_unaligned_be16(val, at);
 	return at + sizeof(u16);
 }
 
 static inline void *encode32(void *at, unsigned val)
 {
-	*(__be32 *)at = cpu_to_be32(val);
+	put_unaligned_be32(val, at);
 	return at + sizeof(u32);
 }
 
 static inline void *encode64(void *at, u64 val)
 {
-	*(__be64 *)at = cpu_to_be64(val);
+	put_unaligned_be64(val, at);
 	return at + sizeof(u64);
 }
 
@@ -56,19 +57,19 @@ static inline void *encode48(void *at, u64 val)
 
 static inline void *decode16(void *at, unsigned *val)
 {
-	*val = be16_to_cpup(at);
+	*val = get_unaligned_be16(at);
 	return at + sizeof(u16);
 }
 
 static inline void *decode32(void *at, unsigned *val)
 {
-	*val = be32_to_cpup(at);
+	*val = get_unaligned_be32(at);
 	return at + sizeof(u32);
 }
 
 static inline void *decode64(void *at, u64 *val)
 {
-	*val = be64_to_cpup(at);
+	*val = get_unaligned_be64(at);
 	return at + sizeof(u64);
 }
 
