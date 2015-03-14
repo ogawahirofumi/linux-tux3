@@ -42,17 +42,21 @@
 static inline unsigned tux_rec_len_from_disk(__be16 dlen)
 {
 	unsigned len = be16_to_cpu(dlen);
-
+#if (PAGE_CACHE_SIZE >= 65536)
 	if (len == TUX_MAX_REC_LEN)
 		return 1 << 16;
+#endif
 	return len;
 }
 
 static inline __be16 tux_rec_len_to_disk(unsigned len)
 {
-	assert(len <= (1 << 16));
+#if (PAGE_CACHE_SIZE >= 65536)
 	if (len == (1 << 16))
 		return cpu_to_be16(TUX_MAX_REC_LEN);
+	else
+		BUG_ON(len > (1 << 16));
+#endif
 	return cpu_to_be16(len);
 }
 
