@@ -91,9 +91,9 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
 #include "inode_defer.c"
 
 /* must hold itree->btree.lock */
-static int is_defer_alloc_inum(struct inode *inode)
+static inline int is_defer_alloc_inum(struct inode *inode)
 {
-	return !list_empty(&tux_inode(inode)->alloc_list);
+	return tux3_inode_test_flag(TUX3_I_DEFER_INUM, inode);
 }
 
 /* must hold itree->btree.lock */
@@ -101,21 +101,18 @@ static int add_defer_alloc_inum(struct inode *inode)
 {
 	/* FIXME: need to reserve space (ileaf/bnodes) for this inode? */
 	struct sb *sb = tux_sb(inode->i_sb);
-	struct tux3_inode *tuxnode = tux_inode(inode);
-	int err = tux3_idefer_add(sb->idefer_map, tuxnode->inum);
+	int err = tux3_idefer_add(sb->idefer_map, tux_inode(inode)->inum);
 	if (!err)
-		list_add_tail(&tuxnode->alloc_list, &sb->alloc_inodes);
+		tux3_inode_set_flag(TUX3_I_DEFER_INUM, inode);
 	return err;
 }
 
 /* must hold itree->btree.lock. FIXME: spinlock is enough? */
-void del_defer_alloc_inum(struct inode *inode)
+static void del_defer_alloc_inum(struct inode *inode)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
-	struct tux3_inode *tuxnode = tux_inode(inode);
-	if (!list_empty(&tuxnode->alloc_list))
-		tux3_idefer_del(sb->idefer_map, tuxnode->inum);
-	list_del_init(&tuxnode->alloc_list);
+	tux3_idefer_del(sb->idefer_map, tux_inode(inode)->inum);
+	tux3_inode_clear_flag(TUX3_I_DEFER_INUM, inode);
 }
 
 void cancel_defer_alloc_inum(struct inode *inode)
@@ -123,7 +120,8 @@ void cancel_defer_alloc_inum(struct inode *inode)
 	struct sb *sb = tux_sb(inode->i_sb);
 
 	down_write(&itree_btree(sb)->lock);	/* FIXME: spinlock is enough? */
-	del_defer_alloc_inum(inode);
+	if (is_defer_alloc_inum(inode))
+		del_defer_alloc_inum(inode);
 	up_write(&itree_btree(sb)->lock);
 }
 
@@ -512,11 +510,13 @@ static int save_inode(struct inode *inode, struct tux3_iattr_data *idata,
 	 * ->usedinodes is used only by backend, no need lock.
 	 * FIXME: what happen if snapshot was introduced?
 	 */
-	if (is_defer_alloc_inum(inode) && inum >= TUX_NORMAL_INO) {
-		assert(be64_to_cpu(sb->super.usedinodes) < MAX_INODES);
-		be64_add_cpu(&sb->super.usedinodes, 1);
+	if (is_defer_alloc_inum(inode)) {
+		if (inum >= TUX_NORMAL_INO) {
+			assert(be64_to_cpu(sb->super.usedinodes) < MAX_INODES);
+			be64_add_cpu(&sb->super.usedinodes, 1);
+		}
+		del_defer_alloc_inum(inode);
 	}
-	del_defer_alloc_inum(inode);
 
 error_release:
 	release_cursor(cursor);
@@ -709,6 +709,7 @@ static inline void tux3_evict_inode_check(struct inode *inode)
 			 tux_inode(inode)->state);
 		assert(0);
 	}
+	assert(!is_defer_alloc_inum(inode));
 }
 
 /*

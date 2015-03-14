@@ -382,7 +382,6 @@ struct sb {
 	spinlock_t countmap_lock;
 	struct countmap_pin countmap_pin;
 	struct tux3_idefer_map *idefer_map;
-	struct list_head alloc_inodes;	/* deferred inum allocation inodes */
 
 	spinlock_t forked_buffers_lock;
 	struct link forked_buffers;	/* forked buffers list */
@@ -451,7 +450,6 @@ struct tux3_inode {
 	inum_t inum;			/* Inode number */
 	unsigned long flags;		/* Inode flags */
 	struct xcache *xcache;		/* Extended attribute cache */
-	struct list_head alloc_list;	/* link for deferred inum allocation */
 	struct list_head orphan_list;	/* link for orphan inode list */
 
 	/* FIXME: we can use RCU for hole_extents? */
@@ -537,6 +535,9 @@ static inline struct list_head *tux3_dirty_buffers(struct inode *inode,
 
 /* inode flags */
 enum {
+	/* Deferred inum allocation, and not stored into itree yet. */
+	TUX3_I_DEFER_INUM	= 0,
+
 	/*
 	 * If no-flush flag is set, tux3_flush_inodes() doesn't flush. Some
 	 * inodes have to be flushed by custom timing, and it is flushed by
@@ -545,7 +546,7 @@ enum {
 	 * This inode must be pinned until umount, to flush by
 	 * tux3_flush_inode_internal().
 	 */
-	TUX3_I_NO_FLUSH = 31,
+	TUX3_I_NO_FLUSH		= 31,
 };
 
 static inline void tux3_inode_set_flag(int bit, struct inode *inode)
@@ -891,7 +892,6 @@ struct tux3_idefer_map *tux3_alloc_idefer_map(void);
 void tux3_free_idefer_map(struct tux3_idefer_map *map);
 int __init tux3_init_idefer_cache(void);
 void tux3_destroy_idefer_cache(void);
-void del_defer_alloc_inum(struct inode *inode);
 void cancel_defer_alloc_inum(struct inode *inode);
 int tux_assign_inum(struct inode *inode, inum_t goal);
 struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
