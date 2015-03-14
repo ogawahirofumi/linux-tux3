@@ -293,8 +293,7 @@ void __tux3_mark_buffer_dirty(struct buffer_head *buffer, unsigned delta)
 
 	inode = buffer_inode(buffer);
 #ifdef __KERNEL__
-	assert(tux_inode(inode)->inum == TUX_VOLMAP_INO ||
-	       tux_inode(inode)->inum == TUX_LOGMAP_INO ||
+	assert(tux3_inode_test_flag(TUX3_I_NO_DELTA, inode) ||
 	       PageLocked(buffer->b_page));
 #endif
 
@@ -311,8 +310,7 @@ void __tux3_mark_buffer_dirty(struct buffer_head *buffer, unsigned delta)
 void tux3_mark_buffer_dirty(struct buffer_head *buffer)
 {
 	struct inode *inode = buffer_inode(buffer);
-	assert(tux_inode(inode)->inum == TUX_VOLMAP_INO ||
-	       tux_inode(inode)->inum == TUX_LOGMAP_INO);
+	assert(tux3_inode_test_flag(TUX3_I_NO_DELTA, inode));
 	__tux3_mark_buffer_dirty(buffer, TUX3_INIT_DELTA);
 }
 

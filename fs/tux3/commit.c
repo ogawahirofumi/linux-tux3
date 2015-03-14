@@ -641,11 +641,7 @@ unsigned tux3_get_current_delta(void)
 /* Choice sb->delta or sb->unify from inode */
 unsigned tux3_inode_delta(struct inode *inode)
 {
-	unsigned delta;
-
-	switch (tux_inode(inode)->inum) {
-	case TUX_VOLMAP_INO:
-	case TUX_LOGMAP_INO:
+	if (tux3_inode_test_flag(TUX3_I_NO_DELTA, inode)) {
 		/*
 		 * Note: volmap are special, and has both of
 		 * TUX3_INIT_DELTA and sb->unify. So TUX3_INIT_DELTA
@@ -653,18 +649,13 @@ unsigned tux3_inode_delta(struct inode *inode)
 		 * Note: logmap is similar to volmap, but it doesn't
 		 * have sb->unify buffers.
 		 */
-		delta = TUX3_INIT_DELTA;
-		break;
-	case TUX_BITMAP_INO:
-	case TUX_COUNTMAP_INO:
-		delta = tux_sb(inode->i_sb)->unify;
-		break;
-	default:
-		delta = tux3_get_current_delta();
-		break;
+		return TUX3_INIT_DELTA;
 	}
 
-	return delta;
+	if (tux3_inode_test_flag(TUX3_I_UNIFY, inode))
+		return tux_sb(inode->i_sb)->unify;
+
+	return tux3_get_current_delta();
 }
 
 /*

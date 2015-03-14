@@ -803,6 +803,8 @@ static inline void tux_setup_inode_common(struct inode *inode)
 			inode->i_size = (loff_t)sb->volblocks << sb->blockbits;
 			/* Flushed by tux3_flush_inode_internal() */
 			tux3_inode_set_flag(TUX3_I_NO_FLUSH, inode);
+			/* No per-delta buffers, and no page forking */
+			tux3_inode_set_flag(TUX3_I_NO_DELTA, inode);
 			break;
 		default:
 			BUG();

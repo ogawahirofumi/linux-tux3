@@ -538,6 +538,8 @@ enum {
 	/* Deferred inum allocation, and not stored into itree yet. */
 	TUX3_I_DEFER_INUM	= 0,
 
+	/* No per-delta buffers, and no page forking */
+	TUX3_I_NO_DELTA		= 29,
 	/* Accessed from backend only, and flushed on unify */
 	TUX3_I_UNIFY		= 30,
 	/*
