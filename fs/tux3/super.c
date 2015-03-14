@@ -60,6 +60,7 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 
 	tuxnode->btree		= (struct btree){ };
 	tuxnode->present	= 0;
+	tuxnode->flags		= 0;
 	tuxnode->xcache		= NULL;
 	tuxnode->state		= 0;
 #ifdef __KERNEL__

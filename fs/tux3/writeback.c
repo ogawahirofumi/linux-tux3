@@ -53,35 +53,13 @@
 #define IFLAGS_DEAD_SHIFT	(IFLAGS_XATTR_SHIFT + IFLAGS_XATTR_BITS)
 
 /* btree root is modified from only backend, so no need per-delta flag */
-#define TUX3_DIRTY_BTREE	(1U << 28)
+#define TUX3_DIRTY_BTREE	(1U << 29)
 /* the orphaned flag is set by only backend, so no need per-delta flag */
-#define TUX3_INODE_ORPHANED	(1U << 29)
+#define TUX3_INODE_ORPHANED	(1U << 30)
 /* the dead flag is set by only backend, so no need per-delta flag */
-#define TUX3_INODE_DEAD		(1U << 30)
-/* If no-flush flag is set, tux3_flush_inodes() doesn't flush */
-#define TUX3_INODE_NO_FLUSH	(1U << 31)
+#define TUX3_INODE_DEAD		(1U << 31)
 
-#define NON_DIRTY_FLAGS					\
-	(TUX3_INODE_ORPHANED | TUX3_INODE_DEAD | TUX3_INODE_NO_FLUSH)
-
-/*
- * If no-flush flag is set, tux3_flush_inodes() doesn't flush. Some
- * inodes have to be flushed by custom timing, and it is flushed by
- * tux3_flush_inode_internal() instead.
- *
- * This inode must be pinned until umount, to flush by
- * tux3_flush_inode_internal().
- */
-void tux3_set_inode_no_flush(struct inode *inode)
-{
-	tux_inode(inode)->state |= TUX3_INODE_NO_FLUSH;
-}
-
-/* The inode has no-flush flag? */
-static int tux3_is_inode_no_flush(struct inode *inode)
-{
-	return tux_inode(inode)->state & TUX3_INODE_NO_FLUSH;
-}
+#define NON_DIRTY_FLAGS		(TUX3_INODE_ORPHANED | TUX3_INODE_DEAD)
 
 /*
  * Some inodes (e.g. bitmap inode) is always dirty, because it has
@@ -139,12 +117,12 @@ void tux3_dirty_inode(struct inode *inode, int flags)
 		return;
 
 	/*
-	 * If inode is TUX3_INODE_NO_FLUSH, it is handled by different
+	 * If inode is TUX3_I_NO_FLUSH, it is handled by different
 	 * cycle with sb->delta. So those can race.
 	 *
 	 * So, don't bother s_ddc->dirty_inodes by adding those inodes.
 	 */
-	if (tux3_is_inode_no_flush(inode))
+	if (tux3_inode_test_flag(TUX3_I_NO_FLUSH, inode))
 		s_ddc = NULL;
 	else {
 		s_ddc = tux3_sb_ddc(sb, delta);
@@ -544,16 +522,16 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
 }
 
 /*
- * tux3_flush_inode() for TUX3_INODE_NO_FLUSH.
+ * tux3_flush_inode() for TUX3_I_NO_FLUSH.
  *
- * If inode is TUX3_INODE_NO_FLUSH, those can clear inode dirty state
+ * If inode is TUX3_I_NO_FLUSH, those can clear inode dirty state
  * immediately. Because those inodes is pinned until umount.
 */
 int tux3_flush_inode_internal(struct inode *inode, unsigned delta, int req_flag)
 {
 	int err;
 
-	assert(tux3_is_inode_no_flush(inode));
+	assert(tux3_inode_test_flag(TUX3_I_NO_FLUSH, inode));
 	assert(atomic_read(&inode->i_count) >= 1);
 
 	/*
@@ -612,7 +590,7 @@ int tux3_flush_inodes(struct sb *sb, unsigned delta)
 		struct inode *inode = &tuxnode->vfs_inode;
 
 		policy_inode(inode, &private);
-		assert(!tux3_is_inode_no_flush(inode));
+		assert(!tux3_inode_test_flag(TUX3_I_NO_FLUSH, inode));
 
 		err = tux3_flush_inode_data(inode, delta, 0);
 		if (err)
@@ -622,7 +600,7 @@ int tux3_flush_inodes(struct sb *sb, unsigned delta)
 		struct tux3_inode *tuxnode = i_ddc_to_inode(i_ddc, delta);
 		struct inode *inode = &tuxnode->vfs_inode;
 
-		assert(!tux3_is_inode_no_flush(inode));
+		assert(!tux3_inode_test_flag(TUX3_I_NO_FLUSH, inode));
 
 		err = tux3_flush_inode(inode, delta, 0);
 		if (err)
@@ -662,7 +640,7 @@ void tux3_clear_dirty_inodes(struct sb *sb, unsigned delta)
 		struct tux3_inode *tuxnode = i_ddc_to_inode(i_ddc, delta);
 		struct inode *inode = &tuxnode->vfs_inode;
 
-		assert(!tux3_is_inode_no_flush(inode));
+		assert(!tux3_inode_test_flag(TUX3_I_NO_FLUSH, inode));
 
 		/*
 		 * iput_final() doesn't add inode to LRU list if I_DIRTY.

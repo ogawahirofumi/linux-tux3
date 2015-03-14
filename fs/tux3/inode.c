@@ -792,13 +792,13 @@ static inline void tux_setup_inode_common(struct inode *inode)
 			/* set fake i_size to escape the check of block_* */
 			inode->i_size = vfs_sb(sb)->s_maxbytes;
 			/* Flushed by tux3_flush_inode_internal() */
-			tux3_set_inode_no_flush(inode);
+			tux3_inode_set_flag(TUX3_I_NO_FLUSH, inode);
 			break;
 		case TUX_VOLMAP_INO:
 		case TUX_LOGMAP_INO:
 			inode->i_size = (loff_t)sb->volblocks << sb->blockbits;
 			/* Flushed by tux3_flush_inode_internal() */
-			tux3_set_inode_no_flush(inode);
+			tux3_inode_set_flag(TUX3_I_NO_FLUSH, inode);
 			break;
 		default:
 			BUG();

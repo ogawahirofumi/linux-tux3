@@ -449,6 +449,7 @@ struct xcache;
 struct tux3_inode {
 	struct btree btree;
 	inum_t inum;			/* Inode number */
+	unsigned long flags;		/* Inode flags */
 	struct xcache *xcache;		/* Extended attribute cache */
 	struct list_head alloc_list;	/* link for deferred inum allocation */
 	struct list_head orphan_list;	/* link for orphan inode list */
@@ -532,6 +533,34 @@ static inline struct list_head *tux3_dirty_buffers(struct inode *inode,
 						   unsigned delta)
 {
 	return &tux3_inode_ddc(inode, delta)->dirty_buffers;
+}
+
+/* inode flags */
+enum {
+	/*
+	 * If no-flush flag is set, tux3_flush_inodes() doesn't flush. Some
+	 * inodes have to be flushed by custom timing, and it is flushed by
+	 * tux3_flush_inode_internal() instead.
+	 *
+	 * This inode must be pinned until umount, to flush by
+	 * tux3_flush_inode_internal().
+	 */
+	TUX3_I_NO_FLUSH = 31,
+};
+
+static inline void tux3_inode_set_flag(int bit, struct inode *inode)
+{
+	set_bit(bit, &tux_inode(inode)->flags);
+}
+
+static inline void tux3_inode_clear_flag(int bit, struct inode *inode)
+{
+	clear_bit(bit, &tux_inode(inode)->flags);
+}
+
+static inline int tux3_inode_test_flag(int bit, struct inode *inode)
+{
+	return test_bit(bit, &tux_inode(inode)->flags);
 }
 
 struct tux_iattr {
@@ -968,7 +997,6 @@ int all_clear(u8 *bitmap, unsigned start, unsigned count);
 int bytebits(u8 c);
 
 /* writeback.c */
-void tux3_set_inode_no_flush(struct inode *inode);
 void tux3_set_inode_always_dirty(struct inode *inode);
 void tux3_mark_btree_dirty(struct btree *btree);
 void __tux3_mark_inode_dirty(struct inode *inode, int flags);
