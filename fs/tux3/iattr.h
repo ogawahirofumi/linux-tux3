@@ -3,7 +3,7 @@
 
 enum atkind {
 	/* Fixed size attrs */
-	RDEV_ATTR	= 0,
+	GENERIC_ATTR	= 0,	/* i_rdev for chr/blk,  parent inum for dir */
 	MODE_OWNER_ATTR	= 1,
 	DATA_BTREE_ATTR	= 2,
 	CTIME_SIZE_ATTR	= 3,
@@ -26,7 +26,7 @@ enum atkind {
 
 enum atbit {
 	/* Fixed size attrs */
-	RDEV_BIT	= 1 << RDEV_ATTR,
+	GENERIC_BIT	= 1 << GENERIC_ATTR,
 	MODE_OWNER_BIT	= 1 << MODE_OWNER_ATTR,
 	CTIME_SIZE_BIT	= 1 << CTIME_SIZE_ATTR,
 	DATA_BTREE_BIT	= 1 << DATA_BTREE_ATTR,
@@ -44,4 +44,32 @@ struct iattr_req_data {
 	struct btree *btree;			/* inode dtree */
 	struct inode *inode;			/* extended attributes */
 };
+
+/* Decode from on-disk to inode field */
+static inline bool iattr_decode_generic(struct inode *inode, u64 generic)
+{
+	switch (inode->i_mode & S_IFMT) {
+	case S_IFBLK:
+	case S_IFCHR:
+		inode->i_rdev = huge_decode_dev(generic);
+		return true;
+	case S_IFDIR:
+		tux_inode(inode)->parent_inum = generic;
+		return true;
+	}
+	return false;
+}
+
+/* Encode from inode field to on-disk */
+static inline u64 iattr_encode_generic(struct inode *inode)
+{
+	switch (inode->i_mode & S_IFMT) {
+	case S_IFBLK:
+	case S_IFCHR:
+		return huge_encode_dev(inode->i_rdev);
+	case S_IFDIR:
+		return tux_inode(inode)->parent_inum;
+	}
+	return 0;
+}
 #endif /* !TUX3_IATTR_H */

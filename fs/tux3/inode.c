@@ -64,6 +64,7 @@ static void tux_inode_init_owner(struct inode *inode, const struct inode *dir,
 struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
 			    struct tux_iattr *iattr)
 {
+	inum_t parent_inum = dir ? tux_inode(dir)->inum : TUX_ROOTDIR_INO;
 	struct inode *inode;
 
 	inode = new_inode(vfs_sb(sb));
@@ -79,10 +80,12 @@ struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
 	case S_IFCHR:
 		/* vfs, trying to be helpful, will rewrite the field */
 		inode->i_rdev = iattr->rdev;
-		tux_inode(inode)->present |= RDEV_BIT;
+		tux_inode(inode)->present |= GENERIC_BIT;
 		break;
 	case S_IFDIR:
 		inc_nlink(inode);
+		tux_inode(inode)->parent_inum = parent_inum;
+		tux_inode(inode)->present |= GENERIC_BIT;
 		break;
 	}
 	tux_inode(inode)->present |= CTIME_SIZE_BIT|MTIME_BIT|MODE_OWNER_BIT|LINK_COUNT_BIT;
@@ -403,30 +406,30 @@ static int check_present(struct inode *inode)
 	case S_IFSOCK:
 	case S_IFIFO:
 		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & RDEV_BIT));
+		assert(!(tuxnode->present & GENERIC_BIT));
 		break;
 	case S_IFBLK:
 	case S_IFCHR:
 		assert(tuxnode->present & MODE_OWNER_BIT);
-//		assert(tuxnode->present & RDEV_BIT);
+//		assert(tuxnode->present & GENERIC_BIT);
 		break;
 	case S_IFREG:
 		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & RDEV_BIT));
+		assert(!(tuxnode->present & GENERIC_BIT));
 		break;
 	case S_IFDIR:
 		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & RDEV_BIT));
+		assert(tuxnode->present & GENERIC_BIT);
 		break;
 	case S_IFLNK:
 		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & RDEV_BIT));
+		assert(!(tuxnode->present & GENERIC_BIT));
 		break;
 	case 0: /* internal inode */
 		if (tux_inode(inode)->inum == TUX_VOLMAP_INO)
 			assert(tuxnode->present == 0);
 		else
-			assert(!(tuxnode->present & RDEV_BIT));
+			assert(!(tuxnode->present & GENERIC_BIT));
 		break;
 	default:
 		tux3_fs_error(tux_sb(inode->i_sb),

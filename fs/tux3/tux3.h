@@ -100,8 +100,9 @@ static inline void *decode48(void *at, u64 *val)
  * 2012-12-20: Add ->usedinodes
  * 2014-03-27: Change internal inum numbers. Change btree->root.depth.
  * 2014-05-06: Change timestamp format to nanosecond.
+ * 2015-03-14: Add parent_inum
  */
-#define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x14, 0x05, 0x06 }
+#define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x15, 0x03, 0x14 }
 #define TUX3_MAGIC_STR					\
 	((typeof(((struct disksuper *)0)->magic))TUX3_MAGIC)
 
@@ -425,12 +426,13 @@ struct tux3_iattr_data {
 	uid_t		i_uid;
 	gid_t		i_gid;
 	unsigned int	i_nlink;
-	dev_t		i_rdev;
 	loff_t		i_size;
 //	struct timespec	i_atime;
 	struct timespec	i_mtime;
 	struct timespec	i_ctime;
 	u64		i_version;
+	/* inode type specific field */
+	u64		generic;
 };
 
 /* Per-delta data structure for inode */
@@ -459,6 +461,13 @@ struct tux3_inode {
 
 	struct rw_semaphore truncate_lock; /* lock for truncate and mmap */
 	spinlock_t lock;		/* lock for inode metadata */
+
+	/* inode type specific field */
+	union {
+		inum_t parent_inum;	/* parent inum for dir */
+		u64 generic;
+	};
+
 	/* Per-delta dirty data for inode */
 	unsigned state;			/* inode dirty state */
 	unsigned present;		/* Attributes decoded from or

@@ -18,7 +18,7 @@
 
 unsigned atsize[MAX_ATTRS] = {
 	/* Fixed size attrs */
-	[RDEV_ATTR] = 8,
+	[GENERIC_ATTR] = 8,
 	[MODE_OWNER_ATTR] = 12,
 	[CTIME_SIZE_ATTR] = 16,
 	[DATA_BTREE_ATTR] = 8,
@@ -81,8 +81,11 @@ void dump_attrs(struct inode *inode)
 		if (!(tux_inode(inode)->present & (1 << kind)))
 			continue;
 		switch (kind) {
-		case RDEV_ATTR:
-			__tux3_dbg("rdev %x:%x ", MAJOR(inode->i_rdev), MINOR(inode->i_rdev));
+		case GENERIC_ATTR:
+			if (S_ISBLK(inode->i_mode) || S_ISCHR(inode->i_mode))
+				__tux3_dbg("rdev %x:%x ", MAJOR(inode->i_rdev), MINOR(inode->i_rdev));
+			else
+				__tux3_dbg("parent %Lx ", tux_inode(inode)->parent_inum);
 			break;
 		case MODE_OWNER_ATTR:
 			__tux3_dbg("mode %07ho uid %x gid %x ", inode->i_mode, i_uid_read(inode), i_gid_read(inode));
@@ -131,8 +134,8 @@ static void *encode_attrs(struct btree *btree, void *data, void *attrs,
 			break;
 		attrs = encode_kind(attrs, kind, sb->version);
 		switch (kind) {
-		case RDEV_ATTR:
-			attrs = encode64(attrs, huge_encode_dev(idata->i_rdev));
+		case GENERIC_ATTR:
+			attrs = encode64(attrs, idata->generic);
 			break;
 		case MODE_OWNER_ATTR:
 			/* FIXME: i_mode is enough with 16bits */
@@ -174,7 +177,7 @@ static void *decode_attrs(struct inode *inode, void *attrs, unsigned size)
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	struct root btree_root = no_root;
 	void *limit = attrs + size;
-	u64 v64;
+	u64 v64, generic = 0;
 	u32 v32;
 
 	while (attrs < limit - 1) {
@@ -185,10 +188,8 @@ static void *decode_attrs(struct inode *inode, void *attrs, unsigned size)
 			continue;
 		}
 		switch (kind) {
-		case RDEV_ATTR:
-			attrs = decode64(attrs, &v64);
-			/* vfs, trying to be helpful, will rewrite the field */
-			inode->i_rdev = huge_decode_dev(v64);
+		case GENERIC_ATTR:
+			attrs = decode64(attrs, &generic);
 			break;
 		case MODE_OWNER_ATTR:
 			attrs = decode32(attrs, &v32);
@@ -229,6 +230,12 @@ static void *decode_attrs(struct inode *inode, void *attrs, unsigned size)
 		tuxnode->present |= 1 << kind;
 	skip_present:
 		;
+	}
+
+	if (tuxnode->present & GENERIC_BIT) {
+		if (!iattr_decode_generic(inode, generic)) {
+			/* FIXME: Add FS corruption handling */
+		}
 	}
 
 	/* We don't use ->present for btree root */
