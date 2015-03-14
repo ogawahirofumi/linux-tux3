@@ -74,7 +74,13 @@ static int filldir(struct dir_context *ctx, const char *name, int namelen,
 
 	char orig[100];
 	sprintf(orig, "file%i", pos);
-	trace_on("%*s, %s", namelen, name, orig);
+	trace_on("%s: name %*s, len %d, inum %Ld offset %Ld, type %x",
+		 orig, namelen, name, namelen, inum, (s64)offset, type);
+
+	if ((namelen == 1 && !memcmp(name, ".", 1)) ||
+	    (namelen == 2 && !memcmp(name, "..", 2)))
+		return 0;
+
 	test_assert(memcmp(orig, name, strlen(orig)) == 0);
 	test_assert(inum == pos+99);
 	test_assert(type == DT_REG);
