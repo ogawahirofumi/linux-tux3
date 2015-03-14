@@ -192,7 +192,7 @@ int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer)
 static void cancel_buffer_dirty(struct bufvec *bufvec,
 				struct buffer_head *buffer)
 {
-	if (tux_inode(bufvec_inode(bufvec))->inum == TUX_VOLMAP_INO)
+	if (tux3_inode_test_flag(TUX3_I_NO_DELTA, bufvec_inode(bufvec)))
 		__clear_buffer_dirty_for_endio(buffer, 0);
 	else
 		clear_buffer_dirty_for_endio(buffer, 0);
