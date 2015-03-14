@@ -370,7 +370,7 @@ struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode)
 
 	dir.i_sb = vfs_sb(sb);
 	iattr.mode = mode;
-	inode = tux_new_inode(&dir, &iattr, 0);
+	inode = tux_new_inode(&dir, &iattr);
 	assert(inode);
 
 	inode->map->io = io;

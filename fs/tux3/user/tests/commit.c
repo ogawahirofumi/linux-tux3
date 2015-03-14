@@ -1129,26 +1129,22 @@ static void test12(struct sb *sb)
 		iput(inode);
 	}
 	/* Create non regular files */
-	struct {
-		struct tux_iattr iattr;
-		dev_t rdev;
-	} rdevs[NR_NON_REG] = {
-		{ .iattr = { .mode = S_IFIFO | 0644 }, .rdev = 0 },
-		{ .iattr = { .mode = S_IFSOCK | 0644 }, .rdev = 0 },
-		{ .iattr = { .mode = S_IFCHR | 0644 }, .rdev = MKDEV(10, 10) },
-		{ .iattr = { .mode = S_IFBLK | 0644 }, .rdev = MKDEV(11, 11) },
+	struct tux_iattr rdevs[NR_NON_REG] = {
+		{ .mode = S_IFIFO | 0644, },
+		{ .mode = S_IFSOCK | 0644, },
+		{ .mode = S_IFCHR | 0644, .rdev = MKDEV(10, 10), },
+		{ .mode = S_IFBLK | 0644, .rdev = MKDEV(11, 11), },
 	};
 	for (int i = NR_REG; i < (NR_REG + NR_NON_REG); i++) {
 		struct entry *e = &entries[i];
 		struct inode *inode;
-		struct tux_iattr *iattrp = &rdevs[i - NR_REG].iattr;
-		dev_t rdev = rdevs[i - NR_REG].rdev;
+		struct tux_iattr *iattrp = &rdevs[i - NR_REG];
 
 		e->len = snprintf(e->name, sizeof(e->name), "file%03d", i);
-		inode = tuxmknod(sb->rootdir, e->name, e->len, iattrp, rdev);
+		inode = tuxmknod(sb->rootdir, e->name, e->len, iattrp);
 		test_assert(!IS_ERR(inode));
 		test_assert(inode->i_mode == iattrp->mode);
-		test_assert(inode->i_rdev == rdev);
+		test_assert(inode->i_rdev == iattrp->rdev);
 
 		e->inode = *inode;
 

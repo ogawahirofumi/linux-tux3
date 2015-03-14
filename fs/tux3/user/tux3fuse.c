@@ -291,6 +291,7 @@ static struct inode *__tux3fuse_mknod(fuse_req_t req, fuse_ino_t parent,
 		.uid	= make_kuid(&init_user_ns, ctx->uid),
 		.gid	= make_kgid(&init_user_ns, ctx->gid),
 		.mode	= mode,
+		.rdev	= rdev,
 	};
 	struct inode *dir, *inode;
 
@@ -298,7 +299,7 @@ static struct inode *__tux3fuse_mknod(fuse_req_t req, fuse_ino_t parent,
 	if (IS_ERR(dir))
 		return dir;
 
-	inode = __tuxmknod(dir, name, strlen(name), &iattr, rdev);
+	inode = __tuxmknod(dir, name, strlen(name), &iattr);
 	iput(dir);
 	return inode;
 }
