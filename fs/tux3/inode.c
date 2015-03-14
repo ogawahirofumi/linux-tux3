@@ -46,8 +46,7 @@ struct inode *tux_new_logmap(struct sb *sb)
 	return inode;
 }
 
-struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
-			    dev_t rdev)
+struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
 {
 	struct inode *inode;
 
@@ -69,7 +68,7 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
 	case S_IFBLK:
 	case S_IFCHR:
 		/* vfs, trying to be helpful, will rewrite the field */
-		inode->i_rdev = rdev;
+		inode->i_rdev = iattr->rdev;
 		tux_inode(inode)->present |= RDEV_BIT;
 		break;
 	case S_IFDIR:
@@ -348,12 +347,12 @@ error:
 
 /* Allocate inode with specific inum allocation policy */
 struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
-					struct tux_iattr *iattr, dev_t rdev)
+					struct tux_iattr *iattr)
 {
 	struct inode *inode;
 	int err;
 
-	inode = tux_new_inode(dir, iattr, rdev);
+	inode = tux_new_inode(dir, iattr);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 

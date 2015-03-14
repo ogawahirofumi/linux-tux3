@@ -43,16 +43,17 @@ static int tux_add_dirent(struct inode *dir, struct dentry *dentry,
 }
 
 static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
-			struct tux_iattr *iattr, dev_t rdev)
+			struct tux_iattr *iattr)
 {
 	struct inode *inode;
 	int err;
 
-	if (!huge_valid_dev(rdev))
+	if (!huge_valid_dev(iattr->rdev) &&
+	    (S_ISBLK(iattr->mode) || S_ISCHR(iattr->mode)))
 		return -EINVAL;
 
 	change_begin(tux_sb(dir->i_sb));
-	inode = tux_new_inode(dir, iattr, rdev);
+	inode = tux_new_inode(dir, iattr);
 	err = PTR_ERR(inode);
 	if (!IS_ERR(inode)) {
 		err = tux_add_dirent(dir, dentry, inode);
@@ -74,9 +75,10 @@ static int tux3_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 		.uid	= current_fsuid(),
 		.gid	= current_fsgid(),
 		.mode	= mode,
+		.rdev	= rdev,
 	};
 
-	return __tux3_mknod(dir, dentry, &iattr, rdev);
+	return __tux3_mknod(dir, dentry, &iattr);
 }
 
 static int tux3_create(struct inode *dir, struct dentry *dentry, umode_t mode,
@@ -138,7 +140,7 @@ static int __tux3_symlink(struct inode *dir, struct dentry *dentry,
 		return -ENAMETOOLONG;
 
 	change_begin(sb);
-	inode = tux_new_inode(dir, iattr, 0);
+	inode = tux_new_inode(dir, iattr);
 	err = PTR_ERR(inode);
 	if (!IS_ERR(inode)) {
 		err = tux_create_dirent(dir, &dentry->d_name, inode);
