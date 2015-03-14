@@ -117,12 +117,68 @@ static int __sync_current_delta(struct sb *sb, int flags)
 	return err;
 }
 
-static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
+static void tux3_queue_wb_work(struct sb *sb, struct delta_ref *delta_ref)
 {
 	/* TUX3_FLUSHER_SYNC, so nothing to do */
 }
 #else /* !TUX3_FLUSHER_SYNC */
 #define WB_REASON_TUX3_PENDING	((enum wb_reason)WB_REASON_MAX + 1)
+
+static struct tux3_wb_work *tux3_to_wb_work(struct sb *sb, unsigned delta)
+{
+	return &sb->wb_work[delta % ARRAY_SIZE(sb->wb_work)];
+}
+
+/* Mark as flusher is waiting this delta already. */
+static void tux3_start_wb_work(struct sb *sb)
+{
+	unsigned delta = sb->delta_staging + 1;
+	struct tux3_wb_work *wb_work = tux3_to_wb_work(sb, delta);
+	wb_work->flusher_is_waiting = 1;
+}
+
+/* Make sure tux3_wb_work is removed from bdi queue. */
+static void tux3_dequeue_wb_work(struct sb *sb)
+{
+	struct tux3_wb_work *wb_work = tux3_to_wb_work(sb, sb->delta_staging);
+
+	if (!list_empty(&wb_work->work.list)) {
+		spin_lock_bh(&vfs_sb(sb)->s_bdi->wb_lock);
+		list_del_init(&wb_work->work.list);
+		wb_work->dummy_done.done = 1;	/* For debugging */
+		spin_unlock_bh(&vfs_sb(sb)->s_bdi->wb_lock);
+	}
+
+	wb_work->flusher_is_waiting = 0;
+}
+
+/* Schedule to flush the pending delta. */
+static void tux3_queue_wb_work(struct sb *sb, struct delta_ref *delta_ref)
+{
+	struct tux3_wb_work *wb_work = tux3_to_wb_work(sb, delta_ref->delta);
+
+	/* Must be enable to reuse this */
+	assert(wb_work->dummy_done.done == 1);
+
+	/* If flusher is already waiting for this delta, don't need to tell. */
+	if (wb_work->flusher_is_waiting) {
+		/* Initialize for tux3_wb_dequeue_work() */
+		INIT_LIST_HEAD(&wb_work->work.list);
+		return;
+	}
+
+	wb_work->delta = delta_ref->delta;
+	reinit_completion(&wb_work->dummy_done);
+
+	wb_work->work = (struct wb_writeback_work){
+		.nr_pages	= LONG_MAX,
+		.sync_mode	= WB_SYNC_ALL,
+		.reason		= WB_REASON_TUX3_PENDING,
+		/* This is just to avoid that bdi flusher kfree this. */
+		.done		= &wb_work->dummy_done,
+	};
+	writeback_queue_work_sb(vfs_sb(sb), &wb_work->work);
+}
 
 long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 		    struct wb_writeback_work *work)
@@ -157,8 +213,16 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 		int flags = (work->sync_mode == WB_SYNC_ALL)
 			? FLUSH_SYNC : FLUSH_NORMAL;
 
+		/* Tell flusher is starting to wait for this delta */
+		if (work->reason != WB_REASON_TUX3_PENDING)
+			tux3_start_wb_work(sb);
+
 		/* Make sure the pending delta is there. */
 		tux3_wait_for_pending(sb);
+
+		/* Remove tux3_wb_work for this delta if need */
+		if (work->reason != WB_REASON_TUX3_PENDING)
+			tux3_dequeue_wb_work(sb);
 
 		err = flush_delta(sb, flags);
 		/* FIXME: error handling */
@@ -258,32 +322,6 @@ static int __sync_current_delta(struct sb *sb, int flags)
 
 	return err;
 }
-
-static struct tux3_wb_work *tux3_alloc_wb_work(struct sb *sb, unsigned delta)
-{
-	return &sb->wb_work[delta % ARRAY_SIZE(sb->wb_work)];
-}
-
-/* Schedule to flush the pending delta. */
-static void tux3_wb_queue_work(struct sb *sb, struct delta_ref *delta_ref)
-{
-	struct tux3_wb_work *wb_work = tux3_alloc_wb_work(sb, delta_ref->delta);
-
-	/* Must be enable to reuse this */
-	assert(wb_work->dummy_done.done == 1);
-
-	wb_work->delta = delta_ref->delta;
-	reinit_completion(&wb_work->dummy_done);
-
-	wb_work->work = (struct wb_writeback_work){
-		.nr_pages	= LONG_MAX,
-		.sync_mode	= WB_SYNC_ALL,
-		.reason		= WB_REASON_TUX3_PENDING,
-		/* This is just to avoid that bdi flusher kfree this. */
-		.done		= &wb_work->dummy_done,
-	};
-	writeback_queue_work_sb(vfs_sb(sb), &wb_work->work);
-}
 #endif /* !TUX3_FLUSHER_SYNC */
 
 /* Synchronous flush (without unify if possible). */
@@ -294,17 +332,12 @@ int sync_current_delta(struct sb *sb)
 
 static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref)
 {
-	int flusher_is_waiting;
-
 	trace("delta waitref %u", delta_ref->delta);
+	/* Add request for this delta to flusher. */
+	tux3_queue_wb_work(sb, delta_ref);
 
-	/* Wake up if flusher is already waiting refcount. */
-	flusher_is_waiting = waitqueue_active(&delta_ref->waitref_done.wait);
+	/* Complete after queued tux3_wb_work */
 	complete(&delta_ref->waitref_done);
-
-	/* If flusher is already waiting for this delta, don't need to tell. */
-	if (!flusher_is_waiting)
-		tux3_wb_queue_work(sb, delta_ref);
 
 	/* Allow to start new transition */
 	sb->delta_pending++;
