@@ -71,16 +71,12 @@ static int map_bfree(struct inode *inode, block_t block, unsigned count)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 
-	switch (tux_inode(inode)->inum) {
-	case TUX_BITMAP_INO:
-	case TUX_COUNTMAP_INO:
+	if (tux3_inode_test_flag(TUX3_I_UNIFY, inode)) {
 		log_bfree_on_unify(sb, block, count);
 		defer_bfree(sb, &sb->deunify, block, count);
-		break;
-	default:
+	} else {
 		log_bfree(sb, block, count);
 		defer_bfree(sb, &sb->defree, block, count);
-		break;
 	}
 
 	return 0;
@@ -270,12 +266,7 @@ static int map_direct(struct btree *btree, block_t start, unsigned count,
 /* The inode is accessed by only backend. */
 static inline int inode_is_backend_only(struct inode *inode)
 {
-	switch (tux_inode(inode)->inum) {
-	case TUX_BITMAP_INO:
-	case TUX_COUNTMAP_INO:
-		return 1;
-	}
-	return 0;
+	return tux3_inode_test_flag(TUX3_I_UNIFY, inode);
 }
 
 /* filemap() by using dleaf */

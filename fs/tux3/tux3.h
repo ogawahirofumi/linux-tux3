@@ -538,6 +538,8 @@ enum {
 	/* Deferred inum allocation, and not stored into itree yet. */
 	TUX3_I_DEFER_INUM	= 0,
 
+	/* Accessed from backend only, and flushed on unify */
+	TUX3_I_UNIFY		= 30,
 	/*
 	 * If no-flush flag is set, tux3_flush_inodes() doesn't flush. Some
 	 * inodes have to be flushed by custom timing, and it is flushed by

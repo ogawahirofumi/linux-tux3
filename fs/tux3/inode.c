@@ -788,6 +788,9 @@ static inline void tux_setup_inode_common(struct inode *inode)
 		switch (inum) {
 		case TUX_BITMAP_INO:
 		case TUX_COUNTMAP_INO:
+			/* Accessed from backend only, and flushed on unify */
+			tux3_inode_set_flag(TUX3_I_UNIFY, inode);
+			/* FALLTHRU */
 		case TUX_VTABLE_INO:
 		case TUX_ATABLE_INO:
 			/* set fake i_size to escape the check of block_* */
