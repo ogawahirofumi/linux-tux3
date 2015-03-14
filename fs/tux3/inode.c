@@ -46,23 +46,33 @@ struct inode *tux_new_logmap(struct sb *sb)
 	return inode;
 }
 
-struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
+static void tux_inode_init_owner(struct inode *inode, const struct inode *dir,
+				 struct tux_iattr *iattr)
+{
+	umode_t mode = iattr->mode;
+
+	inode->i_uid = iattr->uid;
+	if (dir && (dir->i_mode & S_ISGID)) {
+		inode->i_gid = dir->i_gid;
+		if (S_ISDIR(mode))
+			mode |= S_ISGID;
+	} else
+		inode->i_gid = iattr->gid;
+	inode->i_mode = mode;
+}
+
+struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
+			    struct tux_iattr *iattr)
 {
 	struct inode *inode;
 
-	inode = new_inode(dir->i_sb);
+	inode = new_inode(vfs_sb(sb));
 	if (!inode)
 		return NULL;
 	assert(!tux_inode(inode)->present);
 
-	inode->i_mode = iattr->mode;
-	inode->i_uid = iattr->uid;
-	if (dir->i_mode & S_ISGID) {
-		inode->i_gid = dir->i_gid;
-		if (S_ISDIR(inode->i_mode))
-			inode->i_mode |= S_ISGID;
-	} else
-		inode->i_gid = iattr->gid;
+	tux_inode_init_owner(inode, dir, iattr);
+
 	inode->i_mtime = inode->i_ctime = inode->i_atime = gettime();
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFBLK:
@@ -76,6 +86,8 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
 		break;
 	}
 	tux_inode(inode)->present |= CTIME_SIZE_BIT|MTIME_BIT|MODE_OWNER_BIT|LINK_COUNT_BIT;
+
+	init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
 
 	/* Just for debug, will rewrite by alloc_inum() */
 	tux_set_inum(inode, TUX_INVALID_INO);
@@ -277,12 +289,7 @@ static int alloc_inum(struct inode *inode, inum_t goal)
 		/* If goal marked as deferred inums, retry from itree */
 	}
 
-	init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
-
-	/* Final initialization of inode */
 	tux_set_inum(inode, goal);
-	tux_setup_inode(inode);
-
 	err = add_defer_alloc_inum(inode);
 	if (err)
 		goto error;
@@ -294,7 +301,7 @@ error:
 	return err;
 }
 
-static void tux_assign_inum_failed(struct inode *inode)
+static void tux_finalize_new_inode_failed(struct inode *inode)
 {
 	/*
 	 * If inode was initialized and hashed already, it would be
@@ -311,7 +318,7 @@ static void tux_assign_inum_failed(struct inode *inode)
 	iput(inode);
 }
 
-int tux_assign_inum(struct inode *inode, inum_t goal)
+static int tux_finalize_new_inode(struct inode *inode, inum_t goal)
 {
 	inum_t inum;
 	int err;
@@ -319,6 +326,9 @@ int tux_assign_inum(struct inode *inode, inum_t goal)
 	err = alloc_inum(inode, goal);
 	if (err)
 		goto error;
+
+	/* Final initialization of inode */
+	tux_setup_inode(inode);
 
 	inum = tux_inode(inode)->inum;
 	if (insert_inode_locked4(inode, inum, tux_test, &inum) < 0) {
@@ -341,22 +351,44 @@ int tux_assign_inum(struct inode *inode, inum_t goal)
 	return 0;
 
 error:
-	tux_assign_inum_failed(inode);
+	tux_finalize_new_inode_failed(inode);
 	return err;
 }
 
+struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
+			       struct tux_iattr *iattr)
+{
+	struct sb *sb = tux_sb(dir->i_sb);
+	struct inode *inode;
+	inum_t goal;
+	int err;
+
+	inode = tux_new_inode(sb, dir, iattr);
+	if (!inode)
+		return ERR_PTR(-ENOMEM);
+
+	goal = policy_inum(dir, dir_pos, iattr);
+	err = tux_finalize_new_inode(inode, goal);
+	if (err)
+		return ERR_PTR(err);
+
+	sb->nextinum = tux_inode(inode)->inum + 1; /* FIXME: racy */
+
+	return inode;
+}
+
 /* Allocate inode with specific inum allocation policy */
-struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
-					struct tux_iattr *iattr)
+struct inode *tux_create_specific_inode(struct sb *sb, struct inode *dir,
+					inum_t inum, struct tux_iattr *iattr)
 {
 	struct inode *inode;
 	int err;
 
-	inode = tux_new_inode(dir, iattr);
+	inode = tux_new_inode(sb, dir, iattr);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
-	err = tux_assign_inum(inode, inum);
+	err = tux_finalize_new_inode(inode, inum);
 	if (err)
 		return ERR_PTR(err);
 

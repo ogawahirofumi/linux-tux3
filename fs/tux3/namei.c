@@ -33,15 +33,6 @@ out:
 	return d_splice_alias(inode, dentry);
 }
 
-static int tux_add_dirent(struct inode *dir, struct dentry *dentry,
-			  struct inode *inode)
-{
-	int err = tux_create_dirent(dir, &dentry->d_name, inode);
-	if (!err)
-		d_instantiate(dentry, inode);
-	return err;
-}
-
 static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 			struct tux_iattr *iattr)
 {
@@ -53,16 +44,18 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 		return -EINVAL;
 
 	change_begin(tux_sb(dir->i_sb));
-	inode = tux_new_inode(dir, iattr);
-	err = PTR_ERR(inode);
-	if (!IS_ERR(inode)) {
-		err = tux_add_dirent(dir, dentry, inode);
-		if (!err) {
-			unlock_new_inode(inode);
-			if (S_ISDIR(iattr->mode))
-				inode_inc_link_count(dir);
-		}
+	inode = tux_create_dirent_and_inode(dir, &dentry->d_name, iattr);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
+		goto out;
 	}
+
+	d_instantiate(dentry, inode);
+	unlock_new_inode(inode);
+	if (S_ISDIR(inode->i_mode))
+		inode_inc_link_count(dir);
+	err = 0;
+out:
 	change_end(tux_sb(dir->i_sb));
 	return err;
 }
@@ -105,8 +98,10 @@ static int tux3_link(struct dentry *old_dentry, struct inode *dir,
 	inode->i_ctime = gettime();
 	inode_inc_link_count(inode);
 	ihold(inode);
-	err = tux_add_dirent(dir, dentry, inode);
-	if (err) {
+	err = tux_create_dirent(dir, &dentry->d_name, inode);
+	if (!err)
+		d_instantiate(dentry, inode);
+	else {
 		inode_dec_link_count(inode);
 		iput(inode);
 	}
@@ -140,28 +135,27 @@ static int __tux3_symlink(struct inode *dir, struct dentry *dentry,
 		return -ENAMETOOLONG;
 
 	change_begin(sb);
-	inode = tux_new_inode(dir, iattr);
-	err = PTR_ERR(inode);
-	if (!IS_ERR(inode)) {
-		err = tux_create_dirent(dir, &dentry->d_name, inode);
-		if (!err) {
-			/* FIXME: we may want to initialize symlink earlier */
-			err = page_symlink(inode, symname, len);
-			if (!err) {
-				d_instantiate(dentry, inode);
-				unlock_new_inode(inode);
-				goto out;
-			}
-
-			err2 = tux_del_dirent(dir, dentry);
-			if (err2)
-				tux3_fs_error(sb, "Failed to recover dir entry (err %d)", err2);
-			clear_nlink(inode);
-			tux3_mark_inode_dirty(inode);
-			unlock_new_inode(inode);
-			iput(inode);
-		}
+	inode = tux_create_dirent_and_inode(dir, &dentry->d_name, iattr);
+	if (IS_ERR(inode)) {
+		err = PTR_ERR(inode);
+		goto out;
 	}
+
+	/* FIXME: we may want to initialize symlink earlier */
+	err = page_symlink(inode, symname, len);
+	if (!err) {
+		d_instantiate(dentry, inode);
+		unlock_new_inode(inode);
+		goto out;
+	}
+
+	err2 = tux_del_dirent(dir, dentry);
+	if (err2)
+		tux3_fs_error(sb, "Failed to recover dir entry (err %d)", err2);
+	clear_nlink(inode);
+	tux3_mark_inode_dirty(inode);
+	unlock_new_inode(inode);
+	iput(inode);
 out:
 	change_end(sb);
 

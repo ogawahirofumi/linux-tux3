@@ -251,16 +251,12 @@ static struct inode *create_internal_inode(struct sb *sbi, inum_t inum,
 					   struct tux_iattr *iattr)
 {
 	static struct tux_iattr null_iattr;
-	struct inode *dir = &(struct inode){
-		.i_sb = vfs_sb(sbi),
-		.i_mode = S_IFDIR | 0755,
-	};
 	struct inode *inode;
 
 	if (iattr == NULL)
 		iattr = &null_iattr;
 
-	inode = tux_create_specific_inode(dir, inum, iattr);
+	inode = tux_create_specific_inode(sbi, NULL, inum, iattr);
 	if (!IS_ERR(inode)) {
 		assert(tux_inode(inode)->inum == inum);
 		unlock_new_inode(inode);

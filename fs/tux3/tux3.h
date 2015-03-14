@@ -840,8 +840,20 @@ void tux_update_dirent(struct inode *dir, struct buffer_head *buffer,
 		       struct tux3_dirent *entry, struct inode *new_inode);
 loff_t tux_alloc_entry(struct inode *dir, const char *name, unsigned len,
 		       loff_t *size, struct buffer_head **hold);
-int tux_create_dirent(struct inode *dir, const struct qstr *qstr,
-		      struct inode *inode);
+struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
+				  struct inode *inode, struct tux_iattr *iattr);
+static inline struct inode *
+tux_create_dirent_and_inode(struct inode *dir, const struct qstr *qstr,
+			    struct tux_iattr *iattr)
+{
+	return __tux_create_dirent(dir, qstr, NULL, iattr);
+}
+static inline int tux_create_dirent(struct inode *dir, const struct qstr *qstr,
+				    struct inode *inode)
+{
+	struct inode *ret = __tux_create_dirent(dir, qstr, inode, NULL);
+	return IS_ERR(ret) ? PTR_ERR(ret) : 0;
+}
 struct tux3_dirent *tux_find_entry(struct inode *dir, const char *name,
 				   unsigned len, struct buffer_head **result,
 				   loff_t size);
@@ -891,15 +903,17 @@ extern struct btree_ops otree_ops;
 void tux3_inode_copy_attrs(struct inode *inode, unsigned delta);
 struct inode *tux_new_volmap(struct sb *sb);
 struct inode *tux_new_logmap(struct sb *sb);
-struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr);
+struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
+			    struct tux_iattr *iattr);
 struct tux3_idefer_map *tux3_alloc_idefer_map(void);
 void tux3_free_idefer_map(struct tux3_idefer_map *map);
 int __init tux3_init_idefer_cache(void);
 void tux3_destroy_idefer_cache(void);
 void cancel_defer_alloc_inum(struct inode *inode);
-int tux_assign_inum(struct inode *inode, inum_t goal);
-struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
-					struct tux_iattr *iattr);
+struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
+			       struct tux_iattr *iattr);
+struct inode *tux_create_specific_inode(struct sb *sb, struct inode *dir,
+					inum_t inum, struct tux_iattr *iattr);
 struct inode *tux3_iget(struct sb *sb, inum_t inum);
 struct inode *tux3_ilookup_nowait(struct sb *sb, inum_t inum);
 struct inode *tux3_ilookup(struct sb *sb, inum_t inum);
@@ -969,7 +983,7 @@ struct replay *tux3_init_fs(struct sb *sbi);
 extern const struct tux3_mount_opt tux3_default_mopt;
 
 /* policy.c */
-inum_t policy_inum(struct inode *dir, loff_t where, struct inode *inode);
+inum_t policy_inum(struct inode *dir, loff_t where, struct tux_iattr *iattr);
 void policy_inode_init(inum_t *previous);
 void policy_inode(struct inode *inode, inum_t *previous);
 void policy_extents(struct bufvec *bufvec);
