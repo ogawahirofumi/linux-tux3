@@ -294,7 +294,7 @@ error:
 	return err;
 }
 
-static void tux_assign_inum_failed(struct inode *inode)
+static void tux_finalize_new_inode_failed(struct inode *inode)
 {
 	/*
 	 * If inode was initialized and hashed already, it would be
@@ -311,7 +311,7 @@ static void tux_assign_inum_failed(struct inode *inode)
 	iput(inode);
 }
 
-static int tux_assign_inum(struct inode *inode, inum_t goal)
+static int tux_finalize_new_inode(struct inode *inode, inum_t goal)
 {
 	inum_t inum;
 	int err;
@@ -341,7 +341,7 @@ static int tux_assign_inum(struct inode *inode, inum_t goal)
 	return 0;
 
 error:
-	tux_assign_inum_failed(inode);
+	tux_finalize_new_inode_failed(inode);
 	return err;
 }
 
@@ -358,7 +358,7 @@ struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
 		return ERR_PTR(-ENOMEM);
 
 	goal = policy_inum(dir, dir_pos, iattr);
-	err = tux_assign_inum(inode, goal);
+	err = tux_finalize_new_inode(inode, goal);
 	if (err)
 		return ERR_PTR(err);
 
@@ -378,7 +378,7 @@ struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
-	err = tux_assign_inum(inode, inum);
+	err = tux_finalize_new_inode(inode, inum);
 	if (err)
 		return ERR_PTR(err);
 
