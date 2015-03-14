@@ -58,18 +58,18 @@ void tux3_iattrdirty(struct inode *inode)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	unsigned delta = tux3_inode_delta(inode);
-	unsigned flags = tuxnode->flags;
+	unsigned state = tuxnode->state;
 
 	/* If dirtied on this delta, nothing to do */
-	if (tux3_iattrsta_has_delta(flags) &&
-	    tux3_iattrsta_get_delta(flags) == tux3_delta(delta))
+	if (tux3_iattrsta_has_delta(state) &&
+	    tux3_iattrsta_get_delta(state) == tux3_delta(delta))
 		return;
 
 	trace("inum %Lu, delta %u", tuxnode->inum, delta);
 
 	spin_lock(&tuxnode->lock);
-	flags = tuxnode->flags;
-	if (S_ISREG(inode->i_mode) || tux3_iattrsta_has_delta(flags)) {
+	state = tuxnode->state;
+	if (S_ISREG(inode->i_mode) || tux3_iattrsta_has_delta(state)) {
 		unsigned old_delta;
 
 		/*
@@ -90,10 +90,10 @@ void tux3_iattrdirty(struct inode *inode)
 		 * - Or dirty iattr with data, e.g. directory updates
 		 *   timestamp too with data blocks.
 		 */
-		if (S_ISREG(inode->i_mode) && !tux3_iattrsta_has_delta(flags))
+		if (S_ISREG(inode->i_mode) && !tux3_iattrsta_has_delta(state))
 			old_delta = tux3_delta(delta - 1);
 		else
-			old_delta = tux3_iattrsta_get_delta(flags);
+			old_delta = tux3_iattrsta_get_delta(state);
 
 		/* If delta is difference, iattrs was stabilized. Copy. */
 		if (old_delta != tux3_delta(delta)) {
@@ -103,7 +103,7 @@ void tux3_iattrdirty(struct inode *inode)
 		}
 	}
 	/* Update iattr state to current delta */
-	tuxnode->flags = tux3_iattrsta_update(flags, delta);
+	tuxnode->state = tux3_iattrsta_update(state, delta);
 	spin_unlock(&tuxnode->lock);
 }
 
@@ -111,7 +111,7 @@ void tux3_iattrdirty(struct inode *inode)
 static void tux3_iattr_clear_dirty(struct tux3_inode *tuxnode)
 {
 	trace("inum %Lu", tuxnode->inum);
-	tuxnode->flags = tux3_iattrsta_clear(tuxnode->flags);
+	tuxnode->state = tux3_iattrsta_clear(tuxnode->state);
 }
 
 /*
@@ -123,7 +123,7 @@ static loff_t tux3_iattr_peek_i_size(struct inode *inode, unsigned *deleted,
 				     unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	unsigned long flags;
+	unsigned state;
 	loff_t i_size;
 
 	trace("inum %Lu, delta %u", tuxnode->inum, delta);
@@ -132,9 +132,9 @@ static loff_t tux3_iattr_peek_i_size(struct inode *inode, unsigned *deleted,
 	 * If delta is same, iattrs are available in inode. If not,
 	 * iattrs were forked.
 	 */
-	flags = tuxnode->flags;
-	if (!tux3_iattrsta_has_delta(flags) ||
-	    tux3_iattrsta_get_delta(flags) == tux3_delta(delta)) {
+	state = tuxnode->state;
+	if (!tux3_iattrsta_has_delta(state) ||
+	    tux3_iattrsta_get_delta(state) == tux3_delta(delta)) {
 		/*
 		 * If btree is only dirtied, or if dirty and no fork,
 		 * use inode.
@@ -148,7 +148,7 @@ static loff_t tux3_iattr_peek_i_size(struct inode *inode, unsigned *deleted,
 		i_size = idata->i_size;
 	}
 
-	if (tux3_dead_read(flags, delta))
+	if (tux3_dead_read(state, delta))
 		*deleted = 1;
 	else
 		*deleted = 0;
@@ -167,7 +167,7 @@ static void tux3_iattr_read_and_clear(struct inode *inode,
 				      unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	unsigned long flags;
+	unsigned state;
 
 	trace("inum %Lu, delta %u", tuxnode->inum, delta);
 
@@ -175,15 +175,15 @@ static void tux3_iattr_read_and_clear(struct inode *inode,
 	 * If delta is same, iattrs are available in inode. If not,
 	 * iattrs were forked.
 	 */
-	flags = tuxnode->flags;
-	if (!tux3_iattrsta_has_delta(flags) ||
-	    tux3_iattrsta_get_delta(flags) == tux3_delta(delta)) {
+	state = tuxnode->state;
+	if (!tux3_iattrsta_has_delta(state) ||
+	    tux3_iattrsta_get_delta(state) == tux3_delta(delta)) {
 		/*
 		 * If btree is only dirtied, or if dirty and no fork,
 		 * use inode.
 		 */
 		idata_copy(inode, result);
-		tuxnode->flags = tux3_iattrsta_clear(flags);
+		tuxnode->state = tux3_iattrsta_clear(state);
 	} else {
 		/* If dirty and forked, use copy */
 		struct tux3_iattr_data *idata =

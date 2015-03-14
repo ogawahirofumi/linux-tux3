@@ -34,7 +34,6 @@ static void tux3_inode_init_once(void *mem)
 	struct inode *inode = &tuxnode->vfs_inode;
 	int i;
 
-	INIT_LIST_HEAD(&tuxnode->alloc_list);
 	INIT_LIST_HEAD(&tuxnode->orphan_list);
 	spin_lock_init(&tuxnode->hole_extents_lock);
 	INIT_LIST_HEAD(&tuxnode->hole_extents);
@@ -60,8 +59,9 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 
 	tuxnode->btree		= (struct btree){ };
 	tuxnode->present	= 0;
-	tuxnode->xcache		= NULL;
 	tuxnode->flags		= 0;
+	tuxnode->xcache		= NULL;
+	tuxnode->state		= 0;
 #ifdef __KERNEL__
 	tuxnode->io		= NULL;
 #endif
@@ -111,7 +111,6 @@ static int i_ddc_is_clean(struct inode *inode)
 static void tux3_destroy_inode(struct inode *inode)
 {
 	/* Those must be clean, tux3_inode_init_always() doesn't init. */
-	assert(list_empty(&tux_inode(inode)->alloc_list));
 	assert(list_empty(&tux_inode(inode)->orphan_list));
 	assert(list_empty(&tux_inode(inode)->hole_extents));
 	assert(i_ddc_is_clean(inode));
@@ -199,7 +198,7 @@ static void cleanup_dirty_for_umount(struct sb *sb)
 		/*
 		 * FIXME: mark_buffer_dirty() for unify buffers marks
 		 * volmap as I_DIRTY_PAGES (we don't need I_DIRTY_PAGES
-		 * actually) without changing tuxnode->flags.
+		 * actually) without changing tuxnode->state.
 		 *
 		 * So this is called to clear I_DIRTY_PAGES.
 		 */
@@ -245,7 +244,6 @@ static void __tux3_put_super(struct sb *sbi)
 	tux3_free_idefer_map(sbi->idefer_map);
 	sbi->idefer_map = NULL;
 	/* FIXME: add more sanity check */
-	assert(list_empty(&sbi->alloc_inodes));
 	assert(link_empty(&sbi->forked_buffers));
 }
 
@@ -380,7 +378,6 @@ static int init_sb(struct sb *sb)
 	INIT_LIST_HEAD(&sb->unify_buffers);
 	INIT_LIST_HEAD(&sb->phase2_buffers);
 
-	INIT_LIST_HEAD(&sb->alloc_inodes);
 	spin_lock_init(&sb->countmap_lock);
 	spin_lock_init(&sb->forked_buffers_lock);
 	init_link_circular(&sb->forked_buffers);

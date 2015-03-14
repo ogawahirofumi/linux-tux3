@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/xattr.h>
 #include <linux/list_sort.h>
+#include <asm/unaligned.h>
 
 #include "trace.h"
 #include "buffer.h"
@@ -32,19 +33,19 @@ typedef u64 tuxkey_t;
 
 static inline void *encode16(void *at, unsigned val)
 {
-	*(__be16 *)at = cpu_to_be16(val);
+	put_unaligned_be16(val, at);
 	return at + sizeof(u16);
 }
 
 static inline void *encode32(void *at, unsigned val)
 {
-	*(__be32 *)at = cpu_to_be32(val);
+	put_unaligned_be32(val, at);
 	return at + sizeof(u32);
 }
 
 static inline void *encode64(void *at, u64 val)
 {
-	*(__be64 *)at = cpu_to_be64(val);
+	put_unaligned_be64(val, at);
 	return at + sizeof(u64);
 }
 
@@ -56,19 +57,19 @@ static inline void *encode48(void *at, u64 val)
 
 static inline void *decode16(void *at, unsigned *val)
 {
-	*val = be16_to_cpup(at);
+	*val = get_unaligned_be16(at);
 	return at + sizeof(u16);
 }
 
 static inline void *decode32(void *at, unsigned *val)
 {
-	*val = be32_to_cpup(at);
+	*val = get_unaligned_be32(at);
 	return at + sizeof(u32);
 }
 
 static inline void *decode64(void *at, u64 *val)
 {
-	*val = be64_to_cpup(at);
+	*val = get_unaligned_be64(at);
 	return at + sizeof(u64);
 }
 
@@ -381,7 +382,6 @@ struct sb {
 	spinlock_t countmap_lock;
 	struct countmap_pin countmap_pin;
 	struct tux3_idefer_map *idefer_map;
-	struct list_head alloc_inodes;	/* deferred inum allocation inodes */
 
 	spinlock_t forked_buffers_lock;
 	struct link forked_buffers;	/* forked buffers list */
@@ -448,8 +448,8 @@ struct xcache;
 struct tux3_inode {
 	struct btree btree;
 	inum_t inum;			/* Inode number */
+	unsigned long flags;		/* Inode flags */
 	struct xcache *xcache;		/* Extended attribute cache */
-	struct list_head alloc_list;	/* link for deferred inum allocation */
 	struct list_head orphan_list;	/* link for orphan inode list */
 
 	/* FIXME: we can use RCU for hole_extents? */
@@ -459,7 +459,7 @@ struct tux3_inode {
 	struct rw_semaphore truncate_lock; /* lock for truncate and mmap */
 	spinlock_t lock;		/* lock for inode metadata */
 	/* Per-delta dirty data for inode */
-	unsigned flags;			/* flags for inode state */
+	unsigned state;			/* inode dirty state */
 	unsigned present;		/* Attributes decoded from or
 					 * to be encoded to itree */
 	struct inode_delta_dirty i_ddc[TUX3_MAX_DELTA];
@@ -531,6 +531,41 @@ static inline struct list_head *tux3_dirty_buffers(struct inode *inode,
 						   unsigned delta)
 {
 	return &tux3_inode_ddc(inode, delta)->dirty_buffers;
+}
+
+/* inode flags */
+enum {
+	/* Deferred inum allocation, and not stored into itree yet. */
+	TUX3_I_DEFER_INUM	= 0,
+
+	/* No per-delta buffers, and no page forking */
+	TUX3_I_NO_DELTA		= 29,
+	/* Accessed from backend only, and flushed on unify */
+	TUX3_I_UNIFY		= 30,
+	/*
+	 * If no-flush flag is set, tux3_flush_inodes() doesn't flush. Some
+	 * inodes have to be flushed by custom timing, and it is flushed by
+	 * tux3_flush_inode_internal() instead.
+	 *
+	 * This inode must be pinned until umount, to flush by
+	 * tux3_flush_inode_internal().
+	 */
+	TUX3_I_NO_FLUSH		= 31,
+};
+
+static inline void tux3_inode_set_flag(int bit, struct inode *inode)
+{
+	set_bit(bit, &tux_inode(inode)->flags);
+}
+
+static inline void tux3_inode_clear_flag(int bit, struct inode *inode)
+{
+	clear_bit(bit, &tux_inode(inode)->flags);
+}
+
+static inline int tux3_inode_test_flag(int bit, struct inode *inode)
+{
+	return test_bit(bit, &tux_inode(inode)->flags);
 }
 
 struct tux_iattr {
@@ -861,7 +896,6 @@ struct tux3_idefer_map *tux3_alloc_idefer_map(void);
 void tux3_free_idefer_map(struct tux3_idefer_map *map);
 int __init tux3_init_idefer_cache(void);
 void tux3_destroy_idefer_cache(void);
-void del_defer_alloc_inum(struct inode *inode);
 void cancel_defer_alloc_inum(struct inode *inode);
 int tux_assign_inum(struct inode *inode, inum_t goal);
 struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
@@ -967,7 +1001,6 @@ int all_clear(u8 *bitmap, unsigned start, unsigned count);
 int bytebits(u8 c);
 
 /* writeback.c */
-void tux3_set_inode_no_flush(struct inode *inode);
 void tux3_set_inode_always_dirty(struct inode *inode);
 void tux3_mark_btree_dirty(struct btree *btree);
 void __tux3_mark_inode_dirty(struct inode *inode, int flags);
@@ -996,7 +1029,7 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag);
 int tux3_flush_inodes(struct sb *sb, unsigned delta);
 int tux3_has_dirty_inodes(struct sb *sb, unsigned delta);
 void tux3_clear_dirty_inodes(struct sb *sb, unsigned delta);
-unsigned tux3_check_tuxinode_flags(struct inode *inode);
+unsigned tux3_check_tuxinode_state(struct inode *inode);
 
 /* xattr.c */
 #ifndef ENOATTR
