@@ -572,6 +572,7 @@ struct tux_iattr {
 	kuid_t	uid;
 	kgid_t	gid;
 	umode_t	mode;
+	dev_t	rdev;
 };
 
 static inline struct btree *itree_btree(struct sb *sb)
@@ -890,8 +891,7 @@ extern struct btree_ops otree_ops;
 void tux3_inode_copy_attrs(struct inode *inode, unsigned delta);
 struct inode *tux_new_volmap(struct sb *sb);
 struct inode *tux_new_logmap(struct sb *sb);
-struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
-			    dev_t rdev);
+struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr);
 struct tux3_idefer_map *tux3_alloc_idefer_map(void);
 void tux3_free_idefer_map(struct tux3_idefer_map *map);
 int __init tux3_init_idefer_cache(void);
@@ -899,7 +899,7 @@ void tux3_destroy_idefer_cache(void);
 void cancel_defer_alloc_inum(struct inode *inode);
 int tux_assign_inum(struct inode *inode, inum_t goal);
 struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
-					struct tux_iattr *iattr, dev_t rdev);
+					struct tux_iattr *iattr);
 struct inode *tux3_iget(struct sb *sb, inum_t inum);
 struct inode *tux3_ilookup_nowait(struct sb *sb, inum_t inum);
 struct inode *tux3_ilookup(struct sb *sb, inum_t inum);

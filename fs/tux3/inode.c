@@ -46,8 +46,7 @@ struct inode *tux_new_logmap(struct sb *sb)
 	return inode;
 }
 
-struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
-			    dev_t rdev)
+struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
 {
 	struct inode *inode;
 
@@ -69,7 +68,7 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
 	case S_IFBLK:
 	case S_IFCHR:
 		/* vfs, trying to be helpful, will rewrite the field */
-		inode->i_rdev = rdev;
+		inode->i_rdev = iattr->rdev;
 		tux_inode(inode)->present |= RDEV_BIT;
 		break;
 	case S_IFDIR:
@@ -82,6 +81,34 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr,
 	tux_set_inum(inode, TUX_INVALID_INO);
 
 	return inode;
+}
+
+/* must hold itree->lock */
+static inline void freeinodes_dec(struct sb *sb, const inum_t inum)
+{
+	/*
+	 * If inum is not reserved area, account it. If inum is
+	 * reserved area, inode might not be written into itree. So,
+	 * we don't include the reserved area into dynamic accounting.
+	 * FIXME: what happen if snapshot was introduced?
+	 */
+	if (inum >= TUX_NORMAL_INO) {
+		assert(sb->freeinodes > TUX_NORMAL_INO);
+		sb->freeinodes--;
+	}
+}
+
+/* must hold itree->lock */
+static inline void freeinodes_inc(struct sb *sb, const inum_t inum)
+{
+	/*
+	 * If inum is not reserved area, account it.
+	 * FIXME: what happen if snapshot was introduced?
+	 */
+	if (inum >= TUX_NORMAL_INO) {
+		assert(sb->freeinodes < MAX_INODES);
+		sb->freeinodes++;
+	}
 }
 
 /*
@@ -101,9 +128,13 @@ static int add_defer_alloc_inum(struct inode *inode)
 {
 	/* FIXME: need to reserve space (ileaf/bnodes) for this inode? */
 	struct sb *sb = tux_sb(inode->i_sb);
-	int err = tux3_idefer_add(sb->idefer_map, tux_inode(inode)->inum);
-	if (!err)
+	inum_t inum = tux_inode(inode)->inum;
+	int err = tux3_idefer_add(sb->idefer_map, inum);
+	if (!err) {
 		tux3_inode_set_flag(TUX3_I_DEFER_INUM, inode);
+		/* Decrement the free inodes */
+		freeinodes_dec(sb, inum);
+	}
 	return err;
 }
 
@@ -120,8 +151,10 @@ void cancel_defer_alloc_inum(struct inode *inode)
 	struct sb *sb = tux_sb(inode->i_sb);
 
 	down_write(&itree_btree(sb)->lock);	/* FIXME: spinlock is enough? */
-	if (is_defer_alloc_inum(inode))
+	if (is_defer_alloc_inum(inode)) {
+		freeinodes_inc(sb, tux_inode(inode)->inum);
 		del_defer_alloc_inum(inode);
+	}
 	up_write(&itree_btree(sb)->lock);
 }
 
@@ -254,17 +287,6 @@ static int alloc_inum(struct inode *inode, inum_t goal)
 	if (err)
 		goto error;
 
-	/*
-	 * If inum is not reserved area, account it. If inum is
-	 * reserved area, inode might not be written into itree. So,
-	 * we don't include the reserved area into dynamic accounting.
-	 * FIXME: what happen if snapshot was introduced?
-	 */
-	if (goal >= TUX_NORMAL_INO) {
-		assert(sb->freeinodes > TUX_NORMAL_INO);
-		sb->freeinodes--;
-	}
-
 error:
 	up_write(&itree->lock);
 	free_cursor(cursor);
@@ -325,12 +347,12 @@ error:
 
 /* Allocate inode with specific inum allocation policy */
 struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
-					struct tux_iattr *iattr, dev_t rdev)
+					struct tux_iattr *iattr)
 {
 	struct inode *inode;
 	int err;
 
-	inode = tux_new_inode(dir, iattr, rdev);
+	inode = tux_new_inode(dir, iattr);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
@@ -599,18 +621,12 @@ static int purge_inode(struct inode *inode)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct btree *itree = itree_btree(sb);
-	int reserved_inum = tux_inode(inode)->inum < TUX_NORMAL_INO;
+	inum_t inum = tux_inode(inode)->inum;
 
 	down_write(&itree->lock);	/* FIXME: spinlock is enough? */
 
-	/*
-	 * If inum is not reserved area, account it.
-	 * FIXME: what happen if snapshot was introduced?
-	 */
-	if (!reserved_inum) {
-		assert(sb->freeinodes < MAX_INODES);
-		sb->freeinodes++;
-	}
+	/* Increment the free inodes */
+	freeinodes_inc(sb, inum);
 
 	if (is_defer_alloc_inum(inode)) {
 		del_defer_alloc_inum(inode);
@@ -624,7 +640,7 @@ static int purge_inode(struct inode *inode)
 	 * ->usedinodes is used only by backend, no need lock.
 	 * FIXME: what happen if snapshot was introduced?
 	 */
-	if (!reserved_inum) {
+	if (inum >= TUX_NORMAL_INO) {
 		assert(be64_to_cpu(sb->super.usedinodes) > TUX_NORMAL_INO);
 		be64_add_cpu(&sb->super.usedinodes, -1);
 	}

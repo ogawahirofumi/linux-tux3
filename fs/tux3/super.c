@@ -260,7 +260,7 @@ static struct inode *create_internal_inode(struct sb *sbi, inum_t inum,
 	if (iattr == NULL)
 		iattr = &null_iattr;
 
-	inode = tux_create_specific_inode(dir, inum, iattr, 0);
+	inode = tux_create_specific_inode(dir, inum, iattr);
 	if (!IS_ERR(inode)) {
 		assert(tux_inode(inode)->inum == inum);
 		unlock_new_inode(inode);
