@@ -61,12 +61,12 @@ static void tux_inode_init_owner(struct inode *inode, const struct inode *dir,
 	inode->i_mode = mode;
 }
 
-struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
+struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
+			    struct tux_iattr *iattr)
 {
-	struct sb *sb = tux_sb(dir->i_sb);
 	struct inode *inode;
 
-	inode = new_inode(dir->i_sb);
+	inode = new_inode(vfs_sb(sb));
 	if (!inode)
 		return NULL;
 	assert(!tux_inode(inode)->present);
@@ -363,7 +363,7 @@ struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
 	inum_t goal;
 	int err;
 
-	inode = tux_new_inode(dir, iattr);
+	inode = tux_new_inode(sb, dir, iattr);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
@@ -378,13 +378,13 @@ struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
 }
 
 /* Allocate inode with specific inum allocation policy */
-struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
-					struct tux_iattr *iattr)
+struct inode *tux_create_specific_inode(struct sb *sb, struct inode *dir,
+					inum_t inum, struct tux_iattr *iattr)
 {
 	struct inode *inode;
 	int err;
 
-	inode = tux_new_inode(dir, iattr);
+	inode = tux_new_inode(sb, dir, iattr);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
 
