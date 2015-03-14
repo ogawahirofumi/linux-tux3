@@ -345,6 +345,15 @@ static int __check_dir_entry(const char *func, int line, struct inode *dir,
 #define check_dir_entry(d, b, e)		\
 	__check_dir_entry(__func__, __LINE__, d, b, e)
 
+static unsigned tux_validate_entry(void *base, unsigned offset)
+{
+	struct tux3_dirent *entry = base + offset;
+	struct tux3_dirent *p = base;
+	while (p < entry && p->rec_len)
+		p = next_entry(p);
+	return (void *)p - base;
+}
+
 int tux_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct inode *dir = file_inode(file);
@@ -367,11 +376,7 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 		void *base = bufdata(buffer);
 		if (revalidate) {
 			if (offset) {
-				struct tux3_dirent *entry = base + offset;
-				struct tux3_dirent *p = base + (offset & sb->blockmask);
-				while (p < entry && p->rec_len)
-					p = next_entry(p);
-				offset = (void *)p - base;
+				offset = tux_validate_entry(base, offset);
 				ctx->pos = (block << blockbits) + offset;
 			}
 			file->f_version = dir->i_version;
