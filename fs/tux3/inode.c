@@ -46,8 +46,24 @@ struct inode *tux_new_logmap(struct sb *sb)
 	return inode;
 }
 
+static void tux_inode_init_owner(struct inode *inode, const struct inode *dir,
+				 struct tux_iattr *iattr)
+{
+	umode_t mode = iattr->mode;
+
+	inode->i_uid = iattr->uid;
+	if (dir && (dir->i_mode & S_ISGID)) {
+		inode->i_gid = dir->i_gid;
+		if (S_ISDIR(mode))
+			mode |= S_ISGID;
+	} else
+		inode->i_gid = iattr->gid;
+	inode->i_mode = mode;
+}
+
 struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
 {
+	struct sb *sb = tux_sb(dir->i_sb);
 	struct inode *inode;
 
 	inode = new_inode(dir->i_sb);
@@ -55,14 +71,8 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
 		return NULL;
 	assert(!tux_inode(inode)->present);
 
-	inode->i_mode = iattr->mode;
-	inode->i_uid = iattr->uid;
-	if (dir->i_mode & S_ISGID) {
-		inode->i_gid = dir->i_gid;
-		if (S_ISDIR(inode->i_mode))
-			inode->i_mode |= S_ISGID;
-	} else
-		inode->i_gid = iattr->gid;
+	tux_inode_init_owner(inode, dir, iattr);
+
 	inode->i_mtime = inode->i_ctime = inode->i_atime = gettime();
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFBLK:
@@ -76,6 +86,8 @@ struct inode *tux_new_inode(struct inode *dir, struct tux_iattr *iattr)
 		break;
 	}
 	tux_inode(inode)->present |= CTIME_SIZE_BIT|MTIME_BIT|MODE_OWNER_BIT|LINK_COUNT_BIT;
+
+	init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
 
 	/* Just for debug, will rewrite by alloc_inum() */
 	tux_set_inum(inode, TUX_INVALID_INO);
@@ -277,12 +289,7 @@ static int alloc_inum(struct inode *inode, inum_t goal)
 		/* If goal marked as deferred inums, retry from itree */
 	}
 
-	init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
-
-	/* Final initialization of inode */
 	tux_set_inum(inode, goal);
-	tux_setup_inode(inode);
-
 	err = add_defer_alloc_inum(inode);
 	if (err)
 		goto error;
@@ -319,6 +326,9 @@ static int tux_finalize_new_inode(struct inode *inode, inum_t goal)
 	err = alloc_inum(inode, goal);
 	if (err)
 		goto error;
+
+	/* Final initialization of inode */
+	tux_setup_inode(inode);
 
 	inum = tux_inode(inode)->inum;
 	if (insert_inode_locked4(inode, inum, tux_test, &inum) < 0) {
