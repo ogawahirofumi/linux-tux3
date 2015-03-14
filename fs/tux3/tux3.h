@@ -840,8 +840,20 @@ void tux_update_dirent(struct inode *dir, struct buffer_head *buffer,
 		       struct tux3_dirent *entry, struct inode *new_inode);
 loff_t tux_alloc_entry(struct inode *dir, const char *name, unsigned len,
 		       loff_t *size, struct buffer_head **hold);
-int tux_create_dirent(struct inode *dir, const struct qstr *qstr,
-		      struct inode *inode);
+struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
+				  struct inode *inode, struct tux_iattr *iattr);
+static inline struct inode *
+tux_create_dirent_and_inode(struct inode *dir, const struct qstr *qstr,
+			    struct tux_iattr *iattr)
+{
+	return __tux_create_dirent(dir, qstr, NULL, iattr);
+}
+static inline int tux_create_dirent(struct inode *dir, const struct qstr *qstr,
+				    struct inode *inode)
+{
+	struct inode *ret = __tux_create_dirent(dir, qstr, inode, NULL);
+	return IS_ERR(ret) ? PTR_ERR(ret) : 0;
+}
 struct tux3_dirent *tux_find_entry(struct inode *dir, const char *name,
 				   unsigned len, struct buffer_head **result,
 				   loff_t size);
@@ -969,7 +981,7 @@ struct replay *tux3_init_fs(struct sb *sbi);
 extern const struct tux3_mount_opt tux3_default_mopt;
 
 /* policy.c */
-inum_t policy_inum(struct inode *dir, loff_t where, struct inode *inode);
+inum_t policy_inum(struct inode *dir, loff_t where, struct tux_iattr *iattr);
 void policy_inode_init(inum_t *previous);
 void policy_inode(struct inode *inode, inum_t *previous);
 void policy_extents(struct bufvec *bufvec);

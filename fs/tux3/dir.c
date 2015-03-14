@@ -207,34 +207,40 @@ create:
 	return (block << sb->blockbits) + offset; /* only for xattr create */
 }
 
-int tux_create_dirent(struct inode *dir, const struct qstr *qstr,
-		      struct inode *inode)
+struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
+				  struct inode *inode, struct tux_iattr *iattr)
 {
 	struct sb *sb = tux_sb(dir->i_sb);
-	inum_t inum = tux_inode(inode)->inum;
 	const char *name = (const char *)qstr->name;
 	unsigned len = qstr->len;
 	struct buffer_head *buffer;
 	struct tux3_dirent *entry;
 	loff_t i_size, where;
+	inum_t inum;
 	int err, err2;
 
 	/* Holding dir->i_mutex, so no i_size_read() */
 	i_size = dir->i_size;
 	where = tux_alloc_entry(dir, name, len, &i_size, &buffer);
 	if (where < 0)
-		return where;
+		return ERR_PTR(where);
 	entry = bufdata(buffer) + (where & sb->blockmask);
 
-	if (inum == TUX_INVALID_INO) {
-		inum_t goal = policy_inum(dir, where, inode);
+	if (inode == NULL) {
+		inum_t goal = policy_inum(dir, where, iattr);
+
+		inode = tux_new_inode(dir, iattr);
+		if (!inode) {
+			err = -ENOMEM;
+			goto error;
+		}
 
 		err = tux_assign_inum(inode, goal);
 		if (err)
 			goto error;
-		inum = tux_inode(inode)->inum;
-		sb->nextinum = inum + 1; /* FIXME: racy */
+		sb->nextinum = tux_inode(inode)->inum + 1; /* FIXME: racy */
 	}
+	inum = tux_inode(inode)->inum;
 
 	/* This releases buffer */
 	tux_set_entry(buffer, entry, inum, inode->i_mode);
@@ -246,14 +252,14 @@ int tux_create_dirent(struct inode *dir, const struct qstr *qstr,
 	dir->i_mtime = dir->i_ctime = gettime();
 	tux3_mark_inode_dirty(dir);
 
-	return 0;
+	return inode;
 
 error:
 	err2 = tux_delete_entry(dir, buffer, entry);
 	if (err2)
 		tux3_fs_error(sb, "Failed to recover dir entry (err %d)", err2);
 
-	return err;
+	return ERR_PTR(err);
 }
 
 struct tux3_dirent *tux_find_entry(struct inode *dir, const char *name,

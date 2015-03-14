@@ -34,7 +34,7 @@ static unsigned policy_mkdir_ideal(struct sb *sb, unsigned depth)
 /*
  * Policy to choice inum for creating directory entry.
  */
-inum_t policy_inum(struct inode *dir, loff_t where, struct inode *inode)
+inum_t policy_inum(struct inode *dir, loff_t where, struct tux_iattr *iattr)
 {
 	enum { guess_filesize = 1 << 13, guess_dirsize = 50 * guess_filesize };
 	enum { guess_dirent_size = 24, cluster = 32 };
@@ -42,7 +42,7 @@ inum_t policy_inum(struct inode *dir, loff_t where, struct inode *inode)
 	enum { dir_factor = guess_dirsize / guess_dirent_size };
 
 	struct sb *sb = tux_sb(dir->i_sb);
-	int is_dir = S_ISDIR(inode->i_mode);
+	int is_dir = S_ISDIR(iattr->mode);
 	unsigned factor = is_dir ? dir_factor : file_factor;
 	inum_t next = sb->nextinum; /* FIXME: racy */
 	inum_t parent = tux_inode(dir)->inum;
@@ -115,7 +115,7 @@ void policy_extents(struct bufvec *bufvec)
 		sb->nextblock = fold_goal(sb, base + offset);
 }
 #else /* POLICY_LINEAR */
-inum_t policy_inum(struct inode *dir, loff_t where, struct inode *inode)
+inum_t policy_inum(struct inode *dir, loff_t where, struct tux_iattr *iattr)
 {
 	return tux_sb(dir->i_sb)->nextinum;
 }
