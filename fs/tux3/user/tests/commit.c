@@ -134,6 +134,7 @@ struct open_result {
 	unsigned namelen;
 	int err;
 	inum_t inum;
+	inum_t parent_inum;
 };
 
 static void fsck(struct sb *sb)
@@ -161,15 +162,26 @@ static void check_files(struct sb *sb, struct open_result *results, int nr)
 
 	for (int i = 0; i < nr; i++) {
 		struct open_result *r = &results[i];
-		struct inode *inode;
+		struct inode *inode, *dir = sb->rootdir;
 
-		inode = tuxopen(sb->rootdir, r->name, r->namelen);
-		if (IS_ERR(inode))
+		if (r->parent_inum)
+			dir = tux3_iget(sb, r->parent_inum);
+		else
+			ihold(dir);
+		test_assert(!IS_ERR(dir));
+
+		inode = tuxopen(dir, r->name, r->namelen);
+		if (IS_ERR(inode)) {
 			test_assert(PTR_ERR(inode) == r->err);
-		else {
-			test_assert(tux_inode(inode)->inum == r->inum);
-			iput(inode);
+			goto next;
 		}
+
+		struct tux3_inode *tuxnode = tux_inode(inode);
+		test_assert(tuxnode->inum == r->inum);
+		test_assert(tuxnode->parent_inum == r->parent_inum);
+		iput(inode);
+next:
+		iput(dir);
 	}
 }
 
@@ -693,13 +705,21 @@ static void test05(struct sb *sb)
 	clean_main(sb);
 }
 
+static void check_parent_inum(struct inode *dir, const char *name, int len)
+{
+	struct inode *inode = tuxopen(dir, name, len);
+	test_assert(!IS_ERR(inode));
+	test_assert(tux_inode(inode)->parent_inum == tux_inode(dir)->inum);
+	iput(inode);
+}
+
 /* Test for rename */
 static void test06(struct sb *sb)
 {
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
-	enum { F, D, C, B, A, B2, O, };
+	enum { F, D, C, C2, B, A, B2, O, };
 	static struct open_result r[] = {
 		[F] = {
 			.name		= "file",
@@ -714,6 +734,11 @@ static void test06(struct sb *sb)
 		[C] = {
 			.name		= "child",
 			.namelen	= 5,
+			.err		= 0,
+		},
+		[C2] = {
+			.name		= "child2",
+			.namelen	= 6,
 			.err		= 0,
 		},
 		[B] = {
@@ -754,6 +779,8 @@ static void test06(struct sb *sb)
 	dir = tuxcreate(sb->rootdir, r[D].name, r[D].namelen, &iattr);
 	test_assert(!IS_ERR(dir));
 	r[D].inum = tux_inode(dir)->inum;
+	r[D].parent_inum = tux_inode(sb->rootdir)->inum;
+	check_parent_inum(sb->rootdir, r[D].name, r[D].namelen);
 	/* iput(dir); */
 
 	/* Test create("child"). */
@@ -762,13 +789,28 @@ static void test06(struct sb *sb)
 	child = tuxcreate(sb->rootdir, r[C].name, r[C].namelen, &iattr);
 	test_assert(!IS_ERR(child));
 	r[C].inum = tux_inode(child)->inum;
+	r[C].parent_inum = tux_inode(sb->rootdir)->inum;
+	check_parent_inum(sb->rootdir, r[C].name, r[C].namelen);
 	iput(child);
+
+	/* Test create("child2"). */
+	struct inode *child2;
+	iattr.mode = S_IFDIR | 0755;
+	child2 = tuxcreate(sb->rootdir, r[C2].name, r[C2].namelen, &iattr);
+	test_assert(!IS_ERR(child2));
+	r[C2].inum = tux_inode(child2)->inum;
+	r[C2].parent_inum = tux_inode(dir)->inum;
+	check_parent_inum(sb->rootdir, r[C2].name, r[C2].namelen);
+	iput(child2);
 
 	/* Test mkdir("before"), then rename("before", "after"). */
 	struct inode *subdir;
 	subdir = tuxcreate(sb->rootdir, r[B].name, r[B].namelen, &iattr);
 	test_assert(!IS_ERR(subdir));
 	r[B].inum = tux_inode(subdir)->inum;
+	r[B].parent_inum = tux_inode(sb->rootdir)->inum;
+	r[A].parent_inum = tux_inode(sb->rootdir)->inum;
+	check_parent_inum(sb->rootdir, r[B].name, r[B].namelen);
 	iput(subdir);
 
 	/*
@@ -778,11 +820,15 @@ static void test06(struct sb *sb)
 	subdir = tuxcreate(sb->rootdir, r[B2].name, r[B2].namelen, &iattr);
 	test_assert(!IS_ERR(subdir));
 	r[B2].inum = tux_inode(subdir)->inum;
+	r[B2].parent_inum = tux_inode(sb->rootdir)->inum;
+	check_parent_inum(sb->rootdir, r[B2].name, r[B2].namelen);
 	iput(subdir);
 
 	subdir = tuxcreate(sb->rootdir, r[O].name, r[O].namelen, &iattr);
 	test_assert(!IS_ERR(subdir));
 	r[O].inum = tux_inode(subdir)->inum;
+	r[O].parent_inum = tux_inode(sb->rootdir)->inum;
+	check_parent_inum(sb->rootdir, r[O].name, r[O].namelen);
 	iput(subdir);
 	/* Check inum is not same */
 	test_assert(r[B2].inum != r[O].inum);
@@ -815,12 +861,22 @@ static void test06(struct sb *sb)
 					dir, r[C].name, r[C].namelen);
 			test_assert(err == 0);
 			test_assert(dir->i_nlink == nlink + 1);
+			check_parent_inum(dir, r[C].name, r[C].namelen);
 
 			/* Test rename("dir/child", "child") */
 			err = tuxrename(dir, r[C].name, r[C].namelen,
 					sb->rootdir, r[C].name, r[C].namelen);
 			test_assert(err == 0);
 			test_assert(dir->i_nlink == nlink);
+			check_parent_inum(sb->rootdir, r[C].name, r[C].namelen);
+
+			/* Test rename("child2", "dir/child2") */
+			nlink = dir->i_nlink;
+			err = tuxrename(sb->rootdir, r[C2].name, r[C2].namelen,
+					dir, r[C2].name, r[C2].namelen);
+			test_assert(err == 0);
+			test_assert(dir->i_nlink == nlink + 1);
+			check_parent_inum(dir, r[C2].name, r[C2].namelen);
 			iput(dir);
 
 			/* Test rename("before", "after") */
@@ -829,6 +885,7 @@ static void test06(struct sb *sb)
 			test_assert(!err);
 			/* Update inum for rename test */
 			r[A].inum = r[B].inum;
+			check_parent_inum(sb->rootdir, r[A].name, r[A].namelen);
 
 			/* Test rename("before2", "overwrite") */
 			err = tuxrename(sb->rootdir, r[B2].name, r[B2].namelen,
@@ -836,6 +893,7 @@ static void test06(struct sb *sb)
 			test_assert(!err);
 			/* Update inum for rename test */
 			r[O].inum = r[B2].inum;
+			check_parent_inum(sb->rootdir, r[O].name, r[O].namelen);
 
 			check_dirty(sb);
 
