@@ -909,7 +909,8 @@ void tux3_free_idefer_map(struct tux3_idefer_map *map);
 int __init tux3_init_idefer_cache(void);
 void tux3_destroy_idefer_cache(void);
 void cancel_defer_alloc_inum(struct inode *inode);
-int tux_assign_inum(struct inode *inode, inum_t goal);
+struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
+			       struct tux_iattr *iattr);
 struct inode *tux_create_specific_inode(struct inode *dir, inum_t inum,
 					struct tux_iattr *iattr);
 struct inode *tux3_iget(struct sb *sb, inum_t inum);

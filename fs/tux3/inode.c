@@ -311,7 +311,7 @@ static void tux_assign_inum_failed(struct inode *inode)
 	iput(inode);
 }
 
-int tux_assign_inum(struct inode *inode, inum_t goal)
+static int tux_assign_inum(struct inode *inode, inum_t goal)
 {
 	inum_t inum;
 	int err;
@@ -343,6 +343,28 @@ int tux_assign_inum(struct inode *inode, inum_t goal)
 error:
 	tux_assign_inum_failed(inode);
 	return err;
+}
+
+struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
+			       struct tux_iattr *iattr)
+{
+	struct sb *sb = tux_sb(dir->i_sb);
+	struct inode *inode;
+	inum_t goal;
+	int err;
+
+	inode = tux_new_inode(dir, iattr);
+	if (!inode)
+		return ERR_PTR(-ENOMEM);
+
+	goal = policy_inum(dir, dir_pos, iattr);
+	err = tux_assign_inum(inode, goal);
+	if (err)
+		return ERR_PTR(err);
+
+	sb->nextinum = tux_inode(inode)->inum + 1; /* FIXME: racy */
+
+	return inode;
 }
 
 /* Allocate inode with specific inum allocation policy */

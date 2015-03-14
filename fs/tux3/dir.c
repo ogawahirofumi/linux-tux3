@@ -227,18 +227,11 @@ struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
 	entry = bufdata(buffer) + (where & sb->blockmask);
 
 	if (inode == NULL) {
-		inum_t goal = policy_inum(dir, where, iattr);
-
-		inode = tux_new_inode(dir, iattr);
-		if (!inode) {
-			err = -ENOMEM;
+		inode = tux_create_inode(dir, where, iattr);
+		if (IS_ERR(inode)) {
+			err = PTR_ERR(inode);
 			goto error;
 		}
-
-		err = tux_assign_inum(inode, goal);
-		if (err)
-			goto error;
-		sb->nextinum = tux_inode(inode)->inum + 1; /* FIXME: racy */
 	}
 	inum = tux_inode(inode)->inum;
 
