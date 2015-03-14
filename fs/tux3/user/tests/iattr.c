@@ -27,7 +27,7 @@ static void clean_main(struct sb *sb)
 /* Test encode_attrs() and decode_attrs() */
 static void test01(struct sb *sb)
 {
-	unsigned abits = RDEV_BIT|MODE_OWNER_BIT|CTIME_SIZE_BIT|LINK_COUNT_BIT|MTIME_BIT;
+	unsigned abits = GENERIC_BIT|MODE_OWNER_BIT|CTIME_SIZE_BIT|LINK_COUNT_BIT|MTIME_BIT;
 	struct inode *inode1 = rapid_new_inode(sb, NULL, S_IFCHR | 0644);
 	struct inode *inode2 = rapid_new_inode(sb, NULL, 0x666);
 	unsigned delta;
