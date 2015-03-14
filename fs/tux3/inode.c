@@ -702,11 +702,11 @@ int tux3_drop_inode(struct inode *inode)
 static inline void tux3_evict_inode_check(struct inode *inode)
 {
 	/* inode should be clean */
-	if ((inode->i_state & I_DIRTY) || tux3_check_tuxinode_flags(inode)) {
+	if ((inode->i_state & I_DIRTY) || tux3_check_tuxinode_state(inode)) {
 		tux3_err(tux_sb(inode->i_sb),
 			 "inode %p, inum %Lu, state %lx/%x",
 			 inode, tux_inode(inode)->inum, inode->i_state,
-			 tux_inode(inode)->flags);
+			 tux_inode(inode)->state);
 		assert(0);
 	}
 }

@@ -61,7 +61,7 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 	tuxnode->btree		= (struct btree){ };
 	tuxnode->present	= 0;
 	tuxnode->xcache		= NULL;
-	tuxnode->flags		= 0;
+	tuxnode->state		= 0;
 #ifdef __KERNEL__
 	tuxnode->io		= NULL;
 #endif
@@ -199,7 +199,7 @@ static void cleanup_dirty_for_umount(struct sb *sb)
 		/*
 		 * FIXME: mark_buffer_dirty() for unify buffers marks
 		 * volmap as I_DIRTY_PAGES (we don't need I_DIRTY_PAGES
-		 * actually) without changing tuxnode->flags.
+		 * actually) without changing tuxnode->state.
 		 *
 		 * So this is called to clear I_DIRTY_PAGES.
 		 */

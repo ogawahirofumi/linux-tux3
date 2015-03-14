@@ -460,7 +460,7 @@ struct tux3_inode {
 	struct rw_semaphore truncate_lock; /* lock for truncate and mmap */
 	spinlock_t lock;		/* lock for inode metadata */
 	/* Per-delta dirty data for inode */
-	unsigned flags;			/* flags for inode state */
+	unsigned state;			/* inode dirty state */
 	unsigned present;		/* Attributes decoded from or
 					 * to be encoded to itree */
 	struct inode_delta_dirty i_ddc[TUX3_MAX_DELTA];
@@ -997,7 +997,7 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag);
 int tux3_flush_inodes(struct sb *sb, unsigned delta);
 int tux3_has_dirty_inodes(struct sb *sb, unsigned delta);
 void tux3_clear_dirty_inodes(struct sb *sb, unsigned delta);
-unsigned tux3_check_tuxinode_flags(struct inode *inode);
+unsigned tux3_check_tuxinode_state(struct inode *inode);
 
 /* xattr.c */
 #ifndef ENOATTR

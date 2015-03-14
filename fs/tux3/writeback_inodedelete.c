@@ -20,23 +20,23 @@ TUX3_DEFINE_STATE_FNS(unsigned, dead, DEAD_DIRTY,
 
 static int tux3_inode_is_dead(struct tux3_inode *tuxnode)
 {
-	return tux3_deadsta_has_delta(tuxnode->flags) ||
-		(tuxnode->flags & TUX3_INODE_DEAD);
+	return tux3_deadsta_has_delta(tuxnode->state) ||
+		(tuxnode->state & TUX3_INODE_DEAD);
 }
 
 /* Mark inode dirty to delete. (called from ->drop_inode()). */
 static void __tux3_mark_inode_to_delete(struct inode *inode, unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	unsigned flags;
+	unsigned state;
 
 	trace("mark as dead: inum %Lu, delta %d", tuxnode->inum, delta);
 
 	spin_lock(&tuxnode->lock);
-	flags = tuxnode->flags;
-	assert(!tux3_deadsta_has_delta(flags));
+	state = tuxnode->state;
+	assert(!tux3_deadsta_has_delta(state));
 	/* Mark inode dirty to delete on this delta */
-	tuxnode->flags |= tux3_deadsta_delta(delta);
+	tuxnode->state |= tux3_deadsta_delta(delta);
 	spin_unlock(&tuxnode->lock);
 }
 
@@ -87,11 +87,11 @@ void tux3_mark_inode_to_delete(struct inode *inode)
 	change_end_atomic(sb);
 }
 
-/* Check whether flags was marked as dead. */
-static int tux3_dead_read(unsigned flags, unsigned delta)
+/* Check whether state was marked as dead. */
+static int tux3_dead_read(unsigned state, unsigned delta)
 {
-	if (tux3_deadsta_has_delta(flags))
-		if (tux3_deadsta_get_delta(flags) == tux3_delta(delta))
+	if (tux3_deadsta_has_delta(state))
+		if (tux3_deadsta_get_delta(state) == tux3_delta(delta))
 			return 1;
 	return 0;
 }
@@ -105,13 +105,13 @@ static void tux3_dead_read_and_clear(struct inode *inode,
 				     unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	unsigned flags = tuxnode->flags;
+	unsigned state = tuxnode->state;
 
 	*deleted = 0;
 
-	if (tux3_dead_read(flags, delta)) {
+	if (tux3_dead_read(state, delta)) {
 		*deleted = 1;
-		flags |= TUX3_INODE_DEAD;
-		tuxnode->flags = tux3_deadsta_clear(flags);
+		state |= TUX3_INODE_DEAD;
+		tuxnode->state = tux3_deadsta_clear(state);
 	}
 }
