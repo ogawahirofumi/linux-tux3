@@ -364,18 +364,15 @@ int tuxtruncate(struct inode *inode, loff_t size)
 /* Easy way to make a dummy inode. */
 struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode)
 {
-	static struct inode dir;
-	static struct tux_iattr iattr;
+	struct tux_iattr iattr = {
+		.mode = mode,
+	};
 	struct inode *inode;
 
-	dir.i_sb = vfs_sb(sb);
-	iattr.mode = mode;
-	inode = tux_new_inode(&dir, &iattr);
+	inode = tux_new_inode(sb, NULL, &iattr);
 	assert(inode);
 
 	inode->map->io = io;
-	/* Initialize lock for convenience. */
-	init_rwsem(&tux_inode(inode)->btree.lock);
 
 	return inode;
 }
