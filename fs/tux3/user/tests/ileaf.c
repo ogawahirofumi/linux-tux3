@@ -77,7 +77,6 @@ static void check_ileaf_with_data(struct btree *btree, struct ileaf *ileaf,
 	}
 }
 
-
 /* Test basic ileaf operations */
 static void test01(struct sb *sb, struct btree *btree)
 {
@@ -180,6 +179,35 @@ static void test01(struct sb *sb, struct btree *btree)
 	clean_main(sb);
 }
 
+/* Test ileaf_split_hint */
+static void test02(struct sb *sb, struct btree *btree)
+{
+
+	struct ileaf *leaf = ileaf_create(btree);
+	tuxkey_t key, base, hint;
+	int count, size = 64;
+
+	/* hint must be valid range */
+	for (base = 0; base < 100; base++) {
+		leaf->ibase = cpu_to_be64(base);
+		for (count = 1; count < 100; count++) {
+			leaf->count = cpu_to_be16(count);
+			for (key = base; key < base + count + 100; key++) {
+				tuxkey_t limit = max(base + count, key + 1);
+
+				hint = ileaf_split_hint(btree, leaf, key, size);
+
+				test_assert(base <= hint);
+				test_assert(hint < limit);
+			}
+		}
+	}
+
+	ileaf_destroy(btree, leaf);
+
+	clean_main(sb);
+}
+
 int main(int argc, char *argv[])
 {
 	struct dev *dev = &(struct dev){ .bits = 12 };
@@ -198,6 +226,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test01"))
 		test01(sb, &btree);
+	test_end();
+
+	if (test_start("test02"))
+		test02(sb, &btree);
 	test_end();
 
 	clean_main(sb);
