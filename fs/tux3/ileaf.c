@@ -369,8 +369,9 @@ overflow:
 	return attrs;
 }
 
-static tuxkey_t ileaf_split_hint(struct btree *btree, struct ileaf *ileaf,
-				 tuxkey_t key, int size)
+static tuxkey_t ileaf_split_hint(struct btree *btree,
+				 tuxkey_t key_bottom, tuxkey_t key_limit,
+				 struct ileaf *ileaf, tuxkey_t key, int size)
 {
 	/*
 	 * FIXME: make sure there is space for size.
@@ -379,8 +380,12 @@ static tuxkey_t ileaf_split_hint(struct btree *btree, struct ileaf *ileaf,
 
 	tuxkey_t base = ibase(ileaf);
 	unsigned count = icount(ileaf);
-	if (key >= base + count)
-		return key & ~(tuxkey_t)(btree->entries_per_leaf - 1);
+	if (key >= base + count) {
+		/* FIXME: optimization for linear allocation, better way? */
+		tuxkey_t hint = key & ~(tuxkey_t)(btree->entries_per_leaf - 1);
+		if (key_bottom <= hint && hint < key_limit)
+			return hint;
+	}
 
 	return base + count / 2;
 }
@@ -407,7 +412,8 @@ static int ileaf_write(struct btree *btree, tuxkey_t key_bottom,
 	attrs = ileaf_resize(btree, key->start, ileaf, size);
 	if (attrs == NULL) {
 		/* There is no space to store */
-		*split_hint = ileaf_split_hint(btree, ileaf, key->start, size);
+		*split_hint = ileaf_split_hint(btree, key_bottom, key_limit,
+					       ileaf, key->start, size);
 		return BTREE_DO_SPLIT;
 	}
 
