@@ -195,7 +195,8 @@ static void test02(struct sb *sb, struct btree *btree)
 			for (key = base; key < base + count + 100; key++) {
 				tuxkey_t limit = max(base + count, key + 1);
 
-				hint = ileaf_split_hint(btree, leaf, key, size);
+				hint = ileaf_split_hint(btree, base, limit,
+							leaf, key, size);
 
 				test_assert(base <= hint);
 				test_assert(hint < limit);
