@@ -171,9 +171,6 @@ map_t *new_map(struct dev *dev, blockio_t *io);
 void free_map(map_t *map);
 
 /* buffer_writeback.c */
-/* Helper for waiting I/O (stub) */
-struct iowait {
-};
 
 /* I/O completion callback */
 typedef void (*bufvec_end_io_t)(struct buffer_head *buffer, int err);
@@ -225,8 +222,6 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 struct blk_plug {
 };
 
-void tux3_iowait_init(struct iowait *iowait, int req_flag);
-void tux3_iowait_wait(struct iowait *iowait);
 void blk_start_plug(struct blk_plug *plug);
 void blk_finish_plug(struct blk_plug *plug);
 void bufvec_init(struct bufvec *bufvec, map_t *map,

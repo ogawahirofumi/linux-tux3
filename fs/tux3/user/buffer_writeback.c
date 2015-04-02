@@ -2,18 +2,6 @@
  * Write back buffers
  */
 
-/*
- * Helper for waiting I/O (stub)
- */
-
-void tux3_iowait_init(struct iowait *iowait, int req_flag)
-{
-}
-
-void tux3_iowait_wait(struct iowait *iowait)
-{
-}
-
 /* Block plugging (stub) */
 void blk_start_plug(struct blk_plug *plug)
 {
