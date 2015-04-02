@@ -230,7 +230,7 @@ static int ileaf_merge(struct btree *btree, void *vinto, void *vfrom)
 	assert(ibase(from) > ibase(into));
 	tuxkey_t fromibase = ibase(from);
 	unsigned count = icount(into);
-	int hole = fromibase - ibase(into) + count;
+	int hole = fromibase - (ibase(into) + count);
 
 	__be16 *dict = ileaf_dict(btree, into);
 	__be16 *fromdict = ileaf_dict(btree, from);
@@ -247,17 +247,17 @@ static int ileaf_merge(struct btree *btree, void *vinto, void *vfrom)
 		*(dict - count) = __limit;
 	}
 
-	/* Copy data from "from" */
+	/* Merge data from "from" */
 	unsigned fromlimit = atdict(fromdict, fromcount);
 	memcpy(into->table + limit, from->table, fromlimit);
-
-	/* Adjust copying fromdict */
+	/* Merge dict from "from" */
+	veccopy(dict - count - fromcount, fromdict - fromcount, fromcount);
+	/* Adjust merged dict from "from" */
 	if (limit) {
 		int i;
-		for (i = 1; i <= fromcount; i++)
+		for (i = count + 1; i <= count + fromcount; i++)
 			add_idict(dict - i, limit);
 	}
-	veccopy(dict - count - fromcount, fromdict - fromcount, fromcount);
 
 	into->count = cpu_to_be16(count + fromcount);
 

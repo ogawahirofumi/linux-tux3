@@ -75,12 +75,6 @@ void blockput_free_unify(struct sb *sb, struct buffer_head *buffer);
 void tux3_invalidate_buffer(struct buffer_head *buffer);
 
 /* buffer_writeback.c */
-/* Helper for waiting I/O */
-struct iowait {
-	atomic_t inflight;		/* In-flight I/O count */
-	struct completion done;		/* completion for in-flight I/O */
-	int req_flag;			/* Additional REQ_ flags */
-};
 
 /* Helper for buffer vector I/O */
 #define BUFS_PER_PAGE_CACHE	(PAGE_CACHE_SIZE / 512)
@@ -132,8 +126,6 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 	return bufvec_contig_index(bufvec) + bufvec_contig_count(bufvec) - 1;
 }
 
-void tux3_iowait_init(struct iowait *iowait, int req_flag);
-void tux3_iowait_wait(struct iowait *iowait);
 int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,

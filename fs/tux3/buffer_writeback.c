@@ -5,46 +5,8 @@
  */
 
 #include "buffer_writebacklib.c"
+#include "ioinfo.h"
 #include "kcompat.h"
-
-/*
- * Helper for waiting I/O
- */
-
-static void iowait_inflight_inc(struct iowait *iowait)
-{
-	atomic_inc(&iowait->inflight);
-}
-
-static void iowait_inflight_dec(struct iowait *iowait)
-{
-	if (atomic_dec_and_test(&iowait->inflight))
-		complete(&iowait->done);
-}
-
-/* This req_flag is added to all I/O request counted in ->iowait */
-static int iowait_req_flag(struct iowait *iowait)
-{
-	return iowait->req_flag;
-}
-
-void tux3_iowait_init(struct iowait *iowait, int req_flag)
-{
-	/*
-	 * Grab 1 to prevent the partial complete until all I/O is
-	 * submitted
-	 */
-	init_completion(&iowait->done);
-	atomic_set(&iowait->inflight, 1);
-	iowait->req_flag = req_flag;
-}
-
-void tux3_iowait_wait(struct iowait *iowait)
-{
-	/* All I/O was submitted, release initial 1, then wait I/O */
-	iowait_inflight_dec(iowait);
-	wait_for_completion_io(&iowait->done);
-}
 
 /*
  * Helper for buffer vector I/O.
@@ -165,8 +127,8 @@ static void bufvec_submit_bio(int rw, struct bufvec *bufvec)
 	      (block_t)bio_bi_sector(bio) >> (sb->blockbits - 9),
 	      bio_bi_size(bio) >> sb->blockbits);
 
-	iowait_inflight_inc(sb->iowait);
-	submit_bio(rw | iowait_req_flag(sb->iowait), bio);
+	tux3_io_inflight_inc(sb->ioinfo);
+	submit_bio(rw | tux3_io_req_flag(sb->ioinfo), bio);
 }
 
 /*
@@ -340,7 +302,7 @@ static void bufvec_end_io_multiple(struct bio *bio, int err)
 	bufvec_buffer_end_io(buffer, uptodate, quiet);
 	put_bh(buffer);
 
-	iowait_inflight_dec(tux_sb(mapping->host->i_sb)->iowait);
+	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 
 	/* Check buffers on the page. If all was done, clear writeback */
@@ -461,7 +423,7 @@ static void bufvec_end_io(struct bio *bio, int err)
 		}
 	}
 
-	iowait_inflight_dec(tux_sb(mapping->host->i_sb)->iowait);
+	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 }
 
@@ -876,7 +838,7 @@ static void vol_early_end_io(struct bio *bio, int err)
 
 	/* Keep buffer dirty. State will be updated at 2st phase. */
 	bufvec_buffer_end_io(buffer, uptodate, quiet);
-	iowait_inflight_dec(tux_sb(mapping->host->i_sb)->iowait);
+	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 }
 
@@ -891,11 +853,11 @@ int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
 
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
-	iowait_inflight_inc(sb->iowait);
-	err = blockio(rw | iowait_req_flag(sb->iowait), sb, buffer,
+	tux3_io_inflight_inc(sb->ioinfo);
+	err = blockio(rw | tux3_io_req_flag(sb->ioinfo), sb, buffer,
 		      bufindex(buffer), vol_early_end_io, buffer);
 	if (err)
-		iowait_inflight_dec(sb->iowait);
+		tux3_io_inflight_dec(sb->ioinfo);
 
 	return err;
 }
@@ -920,7 +882,7 @@ static void bufvec_end_io_early(struct bio *bio, int err)
 		bufvec_buffer_end_io(buffer, uptodate, quiet);
 	}
 
-	iowait_inflight_dec(tux_sb(mapping->host->i_sb)->iowait);
+	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 }
 
