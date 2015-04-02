@@ -108,7 +108,7 @@ static void test01(struct sb *sb, struct btree *btree)
 	/* Check */
 	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
 
-	/* Split leaf */
+	/* Split leaf before first entry */
 	inum_t dest_base = ileaf_split(btree, 0x10, leaf, dest);
 	test_assert(dest_base == 0x11);
 	/* Check leaf and dest */
@@ -118,7 +118,28 @@ static void test01(struct sb *sb, struct btree *btree)
 		test_assert(size == 0);
 	}
 	check_ileaf_with_data(btree, dest, &data[1], ARRAY_SIZE(data) - 1);
+	/* Merge leaf and dest */
+	ileaf_merge(btree, leaf, dest);
+	/* Check leaf */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
 
+	/* Split leaf at middle */
+	dest_base = ileaf_split(btree, 0x14, leaf, dest);
+	test_assert(dest_base == 0x14);
+	/* Check leaf and dest */
+	check_ileaf_with_data(btree, leaf, &data[0], 2);
+	check_ileaf_with_data(btree, dest, &data[2], ARRAY_SIZE(data) - 2);
+	/* Merge leaf and dest */
+	ileaf_merge(btree, leaf, dest);
+	/* Check leaf */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	/* Split leaf at after end */
+	dest_base = ileaf_split(btree, 0x19, leaf, dest);
+	test_assert(dest_base == 0x19);
+	/* Check leaf and dest */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+	test_assert(icount(dest) == 0);
 	/* Merge leaf and dest */
 	ileaf_merge(btree, leaf, dest);
 	/* Check leaf */
