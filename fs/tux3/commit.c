@@ -34,6 +34,7 @@
  */
 
 #include "tux3.h"
+#include "ioinfo.h"
 #ifdef __KERNEL__
 #include <linux/kthread.h>
 #include <linux/freezer.h>
@@ -263,12 +264,13 @@ static int apply_defered_bfree(struct sb *sb, u64 val)
 	return bfree(sb, val & ((1ULL << 48) - 1), val >> 48);
 }
 
-static int commit_delta(struct sb *sb, int req_flag)
+static int commit_delta(struct sb *sb)
 {
+	int req_flag = tux3_io_req_flag(sb->ioinfo);
 	int err, barrier = TUX3_TEST_MOPT(sb, BARRIER);
 
 	/* Wait I/O was submitted */
-	tux3_iowait_wait(sb->iowait);
+	tux3_io_wait(sb->ioinfo);
 
 	/*
 	 * FIXME: we don't need REQ_FUA here actually. But deferred
@@ -335,26 +337,12 @@ int tux3_under_backend(struct sb *sb)
 	return current->journal_info == sb;
 }
 
-enum flush_flags {
-	FLUSH_NORMAL	= 0,		/* Normal flush */
-	FLUSH_SYNC	= 1 << 0,	/* Synchronous flush (e.g. fsync(2)) */
-	__NO_UNIFY	= 1 << 1,	/* No unify */
-	__FORCE_DELTA	= 1 << 2,	/* Force delta even if no dirty */
-	__FORCE_UNIFY	= 1 << 3,	/* Force unify */
-
-	/* Debug: Force flush even without unify if no dirty */
-	FORCE_DELTA	= __FORCE_DELTA | __NO_UNIFY,
-	/* Debug: Force flush with unify even if no dirty */
-	FORCE_UNIFY	= __FORCE_DELTA | __FORCE_UNIFY,
-};
-
 static int do_commit(struct sb *sb, int flags)
 {
 	unsigned delta = sb->delta_staging;
-	int req_flag = (flags & FLUSH_SYNC) ? REQ_SYNC : 0;
 	int no_unify = flags & __NO_UNIFY;
 	struct blk_plug plug;
-	struct iowait iowait;
+	struct ioinfo ioinfo;
 	int err = 0;
 
 	trace(">>>>>>>>> commit delta %u", delta);
@@ -375,8 +363,8 @@ static int do_commit(struct sb *sb, int flags)
 		goto out;
 
 	/* Prepare to wait I/O */
-	tux3_iowait_init(&iowait, req_flag);
-	sb->iowait = &iowait;
+	tux3_io_init(&ioinfo, flags);
+	sb->ioinfo = &ioinfo;
 
 	/*
 	 * Start plugging to merge early I/O dleaf with data, and
@@ -434,7 +422,7 @@ static int do_commit(struct sb *sb, int flags)
 	 * written before next block block. (But defree must be after
 	 * commit block.)
 	 */
-	err = commit_delta(sb, req_flag); /* FIXME: err */
+	err = commit_delta(sb); /* FIXME: err */
 out:
 	/* FIXME: what to do if error? */
 	tux3_end_backend();
