@@ -361,22 +361,13 @@ static unsigned tux_validate_entry(void *base, unsigned offset)
 static bool tux3_dir_emit_dots(struct file *file, struct dir_context *ctx)
 {
 	if (ctx->pos == 0) {
-		struct inode *dir = file_inode(file);
-		if (!dir_emit(ctx, ".", 1, tux_inode(dir)->inum, DT_DIR))
+		inum_t inum = tux_inode(file_inode(file))->inum;
+		if (!dir_emit(ctx, ".", 1, inum, DT_DIR))
 			return false;
 		ctx->pos = 1;
 	}
 	if (ctx->pos == 1) {
-#ifdef __KERNEL__
-		struct dentry *dentry = file->f_path.dentry;
-		inum_t inum;
-
-		spin_lock(&dentry->d_lock);
-		inum = tux_inode(dentry->d_parent->d_inode)->inum;
-		spin_unlock(&dentry->d_lock);
-#else
-		inum_t inum = 0;
-#endif
+		inum_t inum = tux_inode(file_inode(file))->parent_inum;
 		if (!dir_emit(ctx, "..", 2, inum, DT_DIR))
 			return false;
 		ctx->pos = 2;

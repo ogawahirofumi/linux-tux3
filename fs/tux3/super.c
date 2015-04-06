@@ -61,6 +61,7 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 	tuxnode->present	= 0;
 	tuxnode->flags		= 0;
 	tuxnode->xcache		= NULL;
+	tuxnode->generic	= 0;
 	tuxnode->state		= 0;
 #ifdef __KERNEL__
 	tuxnode->io		= NULL;
