@@ -260,8 +260,8 @@ enum {
 struct stash { struct flink_head head; u64 *pos, *top; };
 
 #ifndef TUX3_FLUSHER_SYNC
-/* For each delta + wb_check_{background_flush,old_data_flush} + safety */
-#define TUX3_MAX_WB_WORK	(TUX3_MAX_DELTA + 3)
+/* For each delta + 1 remaining until bdi call complete() + safety */
+#define TUX3_MAX_WB_WORK	(TUX3_MAX_DELTA + 2)
 /* Work item for writeback flusher */
 struct tux3_wb_work {
 	struct wb_writeback_work work;
