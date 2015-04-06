@@ -266,6 +266,7 @@ struct stash { struct flink_head head; u64 *pos, *top; };
 struct tux3_wb_work {
 	struct wb_writeback_work work;
 	struct completion dummy_done;
+	int flusher_is_waiting;
 	unsigned delta;
 };
 #endif
