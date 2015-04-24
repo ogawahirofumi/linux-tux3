@@ -958,43 +958,90 @@ static void test04(struct sb *sb, struct btree *btree)
 	assert(leaf2);
 
 	/*
-	 * base    :          |--------+-----+--+-------|
-	 *           0        10      15    18  20      25
+	 * base    :          |--------+-----+--+-------|    |----|
+	 *           0        10      15    18  20      25   30   32
 	 */
 	struct block_segment seg1[] = {
 		{ .block = 10, .count =  5, },
 		{ .block = 20, .count =  3, },
 		{ .block = 30, .count =  2, },
 		{ .block = 40, .count =  5, },
+		{ .block = 0,  .count =  5, },
+		{ .block = 50, .count =  2, },
 	};
 	dleaf_set_alloc_seg(seg1, ARRAY_SIZE(seg1));
-	key = dleaf_set_w_req(&rq, 10, 15, seg, ARRAY_SIZE(seg));
+	key = dleaf_set_w_req(&rq, 10, 22, seg, ARRAY_SIZE(seg));
 	ret = dleaf_write(btree, 0, TUXKEY_LIMIT, leaf1, key, &hint);
 	test_assert(!ret);
 
-	/* Test split */
-	newkey = dleaf_split(btree, 18, leaf1, leaf2);
-	test_assert(newkey == 18);	/* current choose is 18 */
+	if (test_start("test04.1")) {
+		/* Test split */
+		newkey = dleaf_split(btree, 18, leaf1, leaf2);
+		test_assert(newkey == 18);	/* current choose is 18 */
 
-	struct test_extent res1[] = {
-		{ .logical =  0, .physical =  0, .count = 10, },
-		{ .logical = 10, .physical = 10, .count =  5, },
-		{ .logical = 15, .physical = 20, .count =  3, },
-	};
-	key = dleaf_set_r_req(&rq, 0, 100, seg, ARRAY_SIZE(seg));
-	err = dleaf_read(btree, 0, newkey, leaf1, key);
-	test_assert(!err);
-	check_seg(res1, 0, seg, rq.seg_cnt);
+		struct test_extent res1[] = {
+			{ .logical =  0, .physical =  0, .count = 10, },
+			{ .logical = 10, .physical = 10, .count =  5, },
+			{ .logical = 15, .physical = 20, .count =  3, },
+		};
+		key = dleaf_set_r_req(&rq, 0, 100, seg, ARRAY_SIZE(seg));
+		err = dleaf_read(btree, 0, newkey, leaf1, key);
+		test_assert(!err);
+		check_seg(res1, 0, seg, rq.seg_cnt);
 
-	struct test_extent res2[] = {
-		{ .logical = 18, .physical = 30, .count =  2, },
-		{ .logical = 20, .physical = 40, .count =  5, },
-		{ .logical = 25, .physical =  0, .count = 75, },
-	};
-	key = dleaf_set_r_req(&rq, newkey, 100 - newkey, seg, ARRAY_SIZE(seg));
-	err = dleaf_read(btree, newkey, TUXKEY_LIMIT, leaf2, key);
-	test_assert(!err);
-	check_seg(res2, newkey, seg, rq.seg_cnt);
+		struct test_extent res2[] = {
+			{ .logical = 18, .physical = 30, .count =  2, },
+			{ .logical = 20, .physical = 40, .count =  5, },
+			{ .logical = 25, .physical =  0, .count =  5, },
+			{ .logical = 30, .physical = 50, .count =  2, },
+			{ .logical = 32, .physical =  0, .count = 68, },
+		};
+		key = dleaf_set_r_req(&rq, newkey, 100 - newkey,
+				      seg, ARRAY_SIZE(seg));
+		err = dleaf_read(btree, newkey, TUXKEY_LIMIT, leaf2, key);
+		test_assert(!err);
+		check_seg(res2, newkey, seg, rq.seg_cnt);
+
+		dleaf_destroy(btree, leaf1);
+		dleaf_destroy(btree, leaf2);
+		clean_main(sb, btree);
+	}
+	test_end();
+	if (test_start("test04.2")) {
+		/* Test split */
+		newkey = dleaf_split(btree, 30, leaf1, leaf2);
+		test_assert(newkey == 30);
+
+		/* Should not add sentinel if split point is hole */
+		int count = be16_to_cpu(leaf1->count);
+		int nr_holes = 0;
+		struct diskextent *dex = leaf1->table + count;
+		while (--dex >= leaf1->table) {
+			struct extent ex;
+			get_extent(dex, &ex);
+			if (ex.physical != 0)
+				break;
+			nr_holes++;
+		}
+		test_assert(nr_holes <= 1);
+
+		dleaf_destroy(btree, leaf1);
+		dleaf_destroy(btree, leaf2);
+		clean_main(sb, btree);
+	}
+	test_end();
+	if (test_start("test04.3")) {
+		/* Test split */
+		newkey = dleaf_split(btree, 10, leaf1, leaf2);
+		test_assert(newkey == 10);
+		/* leaf1 should be empty */
+		test_assert(leaf1->count == 0);
+
+		dleaf_destroy(btree, leaf1);
+		dleaf_destroy(btree, leaf2);
+		clean_main(sb, btree);
+	}
+	test_end();
 
 	dleaf_destroy(btree, leaf1);
 	dleaf_destroy(btree, leaf2);
