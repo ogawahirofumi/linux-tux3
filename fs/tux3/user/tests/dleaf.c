@@ -1114,6 +1114,91 @@ static void test05(struct sb *sb, struct btree *btree)
 	clean_main(sb, btree);
 }
 
+/* Test dleaf_{write} for split case */
+static void test06(struct sb *sb, struct btree *btree)
+{
+	struct dleaf *leaf;
+	struct dleaf_req rq;
+	struct btree_key_range *key;
+	struct block_segment seg[10];
+	tuxkey_t hint;
+	int err, ret;
+
+	leaf = dleaf_create(btree);
+	assert(leaf);
+
+	/* Set dummy count nearly full for split test */
+	leaf->count = cpu_to_be16(btree->entries_per_leaf - 5);
+	memset(leaf->table, 0, btree->entries_per_leaf * sizeof(*leaf->table));
+
+	struct {
+		block_t logical;
+		block_t physical;
+	} dex[] = {
+		{ .logical = 100, .physical = 100, },
+		{ .logical = 101, .physical = 110, },
+		{ .logical = 102, .physical = 0, },
+	};
+	for (int i = 0; i < ARRAY_SIZE(dex); i++) {
+		leaf->table[i].verhi_logical = cpu_to_be64(dex[i].logical);
+		leaf->table[i].verlo_physical = cpu_to_be64(dex[i].physical);
+	}
+
+	/* Overwrite only before minimum logical address */
+	struct block_segment seg2[] = {
+		{ .block = 10, .count = 1, },
+		{ .block = 11, .count = 1, },
+		{ .block = 12, .count = 1, },
+		{ .block = 13, .count = 1, },
+		{ .block = 14, .count = 1, },
+		{ .block = 15, .count = 1, },
+	};
+	dleaf_set_alloc_seg(seg2, ARRAY_SIZE(seg2));
+	struct block_segment seg3[] = {
+	};
+	dleaf_set_free_seg(seg3, ARRAY_SIZE(seg3));
+
+	tuxkey_t logical = 50;
+	key = dleaf_set_w_req(&rq, logical, ARRAY_SIZE(seg2),
+			      seg, ARRAY_SIZE(seg2));
+	ret = dleaf_write(btree, 0, TUXKEY_LIMIT, leaf, key, &hint);
+	test_assert(ret == BTREE_DO_SPLIT);
+	int nr_wrote = ARRAY_SIZE(seg2) - key->len;
+
+	/* Make expected result */
+	struct test_extent res2[ARRAY_SIZE(seg2) + 2];
+	for (int i = 0; i < nr_wrote; i++) {
+		res2[i] = (struct test_extent){
+			.logical = logical + i,
+			.physical = seg2[i].block,
+			.count = seg2[i].count,
+		};
+	}
+	int hole_len = dex[0].logical - (logical + nr_wrote);
+	/* hole */
+	res2[nr_wrote + 0] = (struct test_extent){
+		.logical = logical + nr_wrote,
+		.physical = 0,
+		.count = hole_len,
+	};
+	/* dex[0] */
+	res2[nr_wrote + 1] = (struct test_extent){
+		.logical = dex[0].logical,
+		.physical = dex[0].physical,
+		.count = 1,
+	};
+	/* Read "seg2[nr_wrote] + hole + dex[0] */
+	key = dleaf_set_r_req(&rq, logical, nr_wrote + hole_len + 1,
+			      seg, ARRAY_SIZE(seg));
+
+	err = dleaf_read(btree, 0, TUXKEY_LIMIT, leaf, key);
+	test_assert(!err);
+	__check_seg(res2, logical, seg, rq.seg_cnt);
+
+	dleaf_destroy(btree, leaf);
+	clean_main(sb, btree);
+}
+
 int main(int argc, char *argv[])
 {
 	struct dev *dev = &(struct dev){ .bits = 10 };
@@ -1156,6 +1241,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test05"))
 		test05(sb, btree);
+	test_end();
+
+	if (test_start("test06"))
+		test06(sb, btree);
 	test_end();
 
 	tux3_end_backend();
