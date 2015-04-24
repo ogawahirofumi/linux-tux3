@@ -74,7 +74,7 @@ static void walk_dleaf(struct btree *btree, struct buffer_head *dleafbuf,
 			struct walk_dleaf_ops *cb, void *data)
 {
 	struct dleaf *dleaf = bufdata(dleafbuf);
-	struct diskextent2 *dex, *dex_limit;
+	struct diskextent *dex, *dex_limit;
 	struct extent prev = { .logical = TUXKEY_LIMIT, };
 	unsigned count = 0;
 
