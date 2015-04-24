@@ -56,10 +56,10 @@ struct uptag {
 
 struct dleaf {
 	__be16 magic;			/* dleaf magic */
-	__be16 count;			/* count of diskextent2 */
+	__be16 count;			/* count of diskextent */
 //	struct uptag tag;
 	__be32 __unused;
-	struct diskextent2 {
+	struct diskextent {
 		__be64 verhi_logical;	/* verhi:16, logical:48 */
 		__be64 verlo_physical;	/* verlo:16, physical:48 */
 	} table[];
@@ -71,12 +71,12 @@ struct extent {
 	block_t physical;	/* physical address */
 };
 
-static inline block_t get_logical(struct diskextent2 *dex)
+static inline block_t get_logical(struct diskextent *dex)
 {
 	return be64_to_cpu(dex->verhi_logical) & ADDR_MASK;
 }
 
-static inline void get_extent(struct diskextent2 *dex, struct extent *ex)
+static inline void get_extent(struct diskextent *dex, struct extent *ex)
 {
 	u64 val;
 
@@ -89,7 +89,7 @@ static inline void get_extent(struct diskextent2 *dex, struct extent *ex)
 	ex->physical = val & ADDR_MASK;
 }
 
-static inline void put_extent(struct diskextent2 *dex, u32 version,
+static inline void put_extent(struct diskextent *dex, u32 version,
 			      block_t logical, block_t physical)
 {
 	u64 verhi = version >> VER_BITS, verlo = version & VER_MASK;
@@ -101,7 +101,7 @@ static void dleaf_btree_init(struct btree *btree)
 {
 	struct sb *sb = btree->sb;
 	unsigned datasize = sb->blocksize - sizeof(struct dleaf);
-	btree->entries_per_leaf = datasize / sizeof(struct diskextent2);
+	btree->entries_per_leaf = datasize / sizeof(struct diskextent);
 }
 
 static int dleaf_init(struct btree *btree, void *leaf)
@@ -115,7 +115,7 @@ static int dleaf_init(struct btree *btree, void *leaf)
 	if (has_direct_extent(btree)) {
 		/* Convert direct extent to leaf */
 		struct sb *sb = btree->sb;
-		struct diskextent2 *dex = dleaf->table;
+		struct diskextent *dex = dleaf->table;
 
 		dleaf->count = cpu_to_be16(2);
 		put_extent(dex, sb->version, 0, btree->root.block);
@@ -152,11 +152,11 @@ static int dleaf_can_free(struct btree *btree, void *leaf)
 	return 1;
 }
 
-/* Lookup logical address in diskextent2 <= index */
-static struct diskextent2 *
+/* Lookup logical address in diskextent <= index */
+static struct diskextent *
 __dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf,
-		      struct diskextent2 *start, struct diskextent2 *limit,
-		      tuxkey_t index)
+		     struct diskextent *start, struct diskextent *limit,
+		     tuxkey_t index)
 {
 #if 1
 	/* Paranoia check: last should be sentinel (hole) */
@@ -171,7 +171,7 @@ __dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf,
 		if (index == get_logical(start))
 			return start;
 		else if (index < get_logical(start)) {
-			/* should have diskextent2 of bottom logical on leaf */
+			/* should have diskextent of bottom logical on leaf */
 			assert(dleaf->table < start);
 			return start - 1;
 		}
@@ -181,23 +181,23 @@ __dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf,
 	return start;
 }
 
-static struct diskextent2 *
+static struct diskextent *
 dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf, tuxkey_t index)
 {
-	struct diskextent2 *start = dleaf->table;
-	struct diskextent2 *limit = start + be16_to_cpu(dleaf->count);
+	struct diskextent *start = dleaf->table;
+	struct diskextent *limit = start + be16_to_cpu(dleaf->count);
 
 	return __dleaf_lookup_index(btree, dleaf, start, limit, index);
 }
 
 /*
- * Split diskextent2, and return split key.
+ * Split diskextent, and return split key.
  */
 static tuxkey_t dleaf_split(struct btree *btree, tuxkey_t hint,
-			     void *vfrom, void *vinto)
+			    void *vfrom, void *vinto)
 {
 	struct dleaf *from = vfrom, *into = vinto;
-	struct diskextent2 *dex;
+	struct diskextent *dex;
 	struct extent ex;
 	unsigned split_at, count = be16_to_cpu(from->count);
 
@@ -226,7 +226,7 @@ static tuxkey_t dleaf_split(struct btree *btree, tuxkey_t hint,
 	into->count = cpu_to_be16(count - split_at);
 
 	dex = from->table + split_at;
-	/* Copy diskextent2 */
+	/* Copy diskextent */
 	memcpy(into->table, dex, sizeof(*dex) * (count - split_at));
 	/* Put sentinel */
 	get_extent(dex, &ex);
@@ -297,7 +297,7 @@ static int dleaf_merge(struct btree *btree, void *vinto, void *vfrom)
 }
 
 /*
- * Chop diskextent2
+ * Chop diskextent
  * return value:
  * < 0 - error
  *   1 - modified
@@ -307,7 +307,7 @@ static int dleaf_chop(struct btree *btree, tuxkey_t start, u64 len, void *leaf)
 {
 	struct sb *sb = btree->sb;
 	struct dleaf *dleaf = leaf;
-	struct diskextent2 *dex, *dex_limit;
+	struct diskextent *dex, *dex_limit;
 	struct extent ex;
 	block_t block;
 	int need_sentinel;
@@ -355,7 +355,7 @@ static int dleaf_chop(struct btree *btree, tuxkey_t start, u64 len, void *leaf)
 	while (dex < dex_limit) {
 		unsigned count;
 
-		/* Get next diskextent2 */
+		/* Get next diskextent */
 		get_extent(dex, &ex);
 		count = ex.logical - start;
 		if (block && count) {
@@ -378,14 +378,14 @@ static int dleaf_chop(struct btree *btree, tuxkey_t start, u64 len, void *leaf)
 
 /* Read extents */
 static unsigned __dleaf_read(struct btree *btree, tuxkey_t key_bottom,
-			      tuxkey_t key_limit,
-			      struct dleaf *dleaf, struct btree_key_range *key,
-			      int stop_at_hole)
+			     tuxkey_t key_limit,
+			     struct dleaf *dleaf, struct btree_key_range *key,
+			     int stop_at_hole)
 {
 	struct dleaf_req *rq = container_of(key, struct dleaf_req, key);
 	tuxkey_t key_start = key->start;
 	unsigned key_len = key->len;
-	struct diskextent2 *dex, *dex_limit;
+	struct diskextent *dex, *dex_limit;
 	struct extent next;
 	block_t physical;
 
@@ -454,8 +454,8 @@ fill_seg:
 
 /* Read extents */
 static int dleaf_read(struct btree *btree, tuxkey_t key_bottom,
-		       tuxkey_t key_limit,
-		       void *leaf, struct btree_key_range *key)
+		      tuxkey_t key_limit,
+		      void *leaf, struct btree_key_range *key)
 {
 	struct dleaf *dleaf = leaf;
 	unsigned len;
@@ -468,8 +468,8 @@ static int dleaf_read(struct btree *btree, tuxkey_t key_bottom,
 }
 
 static int dleaf_pre_write(struct btree *btree, tuxkey_t key_bottom,
-			    tuxkey_t key_limit, void *leaf,
-			    struct btree_key_range *key)
+			   tuxkey_t key_limit, void *leaf,
+			   struct btree_key_range *key)
 {
 	struct dleaf_req *rq = container_of(key, struct dleaf_req, key);
 	struct dleaf *dleaf = leaf;
@@ -507,8 +507,8 @@ static int dleaf_pre_write(struct btree *btree, tuxkey_t key_bottom,
 
 
 /* Resize dleaf from head */
-static void dleaf_resize(struct dleaf *dleaf, struct diskextent2 *head,
-			  int diff)
+static void dleaf_resize(struct dleaf *dleaf, struct diskextent *head,
+			 int diff)
 {
 	void *limit = dleaf->table + be16_to_cpu(dleaf->count);
 
@@ -521,7 +521,7 @@ static void dleaf_resize(struct dleaf *dleaf, struct diskextent2 *head,
 
 /* Initialize sentinel by bottom key */
 static inline void dleaf_init_sentinel(struct sb *sb, struct dleaf *dleaf,
-					tuxkey_t key_bottom)
+				       tuxkey_t key_bottom)
 {
 	if (!dleaf->count) {
 		dleaf->count = cpu_to_be16(1);
@@ -540,13 +540,13 @@ static tuxkey_t dleaf_split_at_center(struct dleaf *dleaf)
 /* dex information to modify */
 struct dex_info {
 	/* start extent */
-	struct diskextent2 *start_dex;
+	struct diskextent *start_dex;
 	/* physical range of partial start */
 	block_t start_block;
 	unsigned start_count;
 
 	/* end extent */
-	struct diskextent2 *end_dex;
+	struct diskextent *end_dex;
 	/* remaining physical range of partial end */
 	block_t end_block;
 
@@ -558,7 +558,7 @@ struct dex_info {
 static void find_start_dex(struct btree *btree, struct dleaf *dleaf,
 			   block_t key_start, struct dex_info *info)
 {
-	struct diskextent2 *dex_limit;
+	struct diskextent *dex_limit;
 
 	dex_limit = dleaf->table + be16_to_cpu(dleaf->count);
 
@@ -588,7 +588,7 @@ static void find_start_dex(struct btree *btree, struct dleaf *dleaf,
 static void find_end_dex(struct btree *btree, struct dleaf *dleaf,
 			 block_t key_end, struct dex_info *info)
 {
-	struct diskextent2 *limit, *dex_limit;
+	struct diskextent *limit, *dex_limit;
 	u16 dleaf_count = be16_to_cpu(dleaf->count);
 
 	dex_limit = dleaf->table + dleaf_count;
@@ -607,7 +607,7 @@ static void find_end_dex(struct btree *btree, struct dleaf *dleaf,
 
 	/* Lookup the dex for end of seg[]. */
 	info->end_dex = __dleaf_lookup_index(btree, dleaf, info->start_dex,
-					      limit, key_end);
+					     limit, key_end);
 	if (info->end_dex < dex_limit - 1) {
 		struct extent ex;
 
@@ -644,14 +644,14 @@ static void find_end_dex(struct btree *btree, struct dleaf *dleaf,
  * Write extents.
  */
 static int dleaf_write(struct btree *btree, tuxkey_t key_bottom,
-			tuxkey_t key_limit,
-			void *leaf, struct btree_key_range *key,
-			tuxkey_t *split_hint)
+		       tuxkey_t key_limit,
+		       void *leaf, struct btree_key_range *key,
+		       tuxkey_t *split_hint)
 {
 	struct dleaf_req *rq = container_of(key, struct dleaf_req, key);
 	struct sb *sb = btree->sb;
 	struct dleaf *dleaf = leaf;
-	struct diskextent2 *dex;
+	struct diskextent *dex;
 	struct extent ex;
 	struct dex_info info;
 	unsigned free_len, seg_len, alloc_len;
@@ -742,7 +742,7 @@ static int dleaf_write(struct btree *btree, tuxkey_t key_bottom,
 		free_len -= count;
 	}
 	if (info.start_dex < info.end_dex) {
-		struct diskextent2 *limit = info.end_dex;
+		struct diskextent *limit = info.end_dex;
 
 		if (limit != dleaf->table + be16_to_cpu(dleaf->count))
 			limit++;
@@ -803,7 +803,7 @@ static int dleaf_write(struct btree *btree, tuxkey_t key_bottom,
 need_split:
 	/* FIXME: do we should split at sentinel when filling hole? */
 	if (key_limit == TUXKEY_LIMIT) {
-		struct diskextent2 *sentinel =
+		struct diskextent *sentinel =
 			dleaf->table + be16_to_cpu(dleaf->count) - 1;
 
 		/* If append write, split at sentinel */
