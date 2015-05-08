@@ -89,7 +89,7 @@ static int tux3_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	return tux3_mknod(dir, dentry, S_IFDIR | mode, 0);
 }
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
 static int tux3_link(struct dentry *old_dentry, struct inode *dir,
 		     struct dentry *dentry)
@@ -178,7 +178,7 @@ static int tux3_symlink(struct inode *dir, struct dentry *dentry,
 
 	return __tux3_symlink(dir, dentry, &iattr, symname);
 }
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
 static int tux3_unlink(struct inode *dir, struct dentry *dentry)
 {
@@ -359,4 +359,4 @@ const struct inode_operations tux_dir_iops = {
 //	.fiemap		= ext4_fiemap,
 	.update_time	= tux3_no_update_time,
 };
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */

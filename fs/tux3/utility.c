@@ -156,7 +156,7 @@ void __tux3_dbg(const char *fmt, ...)
 	vprintk(fmt, args);
 	va_end(args);
 }
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
 /* Bitmap operations... try to use linux/lib/bitmap.c */
 

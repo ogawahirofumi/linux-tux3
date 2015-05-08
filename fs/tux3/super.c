@@ -872,4 +872,4 @@ MODULE_DESCRIPTION("Tux3 Filesystem");
 MODULE_AUTHOR("Daniel Phillips, OGAWA Hirofumi");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_FS("tux3");
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */

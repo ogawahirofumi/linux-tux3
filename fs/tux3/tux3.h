@@ -18,7 +18,7 @@
 
 #include "trace.h"
 #include "buffer.h"
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
 #include "link.h"
 
@@ -499,7 +499,7 @@ static inline struct block_device *sb_dev(struct sb *sb)
 {
 	return sb->vfs_sb->s_bdev;
 }
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
 /* Get delta from free running counter */
 static inline unsigned tux3_delta(unsigned delta)
@@ -721,7 +721,7 @@ int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count);
 struct buffer_head *peekblk(struct address_space *mapping, block_t iblock);
 struct buffer_head *blockread(struct address_space *mapping, block_t iblock);
 struct buffer_head *blockget(struct address_space *mapping, block_t iblock);
-#endif /* !__KERNEL__ */
+#endif /* __KERNEL__ */
 
 /* balloc.c */
 void countmap_put(struct countmap_pin *countmap_pin);
