@@ -913,7 +913,7 @@ static void tux3fuse_setlk(fuse_req_t req, fuse_ino_t ino,
 	tux3_warn(sb, "not implemented");
 	fuse_reply_err(req, ENOSYS);
 }
-#endif /* !NEED_REMOTE_LOCKS */
+#endif /* NEED_REMOTE_LOCKS */
 
 /* This is only used if 'blkdev' option was passed to fuse */
 static void tux3fuse_bmap(fuse_req_t req, fuse_ino_t ino, size_t blocksize,

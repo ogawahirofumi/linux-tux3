@@ -108,7 +108,7 @@ int streamwrite(int fd, void *data, size_t count)
 {
 	return iorel(fd, data, count, 1);
 }
-#endif /* TUX3_BUILD */
+#endif /* !TUX3_BUILD */
 
 int fdsize64(int fd, loff_t *size)
 {

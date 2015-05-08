@@ -189,4 +189,4 @@ found_middle:
 found_middle_swap:
 	return result + __ffs(ext2_swab(tmp));
 }
-#endif /* !__BIG_ENDIAN */
+#endif /* __BIG_ENDIAN */

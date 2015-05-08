@@ -190,4 +190,4 @@ HOOK_TO_GLIBC(NULL, void *, realloc, (void *ptr, size_t size), ptr, size);
 HOOK_TO_GLIBC(ENOMEM, int, posix_memalign,
 	      (void **memptr, size_t alignment, size_t size),
 	      memptr, alignment, size);
-#endif /* !FAULT_INJECTION */
+#endif /* FAULT_INJECTION */
