@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <libklib/types.h>
+#include <libklib/compiler.h>
 #include <libklib/bitops.h>
 
 /*
