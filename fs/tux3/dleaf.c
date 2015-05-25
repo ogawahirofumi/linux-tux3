@@ -152,7 +152,10 @@ static int dleaf_can_free(struct btree *btree, void *leaf)
 	return 1;
 }
 
-/* Lookup logical address in diskextent <= index */
+/*
+ * Lookup logical address in diskextent <= index.
+ * But, If first dex.logical > index, return first dex.
+ */
 static struct diskextent *
 __dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf,
 		     struct diskextent *start, struct diskextent *limit,
@@ -166,18 +169,16 @@ __dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf,
 		assert(ex.physical == 0);
 	}
 #endif
-	/* FIXME: binsearch here */
-	while (start < limit) {
-		if (index == get_logical(start))
-			return start;
-		else if (index < get_logical(start)) {
-			/* should have diskextent of bottom logical on leaf */
-			assert(dleaf->table < start);
-			return start - 1;
+	if (start < limit) {
+		/* FIXME: binsearch here */
+		while (++start < limit) {
+			if (index < get_logical(start))
+				return start - 1;
 		}
-		start++;
+		/* Check whether index <= limit dex */
+		if (index <= get_logical(start - 1))
+			return start - 1;
 	}
-
 	return start;
 }
 
@@ -186,7 +187,6 @@ dleaf_lookup_index(struct btree *btree, struct dleaf *dleaf, tuxkey_t index)
 {
 	struct diskextent *start = dleaf->table;
 	struct diskextent *limit = start + be16_to_cpu(dleaf->count);
-
 	return __dleaf_lookup_index(btree, dleaf, start, limit, index);
 }
 
@@ -222,12 +222,23 @@ static tuxkey_t dleaf_split(struct btree *btree, tuxkey_t hint,
 
 	split_at = dex - from->table;
 
-	from->count = cpu_to_be16(split_at + 1);	/* +1 for sentinel */
-	into->count = cpu_to_be16(count - split_at);
-
 	dex = from->table + split_at;
-	/* Copy diskextent */
-	memcpy(into->table, dex, sizeof(*dex) * (count - split_at));
+	count -= split_at;
+	/* No need to copy holes at start of dex. If there, strip holes */
+	while (count) {
+		get_extent(dex, &ex);
+		if (ex.physical != 0)
+			break;
+		count--;
+		dex++;
+	}
+	/* Copy diskextent to into */
+	into->count = cpu_to_be16(count);
+	memcpy(into->table, dex, sizeof(*dex) * count);
+
+	/* Adjust end of from */
+	from->count = cpu_to_be16(split_at + 1);	/* +1 for sentinel */
+	dex = from->table + split_at;
 	/* Put sentinel */
 	get_extent(dex, &ex);
 	put_extent(dex, ex.version, ex.logical, 0);
@@ -326,18 +337,21 @@ static int dleaf_chop(struct btree *btree, tuxkey_t start, u64 len, void *leaf)
 
 	need_sentinel = 1;
 	get_extent(dex, &ex);
-	if (start == ex.logical) {
-		if (dex > dleaf->table) {
-			/* If previous is hole, use it as sentinel */
-			struct extent prev;
-			get_extent(dex - 1, &prev);
-			if (prev.physical == 0) {
-				dex--;
-				need_sentinel = 0;
-			}
+	if (dex == dleaf->table && start <= ex.logical) {
+		/* Chop whole dex */
+		start = ex.logical;
+		need_sentinel = 0;
+		dex--;
+	} else if (start == ex.logical) {
+		/* If previous is hole, use it as sentinel */
+		struct extent prev;
+		get_extent(dex - 1, &prev);
+		if (prev.physical == 0) {
+			dex--;
+			need_sentinel = 0;
 		}
 		if (need_sentinel) {
-			/* Put new sentinel here. */
+			/* Replace this dex by new sentinel. */
 			put_extent(dex, sb->version, start, 0);
 		}
 		need_sentinel = 0;
@@ -401,11 +415,17 @@ static unsigned __dleaf_read(struct btree *btree, tuxkey_t key_bottom,
 		goto fill_seg;
 	}
 
-	/* Get start position of logical and physical */
 	get_extent(dex, &next);
-	physical = next.physical;
-	if (physical)
-		physical += key_start - next.logical;	/* add offset */
+	if (key_start < next.logical) {
+		/* Between key_bottom and before first dex is hole */
+		dex--;		/* Adjust current dex as next */
+		physical = 0;
+	} else {
+		/* Get start position of logical and physical */
+		physical = next.physical;
+		if (physical)
+			physical += key_start - next.logical;	/* add offset */
+	}
 
 	do {
 		struct block_segment *seg = rq->seg + rq->seg_cnt;
@@ -541,6 +561,8 @@ static tuxkey_t dleaf_split_at_center(struct dleaf *dleaf)
 struct dex_info {
 	/* start extent */
 	struct diskextent *start_dex;
+	/* hole length before first dex */
+	unsigned start_hole;
 	/* physical range of partial start */
 	block_t start_block;
 	unsigned start_count;
@@ -562,17 +584,23 @@ static void find_start_dex(struct btree *btree, struct dleaf *dleaf,
 
 	dex_limit = dleaf->table + be16_to_cpu(dleaf->count);
 
+	info->start_hole = 0;
 	info->start_block = 0;
 	info->start_count = 0;
 
 	/* Lookup the dex for start of seg[]. */
 	info->start_dex = dleaf_lookup_index(btree, dleaf, key_start);
-	if (info->start_dex < dex_limit - 1) {
+	if (info->start_dex < dex_limit) {
 		struct extent ex;
 
 		get_extent(info->start_dex, &ex);
+
+		/* Hole length before first dex */
+		if (info->start_dex == dleaf->table && key_start < ex.logical)
+			info->start_hole = ex.logical - key_start;
+
 		/* Start is at middle of dex: can't overwrite this dex */
-		if (key_start > ex.logical) {
+		if (info->start_dex < dex_limit - 1 && key_start > ex.logical) {
 			block_t prev = ex.logical, physical = ex.physical;
 
 			info->start_dex++;
@@ -588,7 +616,7 @@ static void find_start_dex(struct btree *btree, struct dleaf *dleaf,
 static void find_end_dex(struct btree *btree, struct dleaf *dleaf,
 			 block_t key_end, struct dex_info *info)
 {
-	struct diskextent *limit, *dex_limit;
+	struct diskextent *limit, *start_dex, *dex_limit;
 	u16 dleaf_count = be16_to_cpu(dleaf->count);
 
 	dex_limit = dleaf->table + dleaf_count;
@@ -605,14 +633,23 @@ static void find_end_dex(struct btree *btree, struct dleaf *dleaf,
 		limit = min(info->end_dex + 1, dex_limit);
 	}
 
+	/* If start_dex is middle of extent, set start_dex start of dex. */
+	start_dex = info->start_dex;
+	if (info->start_count)
+		start_dex--;
 	/* Lookup the dex for end of seg[]. */
-	info->end_dex = __dleaf_lookup_index(btree, dleaf, info->start_dex,
+	info->end_dex = __dleaf_lookup_index(btree, dleaf, start_dex,
 					     limit, key_end);
-	if (info->end_dex < dex_limit - 1) {
+	if (info->end_dex < dex_limit) {
 		struct extent ex;
 
 		get_extent(info->end_dex, &ex);
-		if (key_end > ex.logical) {
+
+		/* end is before first dex */
+		if (info->end_dex == dleaf->table && key_end < ex.logical)
+			info->need_sentinel = 1;
+
+		if (info->end_dex < dex_limit - 1 && key_end > ex.logical) {
 			block_t offset = key_end - ex.logical;
 
 			/* End is at middle of dex: can overwrite this dex */
@@ -665,8 +702,6 @@ static int dleaf_write(struct btree *btree, tuxkey_t key_bottom,
 	 *
 	 * FIXME: should try to merge at start and new last extents.
 	 */
-
-	dleaf_init_sentinel(sb, dleaf, key_bottom);
 
 	/* Get the info of dex for start of seg[]. */
 	find_start_dex(btree, dleaf, key->start, &info);
@@ -734,7 +769,7 @@ static int dleaf_write(struct btree *btree, tuxkey_t key_bottom,
 	/*
 	 * Free segments which is overwritten.
 	 */
-	free_len = seg_len;
+	free_len = seg_len - min(info.start_hole, seg_len);
 	if (info.start_count) {
 		unsigned count = min_t(block_t, free_len, info.start_count);
 		if (info.start_block)
@@ -765,7 +800,7 @@ static int dleaf_write(struct btree *btree, tuxkey_t key_bottom,
 	/*
 	 * Expand/shrink space for segs
 	 */
-	dleaf_resize(dleaf, info.end_dex,  diff);
+	dleaf_resize(dleaf, info.end_dex, diff);
 	assert(info.dleaf_count + seg_cnt == be16_to_cpu(dleaf->count));
 	assert(info.dleaf_count + seg_cnt <= btree->entries_per_leaf);
 
