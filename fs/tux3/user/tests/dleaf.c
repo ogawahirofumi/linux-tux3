@@ -705,7 +705,7 @@ static void test02(struct sb *sb, struct btree *btree)
 	struct dleaf_req rq;
 	struct btree_key_range *key;
 	tuxkey_t hint, newkey;
-	int err, ret;
+	int i, err, ret;
 
 	leaf1 = dleaf_create(btree);
 	assert(leaf1);
@@ -713,14 +713,14 @@ static void test02(struct sb *sb, struct btree *btree)
 	assert(leaf2);
 
 	/* Make full dleaf (-2 is for hole from 0 and sentinel) */
-	for (int i = 0; i < btree->entries_per_leaf - 2; i++) {
+	ret = 0;
+	for (i = 0; ret != BTREE_DO_SPLIT; i++) {
 		struct block_segment seg1[] = {
 			{ .block = 0x100 + i, .count = 1, },
 		};
 		dleaf_set_alloc_seg(seg1, ARRAY_SIZE(seg1));
 		key = dleaf_set_w_req(&rq, BASE + i, 1, seg, ARRAY_SIZE(seg));
 		ret = dleaf_write(btree, 0, TUXKEY_LIMIT, leaf1, key, &hint);
-		test_assert(!ret);
 	}
 
 	/* Can't write at all */
@@ -749,7 +749,7 @@ static void test02(struct sb *sb, struct btree *btree)
 		{ .block = 0x300, .count = 1, },
 		{ .block = 0x301, .count = 1, },
 	};
-	tuxkey_t index = BASE + (btree->entries_per_leaf - 2 - seg3[0].count);
+	tuxkey_t index = BASE + i - 1 - seg3[0].count;
 	dleaf_set_alloc_seg(seg3, ARRAY_SIZE(seg3));
 	key = dleaf_set_w_req(&rq, index, 4, seg, ARRAY_SIZE(seg));
 	ret = dleaf_write(btree, 0, TUXKEY_LIMIT, leaf1, key, &hint);
@@ -806,15 +806,15 @@ static void test03(struct sb *sb, struct btree *btree)
 	/*
 	 * base    :          |-------|      |---+-------|
 	 *           0        10      15    18  20     25
-	 * test02.1:              |
+	 * test03.1:              |
 	 *                       13
-	 * test02.2:                         |
+	 * test03.2:                         |
 	 *                                   18
-	 * test02.3:                  |
+	 * test03.3:                  |
 	 *                           15
-	 * test02.4:      |
+	 * test03.4:      |
 	 *                5
-	 * test02.5:                                          |
+	 * test03.5:                                          |
 	 *                                                    30
 	 */
 	struct block_segment seg1[] = {
@@ -1017,9 +1017,9 @@ static void test05(struct sb *sb, struct btree *btree)
 	assert(leaf2);
 
 	/*
-	 * test04.1:          |--------+------|   |       +-----|
-	 *           0        10      15     18  20      25     30
-	 * test04.2:          |--------+-----||---+-------|
+	 * test05.1:          |--------+------|           +-----|
+	 *           0        10      15     18          25     30
+	 * test05.2:          |--------+-----||---+-------|
 	 *           0        10      15     18  20      25
 	 */
 	if (test_start("test05.1")) {
@@ -1037,12 +1037,11 @@ static void test05(struct sb *sb, struct btree *btree)
 		test_assert(!ret);
 
 		struct block_segment seg2[] = {
-			{ .block =  0, .count =  5, },
 			{ .block = 40, .count =  5, },
 		};
 		dleaf_set_alloc_seg(seg2, ARRAY_SIZE(seg2));
-		key = dleaf_set_w_req(&rq, 20, 10, seg, ARRAY_SIZE(seg));
-		ret = dleaf_write(btree, 20, TUXKEY_LIMIT, leaf2, key, &hint);
+		key = dleaf_set_w_req(&rq, 25, 5, seg, ARRAY_SIZE(seg));
+		ret = dleaf_write(btree, 25, TUXKEY_LIMIT, leaf2, key, &hint);
 		test_assert(!ret);
 
 		/* Test merge */
