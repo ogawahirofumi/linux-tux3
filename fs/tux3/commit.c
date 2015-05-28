@@ -510,6 +510,13 @@ static struct delta_ref *delta_get(struct sb *sb)
 	 * free ->current_delta, so we don't need rcu_read_lock().
 	 */
 	do {
+		/*
+		 * NOTE: Without this barrier(), at least, gcc-4.8.2 ignores
+		 * volatile dereference of sb->current_delta in this loop,
+		 * and instead using cached value.
+		 * (Looks like gcc bug, and this barrier() is workaround of it)
+		 */
+		barrier();
 		delta_ref = rcu_dereference_check(sb->current_delta, 1);
 	} while (!atomic_inc_not_zero(&delta_ref->refcount));
 
