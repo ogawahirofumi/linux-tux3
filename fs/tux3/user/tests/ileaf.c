@@ -290,6 +290,214 @@ static void test02(struct sb *sb, struct btree *btree)
 	clean_main(sb);
 }
 
+static void test_ileaf_chop(struct btree *btree, tuxkey_t start, u64 len,
+			    struct ileaf *ileaf,
+			    struct ileaf_data *data, int nr_data)
+{
+	int i, chopped, ret;
+
+	/* Set size=0 on chop range */
+	chopped = 0;
+	for (i = 0; i < nr_data; i++) {
+		if (start <= data[i].inum && data[i].inum < start + len) {
+			data[i].size = 0;
+			chopped=1;
+		}
+	}
+
+	ret = ileaf_chop(btree, start, len, ileaf);
+	test_assert(ret == chopped);
+	check_ileaf_with_data(btree, ileaf, data, nr_data);
+}
+
+/* Test of ileaf_chop */
+static void test03(struct sb *sb, struct btree *btree)
+{
+	struct ileaf *leaf = ileaf_create(btree);
+
+	struct ileaf_data data[] = {
+		{ .inum = 20, .size = 9, .c = 'a', },
+		{ .inum = 21, .size = 8, .c = 'b', },
+		{ .inum = 22, .size = 7, .c = 'c', },
+		{ .inum = 23, .size = 6, .c = 'd', },
+		{ .inum = 24, .size = 5, .c = 'e', },
+		{ .inum = 25, .size = 4, .c = 'f', },
+		{ .inum = 26, .size = 3, .c = 'g', },
+		{ .inum = 27, .size = 2, .c = 'h', },
+		{ .inum = 28, .size = 1, .c = 'i', },
+		{ .inum = 29, .size = 3, .c = 'j', },
+
+		{ .inum = 10, .size = 2, .c = 'k', },
+		{ .inum = 11, .size = 3, .c = 'l', },
+		{ .inum = 12, .size = 4, .c = 'm', },
+		{ .inum = 13, .size = 5, .c = 'n', },
+		{ .inum = 14, .size = 6, .c = 'o', },
+		{ .inum = 15, .size = 7, .c = 'p', },
+		{ .inum = 16, .size = 8, .c = 'q', },
+		{ .inum = 17, .size = 9, .c = 'r', },
+
+		{ .inum = 40, .size = 4, .c = 's', },
+		{ .inum = 41, .size = 4, .c = 't', },
+		{ .inum = 42, .size = 4, .c = 'u', },
+		{ .inum = 43, .size = 4, .c = 'v', },
+
+		{ .inum = 60, .size = 4, .c = 'w', },
+		{ .inum = 65, .size = 4, .c = 'x', },
+		{ .inum = 70, .size = 4, .c = 'y', },
+		{ .inum = 75, .size = 4, .c = 'z', },
+	};
+
+	/* Init data[] */
+	for (int i = 0; i < ARRAY_SIZE(data); i++)
+		memset(data[i].buf, data[i].c, data[i].size);
+
+	/* Add data */
+	for (int i = 0; i < ARRAY_SIZE(data); i++) {
+		if (data[i].size == 0)
+			continue;
+		test_append(btree, leaf, data[i].inum, data[i].size, data[i].c);
+	}
+	/* Check */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	if (test_start("test03.0")) {
+		/* Chop before start */
+		test_ileaf_chop(btree, 5, 2, leaf, data, ARRAY_SIZE(data));
+		/* Chop at hole */
+		test_ileaf_chop(btree, 30, 2, leaf, data, ARRAY_SIZE(data));
+		/* Chop after end */
+		test_ileaf_chop(btree, 80, 2, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test03.1.1")) {
+		/* !s_partial, not across ibase entries, !e_partial */
+		test_ileaf_chop(btree, 10, 8, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.1.2")) {
+		/* !s_partial, not across ibase entries, !e_partial */
+		test_ileaf_chop(btree, 20, 10, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.1.3")) {
+		/* !s_partial, not across ibase entries, !e_partial */
+		test_ileaf_chop(btree, 40, 4, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.1.4")) {
+		/* !s_partial, across ibase entries, !e_partial */
+		test_ileaf_chop(btree, 20, 24, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test03.2.1")) {
+		/* s_partial, not across ibase entries, !e_partial */
+		test_ileaf_chop(btree, 27, 3, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.2.2")) {
+		/* s_partial, across ibase entries, !e_partial */
+		test_ileaf_chop(btree, 27, 17, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test03.3.1")) {
+		/* start < ibase, not across ibase entries, e_partial */
+		test_ileaf_chop(btree, 5, 8, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.3.2")) {
+		/* !s_partial, not across ibase entries, e_partial */
+		test_ileaf_chop(btree, 20, 5, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.3.3")) {
+		/* !s_partial, not across ibase entries, e_partial */
+		test_ileaf_chop(btree, 20, 23, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test03.4.1")) {
+		/* s_partial, not across ibase entries, e_partial */
+		/* chop dict is close (len < IBASE_FAR) */
+		test_ileaf_chop(btree, 23, 3, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.4.2")) {
+		/* s_partial, across ibase entries, e_partial */
+		/* chop dict is close (len < IBASE_FAR) */
+		test_ileaf_chop(btree, 17, 4, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.4.3")) {
+		/* s_partial, not across ibase entries, e_partial */
+		/* chop dict is far (len >= IBASE_FAR) */
+		test_ileaf_chop(btree, 21, 8, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+	if (test_start("test03.4.3")) {
+		/* s_partial, across ibase entries, e_partial */
+		/* chop dict is far (len >= IBASE_FAR) */
+		test_ileaf_chop(btree, 21, 22, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test03.5")) {
+		/* s_partial, around of 0-size entries, e_partial */
+		/* chop dict is far (len >= IBASE_FAR) */
+		test_ileaf_chop(btree, 65, 6, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test03.6")) {
+		/* s_partial, not across ibase entries, beyond end */
+		test_ileaf_chop(btree, 70, 10, leaf, data, ARRAY_SIZE(data));
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	test_ileaf_chop(btree, 22, 3, leaf, data, ARRAY_SIZE(data));
+	test_ileaf_chop(btree, 17, 4, leaf, data, ARRAY_SIZE(data));
+	test_ileaf_chop(btree, 21, 8, leaf, data, ARRAY_SIZE(data));
+	test_ileaf_chop(btree, 17, 23, leaf, data, ARRAY_SIZE(data));
+
+	ileaf_destroy(btree, leaf);
+
+	clean_main(sb);
+}
+
 int main(int argc, char *argv[])
 {
 	struct dev *dev = &(struct dev){ .bits = 12 };
@@ -312,6 +520,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test02"))
 		test02(sb, &btree);
+	test_end();
+
+	if (test_start("test03"))
+		test03(sb, &btree);
 	test_end();
 
 	clean_main(sb);
