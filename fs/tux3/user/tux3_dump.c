@@ -620,6 +620,7 @@ static void __dump_ileaf(struct dump_info *di, struct btree *btree,
 			 struct buffer_head *ileafbuf,
 			 dump_ileaf_attr_t dump_ileaf_attr)
 {
+#if 0
 	struct ileaf *ileaf = bufdata(ileafbuf);
 	__be16 *dict = ileaf_dict(btree, ileaf);
 	int at;
@@ -648,6 +649,7 @@ static void __dump_ileaf(struct dump_info *di, struct btree *btree,
 		stats_block_add(di->stats->own, level, bufindex(ileafbuf),
 				bytes, empty);
 	}
+#endif
 }
 
 static void dump_ileaf(struct btree *btree, struct buffer_head *ileafbuf,

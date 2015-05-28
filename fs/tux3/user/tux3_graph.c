@@ -850,6 +850,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 			 struct buffer_head *ileafbuf,
 			 draw_ileaf_attr_t draw_ileaf_attr)
 {
+#if 0
 	struct ileaf *ileaf = bufdata(ileafbuf);
 	__be16 *dict = ileaf_dict(btree, ileaf);
 	block_t blocknr = ileafbuf->index;
@@ -928,6 +929,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 			blocknr, at,
 			blocknr, at);
 	}
+#endif
 }
 
 static void draw_ileaf(struct btree *btree, struct buffer_head *ileafbuf,

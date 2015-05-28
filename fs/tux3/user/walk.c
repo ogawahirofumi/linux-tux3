@@ -109,14 +109,18 @@ static void walk_dleaf(struct btree *btree, struct buffer_head *dleafbuf,
 
 static inline u16 ileaf_attr_size(__be16 *dict, int at)
 {
+#if 0
 	int size = __atdict(dict, at + 1) - atdict(dict, at);
 	assert(size >= 0);
 	return size;
+#endif
+	return 0;
 }
 
 static void walk_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
 		       walk_ileaf_cb callback, void *data)
 {
+#if 0
 	struct ileaf *ileaf = bufdata(ileafbuf);
 	__be16 *dict = ileaf_dict(btree, ileaf);
 	int at;
@@ -139,6 +143,7 @@ static void walk_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
 
 		iput(inode);
 	}
+#endif
 }
 
 static void walk_btree(struct btree *btree, struct walk_btree_ops *cb,
