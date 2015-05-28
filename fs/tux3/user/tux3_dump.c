@@ -30,6 +30,8 @@ struct stats_btree_block {
 	block_t blocks;				/* number of blocks */
 	block_t empty;				/* number of empty blocks */
 	block_t bytes;				/* number of used bytes */
+	block_t data_bytes;			/* number of used data bytes
+						 * (attrs size of ileaf) */
 };
 
 struct stats_btree_data {
@@ -163,13 +165,15 @@ static void stats_child_seek_add(struct stats_btree *stats, int level,
 }
 
 static void stats_block_add(struct stats_btree *stats, int level,
-			    block_t block, unsigned bytes, int empty)
+			    block_t block, unsigned bytes, unsigned data_bytes,
+			    int empty)
 {
 	block_t seek = stats_suppose_seek(block, 1);
 
 	stats->levels[level].block.blocks++;
 	stats->levels[level].block.empty += empty;
 	stats->levels[level].block.bytes += bytes;
+	stats->levels[level].block.data_bytes += data_bytes;
 
 	stats_seek_add(&stats->depth_seek, seek);
 }
@@ -196,6 +200,7 @@ stats_levels_sum(struct stats_btree *stats, int depth)
 		sum.block.blocks	+= stats->levels[i].block.blocks;
 		sum.block.empty		+= stats->levels[i].block.empty;
 		sum.block.bytes		+= stats->levels[i].block.bytes;
+		sum.block.data_bytes	+= stats->levels[i].block.data_bytes;
 		sum.child_seek.blocks	+= stats->levels[i].child_seek.blocks;
 		sum.child_seek.nr	+= stats->levels[i].child_seek.nr;
 		sum.child_seek.io	+= stats->levels[i].child_seek.io;
@@ -240,6 +245,7 @@ static void stats_btree_merge(struct stats_btree **a, struct stats_btree *b)
 		la->block.blocks	+= lb->block.blocks;
 		la->block.empty		+= lb->block.empty;
 		la->block.bytes		+= lb->block.bytes;
+		la->block.data_bytes	+= lb->block.data_bytes;
 		la->child_seek.blocks	+= lb->child_seek.blocks;
 		la->child_seek.nr	+= lb->child_seek.nr;
 		la->child_seek.io	+= lb->child_seek.io;
@@ -322,9 +328,12 @@ static void stats_print_level(struct sb *sb, struct stats_btree_level *level,
 	bytes = level->block.blocks << sb->blockbits;
 	printf("%s:\n"
 	       "    %14Lu blocks, %14Lu bytes, %5.02f%% full\n"
+	       "    %14s   (data %14Lu bytes, %5.02f%% full)\n"
 	       "    %14Lu blocks empty\n",
 	       prefix, level->block.blocks, level->block.bytes,
 	       percentage(level->block.bytes, bytes),
+	       "", level->block.data_bytes,
+	       percentage(level->block.data_bytes, bytes),
 	       level->block.empty);
 }
 
@@ -399,7 +408,8 @@ static void dump_bnode(struct btree *btree, struct buffer_head *buffer,
 			+ sizeof(*index) * bcount(bnode);
 		int empty = !bcount(bnode);
 
-		stats_block_add(di->stats->own, level, blocknr, bytes, empty);
+		stats_block_add(di->stats->own, level, blocknr, bytes,
+				bytes, empty);
 	}
 }
 
@@ -479,7 +489,7 @@ static void dump_dleaf(struct btree *btree, struct buffer_head *dleafbuf,
 
 	if (opt_stats) {
 		stats_block_add(di->stats->own, level, bufindex(dleafbuf),
-				bytes, empty);
+				bytes, bytes, empty);
 	}
 
 	walk_dleaf(btree, dleafbuf, &dump_dleaf_ops, di);
@@ -628,6 +638,21 @@ static int dump_ileaf_enum_callback(struct btree *btree, inum_t inum,
 	return 0;
 }
 
+static unsigned ileaf_get_attrs_size(struct ileaf *ileaf)
+{
+	unsigned count;
+#ifndef ILEAF_FORMAT_MULTI_IBASE
+	count = ileaf_count(ileaf);
+	if (count)
+		return dict_read(ileaf_dict(ileaf) + count - 1);
+#else
+	count = ibase_count(ileaf);
+	if (count)
+		return ileaf_attrs_size(ileaf);
+#endif
+	return 0;
+}
+
 static void __dump_ileaf(struct dump_info *di, struct btree *btree,
 			 struct buffer_head *ileafbuf,
 			 dump_ileaf_attr_t dump_ileaf_attr)
@@ -647,11 +672,12 @@ static void __dump_ileaf(struct dump_info *di, struct btree *btree,
 
 	if (opt_stats) {
 		unsigned bytes = sizeof(*ileaf) + ileaf_need(ileaf);
+		unsigned data_bytes = ileaf_get_attrs_size(ileaf);
 		int empty = btree->ops->leaf_can_free(btree, ileaf);
 		int level = btree->root.depth - 1;
 
 		stats_block_add(di->stats->own, level, bufindex(ileafbuf),
-				bytes, empty);
+				bytes, data_bytes, empty);
 	}
 }
 
