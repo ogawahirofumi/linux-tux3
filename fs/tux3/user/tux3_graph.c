@@ -733,11 +733,9 @@ static struct draw_data_ops *dtree_funcs[S_IFMT >> S_SHIFT] = {
 	[S_IFLNK >> S_SHIFT]	= &draw_symlink,
 };
 
-static void draw_ileaf_cb(struct buffer_head *ileafbuf,
+static void draw_ileaf_cb(struct buffer_head *ileafbuf, int at,
 			  struct inode *inode, void *data)
 {
-	int at = 0;	/* FIXME */
-
 	if (has_no_root(&tux_inode(inode)->btree))
 		return;
 
@@ -852,9 +850,10 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 			 struct buffer_head *ileafbuf,
 			 draw_ileaf_attr_t draw_ileaf_attr)
 {
-#if 0
 	struct ileaf *ileaf = bufdata(ileafbuf);
-	__be16 *dict = ileaf_dict(btree, ileaf);
+	inum_t ibase = ileaf_ibase(ileaf);
+	unsigned count = ileaf_count(ileaf);
+	__be16 *dict = ileaf_dict(ileaf);
 	block_t blocknr = ileafbuf->index;
 	int at;
 
@@ -871,20 +870,39 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 		blocknr,
 		gi->lname, blocknr,
 		buffer_dirty(ileafbuf) ? ", dirty" : "",
-		be16_to_cpu(ileaf->magic), icount(ileaf), ibase(ileaf));
+		be16_to_cpu(ileaf->magic), count, ibase);
+
+	u16 prev;
+	/* draw offset part */
+	prev = 0;
+	for (at = 0; at < count; at++) {
+		u16 offset = dict_read(dict + at);
+		fprintf(gi->fp,
+			"  <tr>\n"
+			"   <td port=\"o%d\">"
+			"offset %u (size %u, ino %llu)</td>\n"
+			"  </tr>\n",
+			at, offset, offset - prev, ibase + at);
+		prev = offset;
+	}
+	fprintf(gi->fp,
+		"  <tr>\n"
+		"   <td>.....</td>\n"
+		"  </tr>\n");
 
 	/* draw inode attributes */
-	u16 offset = 0, limit, size;
-	for (at = 0; at < icount(ileaf); at++) {
-		limit = __atdict(dict, at + 1);
-		if (offset >= limit)
+	void *attrs_limit = ileaf_attrs_limit(btree, ileaf);
+	prev = 0;
+	for (at = 0; at < count; at++) {
+		u16 offset = dict_read(dict + at);
+		u16 size = offset - prev;
+		if (!size)
 			continue;
-		size = limit - offset;
 
-		inum_t inum = ibase(ileaf) + at;
-		void *attrs = ileaf->table + offset;
+		prev = offset;
 
-		offset = limit;
+		inum_t inum = ibase + at;
+		void *attrs = attrs_limit -  offset;
 
 		fprintf(gi->fp,
 			"  <tr>\n"
@@ -897,21 +915,6 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 			"</td>\n"
 			"  </tr>\n");
 	}
-	fprintf(gi->fp,
-		"  <tr>\n"
-		"   <td>.....</td>\n"
-		"  </tr>\n");
-
-	/* draw offset part */
-	for (at = icount(ileaf) - 1; at >= 0; at--) {
-		fprintf(gi->fp,
-			"  <tr>\n"
-			"   <td port=\"o%d\">"
-			"limit %u (offset %u, size %u, ino %llu)</td>\n"
-			"  </tr>\n",
-			at, atdict(dict, at + 1), atdict(dict, at),
-			ileaf_attr_size(dict, at), ibase(ileaf) + at);
-	}
 
 	fprintf(gi->fp,
 		"</table>>\n"
@@ -921,8 +924,11 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 		buffer_dirty(ileafbuf) ? "color = red\n" : "");
 
 	/* draw allows from offset to attributes */
-	for (at = 0; at < icount(ileaf); at++) {
-		if (!ileaf_attr_size(dict, at))
+	prev = 0;
+	for (at = 0; at < count; at++) {
+		u16 offset = dict_read(dict + at);
+		u16 size = offset - prev;
+		if (!size)
 			continue;
 
 		/* write link: ileaf offset -> ileaf attrs */
@@ -931,7 +937,28 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 			blocknr, at,
 			blocknr, at);
 	}
-#endif
+
+	/* call callback to traverse dtree */
+	prev = 0;
+	for (at = 0; at < count; at++) {
+		u16 offset = dict_read(dict + at);
+		u16 size = offset - prev;
+		if (!size)
+			continue;
+
+		struct inode *inode;
+		inum_t inum = ibase + at;
+		inode = tux3_iget(btree->sb, inum);
+		if (IS_ERR(inode)) {
+			tux3_fs_error(btree->sb,
+				      "inode couldn't get: inum %Lu: %ld",
+				      inum, PTR_ERR(inode));
+		}
+
+		draw_ileaf_cb(ileafbuf, at, inode, gi);
+
+		iput(inode);
+	}
 }
 
 static void draw_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
@@ -944,8 +971,6 @@ static void draw_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
 	drawn |= DRAWN_ILEAF;
 
 	__draw_ileaf(gi, btree, ileafbuf, draw_ileaf_attr);
-
-	walk_ileaf(btree, ileafbuf, draw_ileaf_cb, gi);
 }
 
 static struct walk_btree_ops draw_itree_ops = {
