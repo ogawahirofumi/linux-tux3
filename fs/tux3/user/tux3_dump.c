@@ -536,7 +536,7 @@ static const char *dtree_name[] = {
 	[TUX_ROOTDIR_INO]	= "rootdir",
 };
 
-static void dump_ileaf_cb(struct buffer_head *ileafbuf, int at,
+static void dump_ileaf_cb(struct buffer_head *ileafbuf,
 			  struct inode *inode, void *data)
 {
 	if (has_no_root(&tux_inode(inode)->btree))

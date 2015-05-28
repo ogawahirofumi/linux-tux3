@@ -145,7 +145,7 @@ static struct walk_btree_ops image_dtree_no_data_ops = {
 	.leaf	= image_dleaf_no_data,
 };
 
-static void image_ileaf_cb(struct buffer_head *ileafbuf, int at,
+static void image_ileaf_cb(struct buffer_head *ileafbuf,
 			   struct inode *inode, void *data)
 {
 	struct btree *dtree = &tux_inode(inode)->btree;

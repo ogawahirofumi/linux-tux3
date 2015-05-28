@@ -58,8 +58,7 @@ struct walk_logchain_ops {
 	void (*post)(struct sb *, struct buffer_head *, unsigned, int, void *);
 };
 
-typedef void (*walk_ileaf_cb)(struct buffer_head *, int, struct inode *,
-			      void *);
+typedef void (*walk_ileaf_cb)(struct buffer_head *, struct inode *, void *);
 
 struct walk_dleaf_ops {
 	/* callback for data extent */
@@ -107,43 +106,47 @@ static void walk_dleaf(struct btree *btree, struct buffer_head *dleafbuf,
 	}
 }
 
-static inline u16 ileaf_attr_size(__be16 *dict, int at)
+struct walk_ileaf_enum_data {
+	walk_ileaf_cb callback;
+	struct buffer_head *ileafbuf;
+	void *data;
+};
+static int walk_ileaf_enum_callback(struct btree *btree, inum_t inum,
+				    void *attrs, unsigned size, void *data)
 {
-#if 0
-	int size = __atdict(dict, at + 1) - atdict(dict, at);
-	assert(size >= 0);
-	return size;
-#endif
+	struct walk_ileaf_enum_data *d = data;
+	struct inode *inode;
+
+	inode = tux3_iget(btree->sb, inum);
+	if (IS_ERR(inode)) {
+		tux3_fs_error(btree->sb,
+			      "inode couldn't get: inum %Lu: %ld",
+			      inum, PTR_ERR(inode));
+	}
+
+	d->callback(d->ileafbuf, inode, d->data);
+
+	iput(inode);
+
 	return 0;
 }
 
 static void walk_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
 		       walk_ileaf_cb callback, void *data)
 {
-#if 0
 	struct ileaf *ileaf = bufdata(ileafbuf);
-	__be16 *dict = ileaf_dict(btree, ileaf);
-	int at;
+	struct walk_ileaf_enum_data d = {
+		.callback	= callback,
+		.ileafbuf	= ileafbuf,
+		.data		= data,
+	};
+	struct ileaf_enumrate_cb cb = {
+		.callback	= walk_ileaf_enum_callback,
+		.data		= &d,
+	};
 
-	/* walk inode's dtree */
-	for (at = 0; at < icount(ileaf); at++) {
-		u16 size = ileaf_attr_size(dict, at);
-		if (!size)
-			continue;
-
-		inum_t inum = ibase(ileaf) + at;
-		struct inode *inode = tux3_iget(btree->sb, inum);
-		if (IS_ERR(inode)) {
-			tux3_fs_error(btree->sb,
-				      "inode couldn't get: inum %Lu: %ld",
-				      inum, PTR_ERR(inode));
-		}
-
-		callback(ileafbuf, at, inode, data);
-
-		iput(inode);
-	}
-#endif
+	ileaf_enumerate(btree, 0, TUXKEY_LIMIT, ileaf,
+			0, TUXKEY_LIMIT, &cb);
 }
 
 static void walk_btree(struct btree *btree, struct walk_btree_ops *cb,

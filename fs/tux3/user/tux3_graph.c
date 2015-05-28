@@ -733,9 +733,11 @@ static struct draw_data_ops *dtree_funcs[S_IFMT >> S_SHIFT] = {
 	[S_IFLNK >> S_SHIFT]	= &draw_symlink,
 };
 
-static void draw_ileaf_cb(struct buffer_head *ileafbuf, int at,
+static void draw_ileaf_cb(struct buffer_head *ileafbuf,
 			  struct inode *inode, void *data)
 {
+	int at = 0;	/* FIXME */
+
 	if (has_no_root(&tux_inode(inode)->btree))
 		return;
 

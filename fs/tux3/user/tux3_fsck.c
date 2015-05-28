@@ -420,7 +420,7 @@ static struct walk_btree_ops fsck_dtree_ops = {
 	.extent	= fsck_extent,
 };
 
-static void fsck_ileaf_cb(struct buffer_head *ileafbuf, int at,
+static void fsck_ileaf_cb(struct buffer_head *ileafbuf,
 			  struct inode *inode, void *data)
 {
 	struct fsck_context *context = data;
