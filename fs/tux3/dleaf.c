@@ -236,12 +236,23 @@ static tuxkey_t dleaf_split(struct btree *btree, tuxkey_t hint,
 	into->count = cpu_to_be16(count);
 	memcpy(into->table, dex, sizeof(*dex) * count);
 
-	/* Adjust end of from */
-	from->count = cpu_to_be16(split_at + 1);	/* +1 for sentinel */
+	/* Get split key */
 	dex = from->table + split_at;
-	/* Put sentinel */
 	get_extent(dex, &ex);
-	put_extent(dex, ex.version, ex.logical, 0);
+	if (split_at == 0) {
+		/* Whole range is hole, make empty */
+		from->count = 0;
+	} else {
+		struct extent end_ex;
+		/* No need to add sentinel if end is hole */
+		get_extent(dex - 1, &end_ex);
+		if (end_ex.physical != 0) {
+			/* Put sentinel */
+			put_extent(dex, ex.version, ex.logical, 0);
+			split_at++; /* +1 for sentinel */
+		}
+		from->count = cpu_to_be16(split_at);
+	}
 
 	return ex.logical;
 }

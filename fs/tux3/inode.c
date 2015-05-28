@@ -540,10 +540,8 @@ static int save_inode(struct inode *inode, struct tux3_iattr_data *idata,
 	if (err)
 		goto out;
 	/* paranoia check */
-	if (!is_defer_alloc_inum(inode)) {
-		unsigned size;
-		assert(ileaf_lookup(itree, inum, bufdata(cursor_leafbuf(cursor)), &size));
-	}
+	if (!is_defer_alloc_inum(inode))
+		assert(ileaf_inum_exists(itree, bufdata(cursor_leafbuf(cursor)), inum));
 
 	/* Write inode attributes to inode btree */
 	struct iattr_req_data iattr_data = {

@@ -101,8 +101,9 @@ static inline void *decode48(void *at, u64 *val)
  * 2014-03-27: Change internal inum numbers. Change btree->root.depth.
  * 2014-05-06: Change timestamp format to nanosecond.
  * 2015-03-14: Add parent_inum
+ * 2015-05-23: Use new ileaf format
  */
-#define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x15, 0x03, 0x14 }
+#define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x15, 0x05, 0x23 }
 #define TUX3_MAGIC_STR					\
 	((typeof(((struct disksuper *)0)->magic))TUX3_MAGIC)
 
@@ -629,7 +630,8 @@ struct btree_ops {
 	tuxkey_t (*leaf_split)(struct btree *btree, tuxkey_t hint, void *from, void *into);
 	/* return value: 1 - modified, 0 - not modified, < 0 - error */
 	int (*leaf_chop)(struct btree *btree, tuxkey_t start, u64 len, void *leaf);
-	/* return value: 1 - merged, 0 - couldn't merge */
+	/* return value: 1 - merged, 0 - couldn't merge.
+	 * "into" must be left leaf and "from" is right leaf. (left < right) */
 	int (*leaf_merge)(struct btree *btree, void *into, void *from);
 	/* return value: < 0 - error, 0 >= - btree_result */
 	int (*leaf_pre_write)(struct btree *btree, tuxkey_t key_bottom, tuxkey_t key_limit, void *leaf, struct btree_key_range *key);
@@ -894,7 +896,7 @@ extern struct ileaf_attr_ops iattr_ops;
 
 /* ileaf.c */
 struct ileaf;
-void *ileaf_lookup(struct btree *btree, inum_t inum, struct ileaf *leaf, unsigned *result);
+int ileaf_inum_exists(struct btree *btree, struct ileaf *ileaf, inum_t inum);
 int ileaf_find_free(struct btree *btree, tuxkey_t key_bottom,
 		    tuxkey_t key_limit, void *leaf,
 		    tuxkey_t key, u64 len, void *data);
