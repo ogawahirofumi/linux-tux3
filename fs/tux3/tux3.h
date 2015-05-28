@@ -894,7 +894,7 @@ extern struct ileaf_attr_ops iattr_ops;
 
 /* ileaf.c */
 struct ileaf;
-void *ileaf_lookup(struct btree *btree, inum_t inum, struct ileaf *leaf, unsigned *result);
+int ileaf_inum_exists(struct btree *btree, struct ileaf *ileaf, inum_t inum);
 int ileaf_find_free(struct btree *btree, tuxkey_t key_bottom,
 		    tuxkey_t key_limit, void *leaf,
 		    tuxkey_t key, u64 len, void *data);

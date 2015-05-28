@@ -102,7 +102,8 @@ static int ileaf_can_free(struct btree *btree, void *leaf)
 	return icount(ileaf) == 0;
 }
 
-void *ileaf_lookup(struct btree *btree, inum_t inum, struct ileaf *leaf, unsigned *result)
+static void *ileaf_lookup(struct btree *btree, inum_t inum, struct ileaf *leaf,
+			  unsigned *result)
 {
 	assert(inum >= ibase(leaf));
 	tuxkey_t at = inum - ibase(leaf), size = 0;
@@ -118,6 +119,12 @@ void *ileaf_lookup(struct btree *btree, inum_t inum, struct ileaf *leaf, unsigne
 	}
 	*result = size;
 	return attrs;
+}
+
+int ileaf_inum_exists(struct btree *btree, struct ileaf *ileaf, inum_t inum)
+{
+	unsigned attrs_size;
+	return ileaf_lookup(btree, inum, ileaf, &attrs_size) != NULL;
 }
 
 static int isinorder(struct btree *btree, struct ileaf *leaf)
