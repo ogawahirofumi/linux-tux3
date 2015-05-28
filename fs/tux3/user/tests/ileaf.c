@@ -498,6 +498,183 @@ static void test03(struct sb *sb, struct btree *btree)
 	clean_main(sb);
 }
 
+struct enum_data {
+	struct ileaf_data *data;
+	int nr;
+};
+static int enum_callback(struct btree *btree, inum_t inum, void *attrs,
+			 unsigned size, void *data)
+{
+	struct enum_data *enum_data = data;
+	int i;
+
+	for (i = 0; i < enum_data->nr; i++) {
+		if (inum == enum_data->data[i].inum) {
+			struct ileaf_data *d = &enum_data->data[i];
+			test_assert(size == d->size);
+			test_assert(!memcmp(d->buf, attrs, size));
+			/* Set 0-size to tell hit */
+			d->size = 0;
+			break;
+		}
+	}
+
+	return 0;
+}
+
+static void test_enum(struct ileaf_data *data, int nr, inum_t start, u64 len)
+{
+	int i;
+
+	for (i = 0; i < nr; i++) {
+		if (start <= data[i].inum && data[i].inum < start + len)
+			test_assert(data[i].size == 0);
+		else
+			test_assert(data[i].size > 0);
+	}
+}
+
+/* Test of ileaf_enumerate */
+static void test04(struct sb *sb, struct btree *btree)
+{
+	struct ileaf *leaf = ileaf_create(btree);
+
+	struct ileaf_data data[] = {
+		{ .inum = 20, .size = 9, .c = 'a', },
+		{ .inum = 21, .size = 8, .c = 'b', },
+		{ .inum = 22, .size = 7, .c = 'c', },
+		{ .inum = 23, .size = 6, .c = 'd', },
+		{ .inum = 24, .size = 5, .c = 'e', },
+		{ .inum = 25, .size = 4, .c = 'f', },
+		{ .inum = 26, .size = 3, .c = 'g', },
+		{ .inum = 27, .size = 2, .c = 'h', },
+		{ .inum = 28, .size = 1, .c = 'i', },
+		{ .inum = 29, .size = 3, .c = 'j', },
+
+		{ .inum = 10, .size = 2, .c = 'k', },
+		{ .inum = 11, .size = 3, .c = 'l', },
+		{ .inum = 12, .size = 4, .c = 'm', },
+		{ .inum = 13, .size = 5, .c = 'n', },
+		{ .inum = 14, .size = 6, .c = 'o', },
+		{ .inum = 15, .size = 7, .c = 'p', },
+		{ .inum = 16, .size = 8, .c = 'q', },
+		{ .inum = 17, .size = 9, .c = 'r', },
+
+		{ .inum = 40, .size = 4, .c = 's', },
+		{ .inum = 41, .size = 4, .c = 't', },
+		{ .inum = 42, .size = 4, .c = 'u', },
+		{ .inum = 43, .size = 4, .c = 'v', },
+
+		{ .inum = 60, .size = 4, .c = 'w', },
+		{ .inum = 65, .size = 4, .c = 'x', },
+		{ .inum = 70, .size = 4, .c = 'y', },
+		{ .inum = 75, .size = 4, .c = 'z', },
+	};
+
+	/* Init data[] */
+	for (int i = 0; i < ARRAY_SIZE(data); i++)
+		memset(data[i].buf, data[i].c, data[i].size);
+
+	/* Add data */
+	for (int i = 0; i < ARRAY_SIZE(data); i++) {
+		if (data[i].size == 0)
+			continue;
+		test_append(btree, leaf, data[i].inum, data[i].size, data[i].c);
+	}
+	/* Check */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	struct enum_data enum_data = {
+		.data	= data,
+		.nr	= ARRAY_SIZE(data),
+	};
+	struct ileaf_enumrate_cb cb = {
+		.callback	= enum_callback,
+		.data		= &enum_data,
+	};
+
+	if (test_start("test04.1")) {
+		/* Outside inum */
+		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
+					  100, TUXKEY_LIMIT, &cb);
+		test_assert(ret == 0);
+		/* Should be no hit */
+		test_enum(data, ARRAY_SIZE(data), 100, TUXKEY_LIMIT - 100);
+
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test04.2")) {
+		/* Enumerate whole inums */
+		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
+					  0, TUXKEY_LIMIT, &cb);
+		test_assert(ret == 0);
+		/* Should be hit all */
+		test_enum(data, ARRAY_SIZE(data), 0, TUXKEY_LIMIT);
+
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test04.3")) {
+		/* Enumerate inums from hole */
+		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
+					  38, TUXKEY_LIMIT, &cb);
+		test_assert(ret == 0);
+		/* Should be partial hit */
+		test_enum(data, ARRAY_SIZE(data), 38, TUXKEY_LIMIT - 38);
+
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test04.4")) {
+		/* Enumerate inums from middle of ibase */
+		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
+					  13, TUXKEY_LIMIT, &cb);
+		test_assert(ret == 0);
+		/* Should be partial hit */
+		test_enum(data, ARRAY_SIZE(data), 13, TUXKEY_LIMIT - 13);
+
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test04.5")) {
+		/* Enumerate inums, but limit by length (end is hole) */
+		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
+					  0, 19, &cb);
+		test_assert(ret == 0);
+		/* Should be partial hit */
+		test_enum(data, ARRAY_SIZE(data), 0, 19);
+
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	if (test_start("test04.6")) {
+		/* Enumerate inums, but limit by length (end is not hole) */
+		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
+					  0, 22, &cb);
+		test_assert(ret == 0);
+		/* Should be partial hit */
+		test_enum(data, ARRAY_SIZE(data), 0, 22);
+
+		ileaf_destroy(btree, leaf);
+		clean_main(sb);
+	}
+	test_end();
+
+	ileaf_destroy(btree, leaf);
+	clean_main(sb);
+}
+
 int main(int argc, char *argv[])
 {
 	struct dev *dev = &(struct dev){ .bits = 12 };
@@ -524,6 +701,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test03"))
 		test03(sb, &btree);
+	test_end();
+
+	if (test_start("test04"))
+		test04(sb, &btree);
 	test_end();
 
 	clean_main(sb);
