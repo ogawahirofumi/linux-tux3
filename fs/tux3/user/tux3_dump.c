@@ -616,40 +616,43 @@ static void dump_ileaf_attr(struct dump_info *di, struct btree *btree,
 	rapid_free_inode(inode);
 }
 
+struct dump_ileaf_enum_data {
+	struct dump_info *di;
+	struct buffer_head *ileafbuf;
+};
+static int dump_ileaf_enum_callback(struct btree *btree, inum_t inum,
+				    void *attrs, unsigned size, void *data)
+{
+	struct dump_ileaf_enum_data *d = data;
+	dump_ileaf_attr(d->di, btree, d->ileafbuf, inum, attrs, size);
+	return 0;
+}
+
 static void __dump_ileaf(struct dump_info *di, struct btree *btree,
 			 struct buffer_head *ileafbuf,
 			 dump_ileaf_attr_t dump_ileaf_attr)
 {
-#if 0
 	struct ileaf *ileaf = bufdata(ileafbuf);
-	__be16 *dict = ileaf_dict(btree, ileaf);
-	int at;
+	struct dump_ileaf_enum_data d = {
+		.di		= di,
+		.ileafbuf	= ileafbuf,
+	};
+	struct ileaf_enumrate_cb cb = {
+		.callback	= dump_ileaf_enum_callback,
+		.data		= &d,
+	};
 
-	/* draw inode attributes */
-	u16 offset = 0, limit, size;
-	for (at = 0; at < icount(ileaf); at++) {
-		limit = __atdict(dict, at + 1);
-		if (offset >= limit)
-			continue;
-		size = limit - offset;
-
-		inum_t inum = ibase(ileaf) + at;
-		void *attrs = ileaf->table + offset;
-
-		offset = limit;
-
-		dump_ileaf_attr(di, btree, ileafbuf, inum, attrs, size);
-	}
+	ileaf_enumerate(btree, 0, TUXKEY_LIMIT, ileaf,
+			0, TUXKEY_LIMIT, &cb);
 
 	if (opt_stats) {
-		unsigned bytes = sizeof(*ileaf) + ileaf_need(btree, ileaf);
+		unsigned bytes = sizeof(*ileaf) + ileaf_need(ileaf);
 		int empty = btree->ops->leaf_can_free(btree, ileaf);
 		int level = btree->root.depth - 1;
 
 		stats_block_add(di->stats->own, level, bufindex(ileafbuf),
 				bytes, empty);
 	}
-#endif
 }
 
 static void dump_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
