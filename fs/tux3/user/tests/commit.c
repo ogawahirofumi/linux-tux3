@@ -964,8 +964,31 @@ static void test08(struct sb *sb)
 	test_assert(mkfs_tux3(sb) == 0);
 
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
-	const char name[] = "a";
 	struct inode *inode;
+
+	/* Create files until itree has a bnode */
+	int n = 1, i = 1;
+	while (itree_btree(sb)->root.depth <= 1) {
+		char tmp[] = "bbb";
+		tmp[n] = i;
+		inode = tuxcreate(sb->rootdir, tmp, strlen(tmp), &iattr);
+		test_assert(inode);
+		struct file *file = &(struct file){ .f_inode = inode };
+		char buf[10] = {};
+		test_assert(tuxwrite(file, buf, sizeof(buf)) == sizeof(buf));
+		iput(inode);
+		test_assert(force_delta(sb) == 0);
+
+		i++;
+		if (i == '\0' || i == '\\')
+			i++;
+		if (i == 0xff) {
+			i = 1;
+			n++;
+		}
+	}
+
+	const char name[] = "a";
 	inode = tuxcreate(sb->rootdir, name, strlen(name), &iattr);
 	test_assert(inode);
 	struct file *file = &(struct file){ .f_inode = inode };
