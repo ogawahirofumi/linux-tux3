@@ -43,7 +43,7 @@ static void test_append(struct btree *btree, struct ileaf *leaf, inum_t inum,
 	u16 size = 0;
 	(void *)ileaf_lookup(btree, leaf, inum, &size);
 	char *attrs = ileaf_resize(btree, leaf, inum, size + more);
-	memset(attrs + size, fill, more);
+	memset(attrs, fill, size + more);
 }
 
 static void test_remove(struct btree *btree, struct ileaf *leaf, inum_t inum,
@@ -79,11 +79,54 @@ static void check_ileaf_with_data(struct btree *btree, struct ileaf *ileaf,
 	}
 }
 
-static int enum_inode(struct btree *btree, inum_t inum, void *attrs,
-		      unsigned size, void *data)
+static inum_t test_split(struct btree *btree, inum_t hint,
+			 struct ileaf *src, struct ileaf *dst,
+			 struct ileaf_data *data, int nr_data)
 {
-	tux3_dbg("inum %llu, attrs %p, size %u, %.*s",
-		 inum, attrs, size, size, (char *)attrs);
+	struct ileaf_data *src_data, *dst_data;
+	int i, data_size = sizeof(*data) * nr_data;
+	inum_t dst_base;
+
+	dst_base = ileaf_split(btree, hint, src, dst);
+
+	/* Prepare data for split */
+	src_data = malloc(data_size);
+	dst_data = malloc(data_size);
+	test_assert(src_data && dst_data);
+	memcpy(src_data, data, data_size);
+	memcpy(dst_data, data, data_size);
+	for (i = 0; i < nr_data; i++) {
+		if (data[i].inum < dst_base)
+			dst_data[i].size = 0;
+		else
+			src_data[i].size = 0;
+	}
+
+	/* Check src and dst */
+	check_ileaf_with_data(btree, src, src_data, nr_data);
+	check_ileaf_with_data(btree, dst, dst_data, nr_data);
+
+	free(src_data);
+	free(dst_data);
+
+	return dst_base;
+}
+
+static void test_merge(struct btree *btree, struct ileaf *into,
+		       struct ileaf *from, struct ileaf_data *data, int nr_data)
+{
+	ileaf_merge(btree, into, from);
+	/* Check into */
+	check_ileaf_with_data(btree, into, data, nr_data);
+}
+
+static int cmp_data(const void *p1, const void *p2)
+{
+	const struct ileaf_data *data1 = p1, *data2 = p2;
+	if (data1->inum < data2->inum)
+		return -1;
+	else if (data1->inum > data2->inum)
+		return 1;
 	return 0;
 }
 
@@ -92,24 +135,35 @@ static void test01(struct sb *sb, struct btree *btree)
 {
 	struct ileaf *leaf = ileaf_create(btree);
 	struct ileaf *dest = ileaf_create(btree);
-//	void *attrs;
-//	unsigned size, more;
 	unsigned more;
 
 	struct ileaf_data data[] = {
-		{ .inum = 16, .size = 0, .c = 'n', },
-		{ .inum = 19, .size = 2, .c = 'a', },
-		{ .inum = 20, .size = 4, .c = 'b', },
-		{ .inum = 22, .size = 6, .c = 'c', },
-		{ .inum = 24, .size = 0, .c = 'y', },
-//		{ .inum = 60, .size = 4, .c = 'z', },
+		/* Append contiguous inums */
+		{ .inum = 26, .size = 1, .c = 'a', },
+		{ .inum = 27, .size = 2, .c = 'b', },
+		{ .inum = 28, .size = 3, .c = 'c', },
+		{ .inum = 29, .size = 4, .c = 'd', },
+		/* Append closer than IBASE_FAR */
+		{ .inum = 32, .size = 5, .c = 'e', },
+		{ .inum = 33, .size = 6, .c = 'f', },
+		/* Append far inums */
+		{ .inum = 50, .size = 7, .c = 'g', },
+		{ .inum = 51, .size = 8, .c = 'h', },
+
+		/* Prepend contiguous inums */
+		{ .inum = 25, .size = 9, .c = 'i', },
+		{ .inum = 24, .size = 8, .c = 'j', },
+		/* Prepend closer than IBASE_FAR */
+		{ .inum = 20, .size = 7, .c = 'k', },
+		/* Prepend far inums */
+		{ .inum = 10, .size = 6, .c = 'l', },
+		{ .inum = 11, .size = 5, .c = 'm', },
 	};
 
 	/* Init data[] */
 	for (int i = 0; i < ARRAY_SIZE(data); i++)
 		memset(data[i].buf, data[i].c, data[i].size);
 
-//	leaf->ibase = cpu_to_be64(0x10);
 	/* Add data */
 	for (int i = 0; i < ARRAY_SIZE(data); i++) {
 		if (data[i].size == 0)
@@ -118,90 +172,76 @@ static void test01(struct sb *sb, struct btree *btree)
 	}
 	/* Check */
 	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
-	{
-		struct ileaf_enumrate_cb cb = {
-			.callback	= enum_inode,
-			.data		= NULL,
-		};
-		ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf, 0, 1000, &cb);
-		ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf, 100, 1000, &cb);
-		ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf, 20, 1000, &cb);
-	}
-
-	{
-//		ileaf_split(btree, 59, leaf, dest);
-		inum_t s;
-		for (s = 19; s < 24; s++) {
-			if (test_start("test01.1")) {
-				inum_t r = ileaf_split(btree, s, leaf, dest);
-				test_assert(r == s);
-
-				ileaf_destroy(btree, leaf);
-				ileaf_destroy(btree, dest);
-				clean_main(sb);
-			}
-			test_end();
-		}
-	}
-	/* Split leaf before first entry */
-	inum_t dest_base = ileaf_split(btree, 16, leaf, dest);
-	test_assert(dest_base == 16);
-	/* Check leaf and dest */
-	for (int i = 0; i < ARRAY_SIZE(data); i++)
-		test_assert(!ileaf_inum_exists(btree, leaf, data[i].inum));
-	check_ileaf_with_data(btree, dest, &data[1], ARRAY_SIZE(data) - 1);
-	/* Merge leaf and dest */
-	ileaf_merge(btree, leaf, dest);
-	/* Check leaf */
-	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
-
-	/* Split leaf at middle */
-	dest_base = ileaf_split(btree, 20, leaf, dest);
-	test_assert(dest_base == 20);
-	/* Check leaf and dest */
-	check_ileaf_with_data(btree, leaf, &data[0], 2);
-	check_ileaf_with_data(btree, dest, &data[2], ARRAY_SIZE(data) - 2);
-	/* Merge leaf and dest */
-	ileaf_merge(btree, leaf, dest);
-	/* Check leaf */
-	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
-
-	/* Split leaf at after end */
-	dest_base = ileaf_split(btree, 25, leaf, dest);
-	test_assert(dest_base == 25);
-	/* Check leaf and dest */
-	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
-//	test_assert(icount(dest) == 0);
-	/* Merge leaf and dest */
-	ileaf_merge(btree, leaf, dest);
-	/* Check leaf */
-	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
-
-	/* Change attribute */
-	more = 2;
-	memset(data[0].buf + data[0].size, 'x', more);
-	data[0].size += more;
-	test_append(btree, leaf, data[0].inum, more, 'x');
-	/* Check */
-	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
-
-	/* Add new inode */
-	more = 3;
-	memset(data[4].buf, data[4].c, more);
-	data[4].size += more;
-	test_append(btree, leaf, data[4].inum, more, data[4].c);
-	/* Check */
-	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
 
 	/* Shrink attribute */
-	more = 5;
+	more = 3;
 	data[3].size -= more;
 	test_remove(btree, leaf, data[3].inum, more);
 	/* Check */
 	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
 
+	/* Expend attribute */
+	more = 3;
+	memset(data[3].buf + data[3].size, data[3].c, more);
+	data[3].size += more;
+	test_append(btree, leaf, data[3].inum, more, data[3].c);
+	/* Check */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	/* Change attribute */
+	more = 2;
+	memset(data[0].buf, 'x', data[0].size + more);
+	data[0].size += more;
+	test_append(btree, leaf, data[0].inum, more, 'x');
+	/* Check */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	inum_t dest_base;
+	/* Split leaf before first entry */
+	dest_base = test_split(btree, 5, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 5);
+	/* Merge leaf and dest */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
+	/* Split leaf at after end */
+	dest_base = test_split(btree, 60, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 60);
+	/* Merge leaf and dest */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
+	/* Split leaf at middle (ibase boundary) */
+	dest_base = test_split(btree, 20, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 20);
+	/* Merge leaf and dest (don't merge ibase entries) */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
+	/* Split leaf at middle (not ibase boundary) */
+	dest_base = test_split(btree, 27, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 27);
+	/* Merge leaf and dest (merge ibase entries) */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
+	/* Split leaf at middle (not ibase boundary, and split at hole) */
+	dest_base = test_split(btree, 22, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 22);
+	/* Merge leaf and dest (merge ibase entries) */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
+	/* Split leaf at middle (not ibase boundary) */
+	dest_base = test_split(btree, 32, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 32);
+	/* Merge leaf and dest (merge ibase entries, but have hole on ibases) */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
+	/* Split leaf at middle (not ibase boundary, and not dict entry) */
+	dest_base = test_split(btree, 40, leaf, dest, data, ARRAY_SIZE(data));
+	test_assert(dest_base == 40);
+	/* Merge leaf and dest (merge ibase entries) */
+	test_merge(btree, leaf, dest, data, ARRAY_SIZE(data));
+
 	/* Test find_empty_inode() */
-	for (int i = 0x11; i <= 0x20; i++) {
+	qsort(data, ARRAY_SIZE(data), sizeof(data[0]), cmp_data);
+	for (int i = 5; i <= 60; i++) {
 		inum_t alloc;
 		int ret = ileaf_find_free(btree, 0, TUXKEY_LIMIT, leaf,
 					  i, TUXKEY_LIMIT, &alloc);
@@ -215,8 +255,6 @@ static void test01(struct sb *sb, struct btree *btree)
 
 		test_assert(alloc == expected);
 	}
-
-//	test_assert(ileaf_check(btree, leaf) == 0);
 
 	ileaf_destroy(btree, leaf);
 	ileaf_destroy(btree, dest);
