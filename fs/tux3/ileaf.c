@@ -524,6 +524,7 @@ out:
 	return attrs;
 }
 
+/* Decide split position. */
 static tuxkey_t ileaf_split_hint(struct btree *btree,
 				 tuxkey_t key_bottom, tuxkey_t key_limit,
 				 struct ileaf *ileaf, tuxkey_t key, int size)
@@ -532,17 +533,37 @@ static tuxkey_t ileaf_split_hint(struct btree *btree,
 	 * FIXME: make sure there is space for size.
 	 * FIXME: better split position?
 	 */
-
 	inum_t ibase = ileaf_ibase(ileaf);
 	unsigned count = ileaf_count(ileaf);
-	if (key >= ibase + count) {
+	inum_t hint = ibase + count;
+
+	if (key >= hint && key_limit >= hint + btree->entries_per_leaf) {
 		/* FIXME: optimization for linear allocation, better way? */
-		tuxkey_t hint = key & ~(tuxkey_t)(btree->entries_per_leaf - 1);
-		if (key_bottom <= hint && hint < key_limit)
-			return hint;
+		hint = max(hint, ibase + 1);
+	} else {
+		if (key < ibase) {
+			if ((ibase - key) >= 2)
+				hint = (ibase + key) / 2;
+			else
+				hint = ibase + (count / 2);
+		} else {
+			if (key >= hint && (key - hint) >= 2)
+				hint = (hint + key) / 2;
+			else
+				hint = ibase + max(count / 2, 1U);
+		}
 	}
 
-	return ibase + count / 2;
+	if (hint <= key_bottom || hint >= key_limit) {
+		/* hint have to split range of key */
+		tux3_dbg("btree %p, bottom %llu, limit %llu, ileaf %p, "
+			 "ibase %llu, count %u, key %llu, size %u, hint %llu",
+			 btree, key_bottom, key_limit, ileaf, ibase, count,
+			 key, size, hint);
+		BUG_ON(1);
+	}
+
+	return hint;
 }
 
 /*
