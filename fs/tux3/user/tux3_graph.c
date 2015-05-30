@@ -850,6 +850,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 			 struct buffer_head *ileafbuf,
 			 draw_ileaf_attr_t draw_ileaf_attr)
 {
+#ifndef ILEAF_FORMAT_MULTI_IBASE
 	struct ileaf *ileaf = bufdata(ileafbuf);
 	inum_t ibase = ileaf_ibase(ileaf);
 	unsigned count = ileaf_count(ileaf);
@@ -959,6 +960,159 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 
 		iput(inode);
 	}
+#else /* ILEAF_FORMAT_MULTI_IBASE */
+	struct ileaf *ileaf = bufdata(ileafbuf);
+	block_t blocknr = ileafbuf->index;
+	__be64 *ibase_head, *ibase_limit = (__be64 *)ileaf_dict(ileaf);
+	void *attrs_limit = ileaf_attrs_limit(btree, ileaf);
+	u16 count = ibase_count(ileaf), dict_end, dict_limit;
+	u16 offset;
+	__be16 *dict;
+	inum_t inum;
+	int at;
+
+	fprintf(gi->fp,
+		"volmap_%llu [\n"
+		"label =\n"
+		"<<table " TABLE_STYLE ">\n"
+		"  <tr>\n"
+		"    <td port=\"head\">[%s] (blocknr %llu%s)</td>\n"
+		"  </tr>\n"
+		"  <tr>\n"
+		"    <td>magic 0x%04x, ibase_count %u</td>\n"
+		"  </tr>\n",
+		blocknr,
+		gi->lname, blocknr,
+		buffer_dirty(ileafbuf) ? ", dirty" : "",
+		be16_to_cpu(ileaf->magic), count);
+
+	/* draw ibase entries */
+	dict_end = 0;
+	for (at = 0; at < count; at++) {
+		u16 nr = ibase_dictend_read(ileaf->head + at) - dict_end;
+		dict_end = ibase_dictend_read(ileaf->head + at);
+
+		fprintf(gi->fp,
+			"  <tr>\n"
+			"   <td port=\"b%d\">"
+			"ibase %llu, dict_end %u (nr %u)</td>\n"
+			"  </tr>\n",
+			at, ibase_read(ileaf->head + at), dict_end, nr);
+	}
+
+	/* draw offset part */
+	dict = (__be16 *)ibase_limit;
+	dict_limit = dict_end;
+	ibase_head = ileaf->head;
+	inum = 0;
+	offset = dict_end = 0;
+	for (at = 0; at < dict_limit; at++) {
+		u16 len = dict_read(dict + at) - offset;
+		offset = dict_read(dict + at);
+		if (at == dict_end) {
+			inum = ibase_read(ibase_head);
+			dict_end = ibase_dictend_read(ibase_head);
+			ibase_head++;
+		}
+
+		fprintf(gi->fp,
+			"  <tr>\n"
+			"   <td port=\"o%d\">"
+			"offset %u (size %u, ino %llu)</td>\n"
+			"  </tr>\n",
+			at, dict_read(dict + at), len, inum);
+
+		inum++;
+	}
+
+	fprintf(gi->fp,
+		"  <tr>\n"
+		"   <td>.....</td>\n"
+		"  </tr>\n");
+
+	/* draw inode attributes */
+	ibase_head = ileaf->head;
+	inum = 0;
+	offset = dict_end = 0;
+	for (at = 0; at < dict_limit; at++) {
+		u16 len = dict_read(dict + at) - offset;
+		offset = dict_read(dict + at);
+
+		if (at == dict_end) {
+			inum = ibase_read(ibase_head);
+			dict_end = ibase_dictend_read(ibase_head);
+			ibase_head++;
+		}
+
+		if (len) {
+			void *attrs = attrs_limit - offset;
+			fprintf(gi->fp,
+				"  <tr>\n"
+				"    <td port=\"a%d\">",
+				at);
+
+			draw_ileaf_attr(gi, btree, ileafbuf, inum, attrs, len);
+
+			fprintf(gi->fp,
+				"</td>\n"
+				"  </tr>\n");
+		}
+
+		inum++;
+	}
+
+	fprintf(gi->fp,
+		"</table>>\n"
+		"shape = plaintext\n"
+		"%s"
+		"];\n",
+		buffer_dirty(ileafbuf) ? "color = red\n" : "");
+
+	/* draw allows from offset to attributes */
+	offset = 0;
+	for (at = 0; at < dict_limit; at++) {
+		u16 len = dict_read(dict + at) - offset;
+		offset = dict_read(dict + at);
+		if (!len)
+			continue;
+
+		/* write link: ileaf offset -> ileaf attrs */
+		fprintf(gi->fp,
+			"volmap_%llu:o%d:w -> volmap_%llu:a%d:w;\n",
+			blocknr, at,
+			blocknr, at);
+	}
+
+	/* call callback to traverse dtree */
+	ibase_head = ileaf->head;
+	inum = 0;
+	offset = dict_end = 0;
+	for (at = 0; at < dict_limit; at++) {
+		u16 len = dict_read(dict + at) - offset;
+		offset = dict_read(dict + at);
+		if (at == dict_end) {
+			inum = ibase_read(ibase_head);
+			dict_end = ibase_dictend_read(ibase_head);
+			ibase_head++;
+		}
+
+		if (len) {
+			struct inode *inode;
+			inode = tux3_iget(btree->sb, inum);
+			if (IS_ERR(inode)) {
+				tux3_fs_error(btree->sb,
+					"inode couldn't get: inum %Lu: %ld",
+					inum, PTR_ERR(inode));
+			}
+
+			draw_ileaf_cb(ileafbuf, at, inode, gi);
+
+			iput(inode);
+		}
+
+		inum++;
+	}
+#endif /* ILEAF_FORMAT_MULTI_IBASE */
 }
 
 static void draw_ileaf(struct btree *btree, struct buffer_head *ileafbuf,
