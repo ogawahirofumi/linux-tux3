@@ -262,26 +262,83 @@ static void test01(struct sb *sb, struct btree *btree)
 	clean_main(sb);
 }
 
+static void test_split_hint(struct btree *btree, inum_t key_bottom,
+			    inum_t key_limit, struct ileaf *ileaf,
+			    inum_t key, int size, inum_t ibase, int count)
+{
+	inum_t hint;
+
+	ileaf->ibase = cpu_to_be64(ibase);
+	ileaf->count = cpu_to_be16(count);
+
+	hint = ileaf_split_hint(btree, key_bottom, key_limit, ileaf, key, size);
+
+	test_assert(key_bottom < hint);
+	test_assert(hint < key_limit);
+}
+
 /* Test ileaf_split_hint */
 static void test02(struct sb *sb, struct btree *btree)
 {
 	struct ileaf *leaf = ileaf_create(btree);
-	tuxkey_t key, base, hint;
+	tuxkey_t key, ibase, bottom, limit;
 	int count, size = 64;
 
-	/* hint must be valid range */
-	for (base = 0; base < 100; base++) {
-		leaf->ibase = cpu_to_be64(base);
+	/* hint must be valid range (range is almost full) */
+	for (ibase = 0; ibase < 100; ibase++) {
+		for (count = 2; count < 100; count++) {
+			for (key = ibase; key < ibase + count + 100; key++) {
+				limit = max(ibase + count, key + 1);
+				test_split_hint(btree, ibase, limit, leaf,
+						key, size, ibase, count);
+			}
+		}
+	}
+
+	/* hint must be valid range (there is heading space) */
+	for (ibase = 10000; ibase < 10100; ibase += 10) {
 		for (count = 1; count < 100; count++) {
-			leaf->count = cpu_to_be16(count);
-			for (key = base; key < base + count + 100; key++) {
-				tuxkey_t limit = max(base + count, key + 1);
+			for (key = 0; key < ibase; key += 1000) {
+				for (bottom = 0; bottom < 1000; bottom += 1000){
+					bottom = min(key, bottom);
+					limit = ibase + count;
+					test_split_hint(btree, bottom, limit,
+							leaf, key, size,
+							ibase, count);
+				}
+			}
+		}
+	}
 
-				hint = ileaf_split_hint(btree, base, limit,
-							leaf, key, size);
+	/* hint must be valid range (there is trailing space) */
+	for (ibase = 10000; ibase < 10100; ibase += 10) {
+		for (count = 1; count < 100; count++) {
+			inum_t end = ibase + count;
+			for (key = end; key < end + 10000; key += 1000) {
+				bottom = ibase;
+				limit = end + 10000;
+				test_split_hint(btree, bottom, limit,
+						leaf, key, size,
+						ibase, count);
+			}
+		}
+	}
 
-				test_assert(base <= hint);
-				test_assert(hint < limit);
+	/* hint must be valid range (there is headling/trailing space) */
+	ibase = 10000;
+	for (count = 1; count < 100; count++) {
+		for (bottom = ibase - 10; bottom < ibase; bottom++) {
+			inum_t end = ibase + count;
+			for (limit = end; limit < end + 10; limit++) {
+				for (key = bottom; key < end; key++) {
+					/* if count==1, should be key!=ibase */
+					if (count == 1 && key == ibase)
+						continue;
+
+					test_split_hint(btree, bottom, limit,
+							leaf, key, size, ibase,
+							count);
+				}
 			}
 		}
 	}
