@@ -1711,6 +1711,28 @@ static tuxkey_t ileaf_split_hint(struct btree *btree,
 	return ibase_read(p) + (dict_end - prev_dict_end);
 }
 
+/* Try merge specified ibase and next ibase entry */
+static void resize_try_merge_ibase(struct btree *btree, struct ileaf *ileaf,
+				   __be64 *head)
+{
+	__be64 *ibase_limit = (__be64 *)ileaf_dict(ileaf);
+	u64 ibase;
+	u16 nr_inums;
+
+	if (head + 1 >= ibase_limit)
+		return;
+
+	ibase = ibase_read(head);
+	nr_inums = ibase_nr(ileaf, head, ibase_dictend_read(head));
+	if (ibase + nr_inums == ibase_read(head + 1)) {
+		/* If 2 ibase entries are contiguous, merge */
+		void *dict_limit = ileaf_dict_limit(ileaf);
+		ibase_dictend_write(head, ibase_dictend_read(head + 1));
+		memmove(head + 1, head + 2, dict_limit - (void *)(head + 2));
+		be16_add_cpu(&ileaf->ibase_count, -1);
+	}
+}
+
 /* Make space to write new attrs */
 static void *ileaf_resize(struct btree *btree, struct ileaf *ileaf,
 			  tuxkey_t inum, int newsize)
@@ -1718,7 +1740,7 @@ static void *ileaf_resize(struct btree *btree, struct ileaf *ileaf,
 	int count = ibase_count(ileaf);
 	struct ileaf_lookup_info info;
 	int has_dict, attrs_size_diff, dict_cnt, expand_direction;
-	__be64 *ibase_head;
+	__be64 *ibase_head, *try_merge = NULL;
 	__be16 *dict, *dict_limit;
 
 	/*
@@ -1727,9 +1749,9 @@ static void *ileaf_resize(struct btree *btree, struct ileaf *ileaf,
 	 * 1) Collect positions and size to adjust ibase, dict, and attrs
 	 * 2) Check available free space
 	 * 3) Adjust/Modify ibase, dict, and attrs
-	 *
-	 * FIXME: we should merge ibase entries if became close.
 	 */
+
+	ileaf_dump(ileaf);
 
 	/* 1) Collect Positions and size */
 	has_dict = ileaf_lookup_info(btree, inum, ileaf, &info);
@@ -1770,10 +1792,12 @@ static void *ileaf_resize(struct btree *btree, struct ileaf *ileaf,
 				if (diff < IBASE_FAR) {
 					/* Append dict to this exists ibase */
 					ibase_head = NULL;
+					try_merge = info.ibase_head;
 					dict_cnt = diff;
 				} else {
 					/* Add new ibase after this ibase */
 					ibase_head = info.ibase_head + 1;
+					try_merge = info.ibase_head + 1;
 					dict_cnt = 1;
 				}
 				expand_direction = 1;
@@ -1900,7 +1924,12 @@ static void *ileaf_resize(struct btree *btree, struct ileaf *ileaf,
 		}
 	}
 
-	/* FIXME: Merge ibase entries if contiguous */
+	/*
+	 * FIXME: Better to merge the merge ibase entries to above, to
+	 * reduce total memmove size.
+	 */
+	if (try_merge)
+		resize_try_merge_ibase(btree, ileaf, try_merge);
 
 	ileaf_dump(ileaf);
 	return info.attrs - attrs_size_diff;
