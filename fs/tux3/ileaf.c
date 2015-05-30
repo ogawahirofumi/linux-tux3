@@ -39,9 +39,19 @@ static inline void *ileaf_attrs_limit(struct btree *btree, struct ileaf *ileaf)
 	return (void *)ileaf + btree->sb->blocksize;
 }
 
+static inline __be16 dict_read_be(__be16 *dict)
+{
+	return *dict;
+}
+
 static inline unsigned dict_read(__be16 *dict)
 {
 	return be16_to_cpu(*dict);
+}
+
+static inline __be16 dict_read_prev_be(__be16 *dict, unsigned at)
+{
+	return at ? *(dict + at - 1) : 0;
 }
 
 static inline unsigned dict_read_prev(__be16 *dict, unsigned at)
@@ -52,6 +62,14 @@ static inline unsigned dict_read_prev(__be16 *dict, unsigned at)
 static inline void dict_write(__be16 *dict, int n)
 {
 	*dict = cpu_to_be16(n);
+}
+
+static inline void dict_multi_write(__be16 *dict, int n, int count)
+{
+	__be16 n_be = cpu_to_be16(n);
+	int i;
+	for (i = 0; i < count; i++)
+		*(dict + i) = n_be;
 }
 
 static inline void dict_add(__be16 *dict, int n)
@@ -170,17 +188,15 @@ int ileaf_inum_exists(struct btree *btree, struct ileaf *ileaf, inum_t inum)
 static unsigned ileaf_trim_tail(struct ileaf *ileaf, unsigned count)
 {
 	__be16 *dict = ileaf_dict(ileaf);
-	unsigned offset;
+	__be16 offset_be;
 
 	if (count == 0)
 		return 0;
 
-	offset = dict_read(dict + count - 1);
+	offset_be = dict_read_be(dict + count - 1);
 	while (count) {
-		unsigned prev = dict_read_prev(dict, count - 1);
-		if (offset != prev)
+		if (offset_be != dict_read_prev_be(dict, count - 1))
 			break;
-		offset = prev;
 		count--;
 	}
 
@@ -193,12 +209,10 @@ static unsigned ileaf_skip_empty(struct ileaf *ileaf, unsigned at)
 	unsigned count = ileaf_count(ileaf);
 	if (at < count) {
 		__be16 *dict = ileaf_dict(ileaf);
-		unsigned prev = dict_read_prev(dict, at);
+		__be16 prev_be = dict_read_prev_be(dict, at);
 		while (at < count) {
-			unsigned offset = dict_read(dict + at);
-			if (prev != offset)
+			if (prev_be != dict_read_be(dict + at))
 				break;
-			prev = offset;
 			at++;
 		}
 	}
@@ -303,11 +317,9 @@ static int ileaf_merge(struct btree *btree, void *vinto, void *vfrom)
 
 		/* Fill hole of dict until from_ibase */
 		into_size = dict_read(into_dict + into_count - 1);
-		__be16 size_be = cpu_to_be16(into_size);
-		while (hole--) {
-			*(into_dict + into_count) = size_be;
-			into_count++;
-		}
+		dict_multi_write(into_dict + into_count, into_size, hole);
+
+		into_count += hole;
 	} else {
 		/* Copy "from" as is */
 		into->ibase = from->ibase;
@@ -398,11 +410,10 @@ static int ileaf_chop(struct btree *btree, tuxkey_t start, u64 len, void *leaf)
 		len = 0;
 	}
 
-	/* Empty dict */
-	while (len) {
-		dict_write(dict + at, start_off);
-		at++;
-		len--;
+	/* Fill empty dict */
+	if (len) {
+		dict_multi_write(dict + at, start_off, len);
+		at += len;
 	}
 	/* Adjust dict */
 	while (at < count) {
@@ -476,21 +487,16 @@ overflow:
 	attrs_size = dict_read_prev(dict, count);
 
 	if (inum < ibase) {
-		unsigned i;
 		/* Prepend dict */
 		memmove(dict + at, dict, count * sizeof(*dict));
-		for (i = 0; i < at; i++)
-			dict_write(dict + i, newsize);
+		dict_multi_write(dict, newsize, at);
 		count += at;
 		ileaf->ibase = cpu_to_be64(inum);
 		ileaf->count = cpu_to_be16(count);
 	} else if (extend_dict) {
 		/* Extend dict */
-		__be16 limit_be = cpu_to_be16(offset);
-		while (count < at + 1) {
-			*(dict + count) = limit_be;
-			count++;
-		}
+		dict_multi_write(dict + count, offset, at + 1 - count);
+		count = at + 1;
 		ileaf->count = cpu_to_be16(count);
 	}
 
@@ -648,14 +654,14 @@ int ileaf_find_free(struct btree *btree, tuxkey_t key_bottom,
 	key_limit = min(key_limit, key + len);
 	if (at < count) {
 		__be16 *dict = ileaf_dict(leaf);
-		unsigned prev = dict_read_prev(dict, at);
+		__be16 prev_be = dict_read_prev_be(dict, at);
 
 		while (at < count) {
-			unsigned offset = dict_read(dict + at);
-			if (offset == prev)
+			__be16 offset_be = dict_read_be(dict + at);
+			if (offset_be == prev_be)
 				break;
 			at++;
-			prev = offset;
+			prev_be = offset_be;
 		}
 	}
 
@@ -703,7 +709,7 @@ int ileaf_enumerate(struct btree *btree, tuxkey_t key_bottom,
 			int err;
 
 			offset = dict_read(dict + at);
-			if (offset <= prev)
+			if (offset == prev)
 				continue;
 			attrs = attrs_limit - offset;
 			size = offset - prev;
