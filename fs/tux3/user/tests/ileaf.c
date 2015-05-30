@@ -262,14 +262,79 @@ static void test01(struct sb *sb, struct btree *btree)
 	clean_main(sb);
 }
 
+/* Test merge by ileaf_resize */
+static void test02(struct sb *sb, struct btree *btree)
+{
+	struct ileaf *leaf = ileaf_create(btree);
+
+	struct ileaf_data data[] = {
+		/* Append contiguous inums */
+		{ .inum = 20, .size = 1, .c = 'a', },
+		{ .inum = 21, .size = 2, .c = 'b', },
+		{ .inum = 22, .size = 3, .c = 'c', },
+		{ .inum = 23, .size = 4, .c = 'd', },
+		{ .inum = 24, .size = 5, .c = 'e', },
+
+		/* Append can merge entries */
+		{ .inum = 34, .size = 9, .c = 'f', },
+		{ .inum = 33, .size = 8, .c = 'g', },
+		{ .inum = 32, .size = 7, .c = 'h', },
+		{ .inum = 31, .size = 6, .c = 'i', },
+		{ .inum = 30, .size = 5, .c = 'j', },
+		{ .inum = 29, .size = 4, .c = 'k', },
+		{ .inum = 28, .size = 3, .c = 'l', },
+		{ .inum = 27, .size = 2, .c = 'm', },
+		{ .inum = 26, .size = 1, .c = 'n', },
+		{ .inum = 25, .size = 9, .c = 'o', },
+
+		/* Prepend can merge entries */
+		{ .inum = 10, .size = 1, .c = 'p', },
+		{ .inum = 11, .size = 2, .c = 'q', },
+		{ .inum = 12, .size = 3, .c = 'r', },
+		{ .inum = 13, .size = 4, .c = 's', },
+		{ .inum = 14, .size = 5, .c = 't', },
+		{ .inum = 15, .size = 6, .c = 'u', },
+		{ .inum = 16, .size = 7, .c = 'v', },
+		{ .inum = 17, .size = 8, .c = 'w', },
+		{ .inum = 18, .size = 9, .c = 'x', },
+		{ .inum = 19, .size = 1, .c = 'y', },
+	};
+
+	/* Init data[] */
+	for (int i = 0; i < ARRAY_SIZE(data); i++)
+		memset(data[i].buf, data[i].c, data[i].size);
+
+	/* Add data */
+	for (int i = 0; i < ARRAY_SIZE(data); i++) {
+		if (data[i].size == 0)
+			continue;
+		test_append(btree, leaf, data[i].inum, data[i].size, data[i].c);
+	}
+	/* Check */
+#ifdef ILEAF_FORMAT_MULTI_IBASE
+	test_assert(ibase_count(leaf) == 1);
+#endif
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	ileaf_destroy(btree, leaf);
+
+	clean_main(sb);
+}
+
 static void test_split_hint(struct btree *btree, inum_t key_bottom,
 			    inum_t key_limit, struct ileaf *ileaf,
 			    inum_t key, int size, inum_t ibase, int count)
 {
 	inum_t hint;
 
+#ifndef ILEAF_FORMAT_MULTI_IBASE
 	ileaf->ibase = cpu_to_be64(ibase);
 	ileaf->count = cpu_to_be16(count);
+#else
+	ileaf->ibase_count = cpu_to_be16(1);
+	ibase_write(ileaf->head, ibase);
+	ibase_dictend_write(ileaf->head, count);
+#endif
 
 	hint = ileaf_split_hint(btree, key_bottom, key_limit, ileaf, key, size);
 
@@ -278,7 +343,7 @@ static void test_split_hint(struct btree *btree, inum_t key_bottom,
 }
 
 /* Test ileaf_split_hint */
-static void test02(struct sb *sb, struct btree *btree)
+static void test03(struct sb *sb, struct btree *btree)
 {
 	struct ileaf *leaf = ileaf_create(btree);
 	tuxkey_t key, ibase, bottom, limit;
@@ -368,7 +433,7 @@ static void test_ileaf_chop(struct btree *btree, tuxkey_t start, u64 len,
 }
 
 /* Test of ileaf_chop */
-static void test03(struct sb *sb, struct btree *btree)
+static void test04(struct sb *sb, struct btree *btree)
 {
 	struct ileaf *leaf = ileaf_create(btree);
 
@@ -417,7 +482,7 @@ static void test03(struct sb *sb, struct btree *btree)
 	/* Check */
 	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
 
-	if (test_start("test03.0")) {
+	if (test_start("test04.0")) {
 		/* Chop before start */
 		test_ileaf_chop(btree, 5, 2, leaf, data, ARRAY_SIZE(data));
 		/* Chop at hole */
@@ -429,28 +494,28 @@ static void test03(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test03.1.1")) {
+	if (test_start("test04.1.1")) {
 		/* !s_partial, not across ibase entries, !e_partial */
 		test_ileaf_chop(btree, 10, 8, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.1.2")) {
+	if (test_start("test04.1.2")) {
 		/* !s_partial, not across ibase entries, !e_partial */
 		test_ileaf_chop(btree, 20, 10, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.1.3")) {
+	if (test_start("test04.1.3")) {
 		/* !s_partial, not across ibase entries, !e_partial */
 		test_ileaf_chop(btree, 40, 4, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.1.4")) {
+	if (test_start("test04.1.4")) {
 		/* !s_partial, across ibase entries, !e_partial */
 		test_ileaf_chop(btree, 20, 24, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
@@ -458,14 +523,14 @@ static void test03(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test03.2.1")) {
+	if (test_start("test04.2.1")) {
 		/* s_partial, not across ibase entries, !e_partial */
 		test_ileaf_chop(btree, 27, 3, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.2.2")) {
+	if (test_start("test04.2.2")) {
 		/* s_partial, across ibase entries, !e_partial */
 		test_ileaf_chop(btree, 27, 17, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
@@ -473,21 +538,21 @@ static void test03(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test03.3.1")) {
+	if (test_start("test04.3.1")) {
 		/* start < ibase, not across ibase entries, e_partial */
 		test_ileaf_chop(btree, 5, 8, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.3.2")) {
+	if (test_start("test04.3.2")) {
 		/* !s_partial, not across ibase entries, e_partial */
 		test_ileaf_chop(btree, 20, 5, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.3.3")) {
+	if (test_start("test04.3.3")) {
 		/* !s_partial, not across ibase entries, e_partial */
 		test_ileaf_chop(btree, 20, 23, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
@@ -495,7 +560,7 @@ static void test03(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test03.4.1")) {
+	if (test_start("test04.4.1")) {
 		/* s_partial, not across ibase entries, e_partial */
 		/* chop dict is close (len < IBASE_FAR) */
 		test_ileaf_chop(btree, 23, 3, leaf, data, ARRAY_SIZE(data));
@@ -503,7 +568,7 @@ static void test03(struct sb *sb, struct btree *btree)
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.4.2")) {
+	if (test_start("test04.4.2")) {
 		/* s_partial, across ibase entries, e_partial */
 		/* chop dict is close (len < IBASE_FAR) */
 		test_ileaf_chop(btree, 17, 4, leaf, data, ARRAY_SIZE(data));
@@ -511,7 +576,7 @@ static void test03(struct sb *sb, struct btree *btree)
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.4.3")) {
+	if (test_start("test04.4.3")) {
 		/* s_partial, not across ibase entries, e_partial */
 		/* chop dict is far (len >= IBASE_FAR) */
 		test_ileaf_chop(btree, 21, 8, leaf, data, ARRAY_SIZE(data));
@@ -519,7 +584,7 @@ static void test03(struct sb *sb, struct btree *btree)
 		clean_main(sb);
 	}
 	test_end();
-	if (test_start("test03.4.3")) {
+	if (test_start("test04.4.3")) {
 		/* s_partial, across ibase entries, e_partial */
 		/* chop dict is far (len >= IBASE_FAR) */
 		test_ileaf_chop(btree, 21, 22, leaf, data, ARRAY_SIZE(data));
@@ -528,7 +593,7 @@ static void test03(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test03.5")) {
+	if (test_start("test04.5")) {
 		/* s_partial, around of 0-size entries, e_partial */
 		/* chop dict is far (len >= IBASE_FAR) */
 		test_ileaf_chop(btree, 65, 6, leaf, data, ARRAY_SIZE(data));
@@ -537,7 +602,7 @@ static void test03(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test03.6")) {
+	if (test_start("test04.6")) {
 		/* s_partial, not across ibase entries, beyond end */
 		test_ileaf_chop(btree, 70, 10, leaf, data, ARRAY_SIZE(data));
 		ileaf_destroy(btree, leaf);
@@ -592,7 +657,7 @@ static void test_enum(struct ileaf_data *data, int nr, inum_t start, u64 len)
 }
 
 /* Test of ileaf_enumerate */
-static void test04(struct sb *sb, struct btree *btree)
+static void test05(struct sb *sb, struct btree *btree)
 {
 	struct ileaf *leaf = ileaf_create(btree);
 
@@ -650,7 +715,7 @@ static void test04(struct sb *sb, struct btree *btree)
 		.data		= &enum_data,
 	};
 
-	if (test_start("test04.1")) {
+	if (test_start("test05.1")) {
 		/* Outside inum */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  100, TUXKEY_LIMIT, &cb);
@@ -663,7 +728,7 @@ static void test04(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test04.2")) {
+	if (test_start("test05.2")) {
 		/* Enumerate whole inums */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  0, TUXKEY_LIMIT, &cb);
@@ -676,7 +741,7 @@ static void test04(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test04.3")) {
+	if (test_start("test05.3")) {
 		/* Enumerate inums from hole */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  38, TUXKEY_LIMIT, &cb);
@@ -689,7 +754,7 @@ static void test04(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test04.4")) {
+	if (test_start("test05.4")) {
 		/* Enumerate inums from middle of ibase */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  13, TUXKEY_LIMIT, &cb);
@@ -702,7 +767,7 @@ static void test04(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test04.5")) {
+	if (test_start("test05.5")) {
 		/* Enumerate inums, but limit by length (end is hole) */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  0, 19, &cb);
@@ -715,7 +780,7 @@ static void test04(struct sb *sb, struct btree *btree)
 	}
 	test_end();
 
-	if (test_start("test04.6")) {
+	if (test_start("test05.6")) {
 		/* Enumerate inums, but limit by length (end is not hole) */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  0, 22, &cb);
@@ -762,6 +827,10 @@ int main(int argc, char *argv[])
 
 	if (test_start("test04"))
 		test04(sb, &btree);
+	test_end();
+
+	if (test_start("test05"))
+		test05(sb, &btree);
 	test_end();
 
 	clean_main(sb);
