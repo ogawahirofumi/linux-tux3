@@ -442,7 +442,8 @@ static inline int tux3_flush_buffers(struct inode *inode,
  * reclaim. Because we don't wait writeback on evict_inode(), and
  * instead we keeps the inode while writeback is running.
  */
-int tux3_flush_inode_data(struct inode *inode, unsigned delta, int req_flag)
+static int tux3_flush_inode_data(struct inode *inode, unsigned delta,
+				 int req_flag)
 {
 	struct tux3_iattr_data idata;
 	unsigned deleted;
