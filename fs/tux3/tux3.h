@@ -102,7 +102,7 @@ static inline void *decode48(void *at, u64 *val)
  * 2014-05-06: Change timestamp format to nanosecond.
  * 2015-03-14: Add parent_inum
  * 2015-05-23: Use new ileaf format
- * 2015-06-01: Define IATTR defaults
+ * 2015-06-01: Define IATTR defaults, use 16bits for i_mode
  */
 #define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x15, 0x06, 0x01 }
 #define TUX3_MAGIC_STR					\
