@@ -102,8 +102,9 @@ static inline void *decode48(void *at, u64 *val)
  * 2014-05-06: Change timestamp format to nanosecond.
  * 2015-03-14: Add parent_inum
  * 2015-05-23: Use new ileaf format
+ * 2015-06-01: Define IATTR defaults
  */
-#define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x15, 0x05, 0x23 }
+#define TUX3_MAGIC		{ 't', 'u', 'x', '3', 0x20, 0x15, 0x06, 0x01 }
 #define TUX3_MAGIC_STR					\
 	((typeof(((struct disksuper *)0)->magic))TUX3_MAGIC)
 
@@ -416,13 +417,11 @@ struct block_segment {
 /* Allow fewer allocation than requested */
 #define BALLOC_PARTIAL		(1 << 0)
 
-/* For debugging, MAX_ATTRS is smaller than 31, so present never be -1 */
-#define TUX3_INVALID_PRESENT		(-1U)
+/* Just for debugging -1 */
+#define TUX3_INVALID_IDATA		((umode_t)-1U)
 
 /* Inode attributes data */
 struct tux3_iattr_data {
-	unsigned	present;
-
 	umode_t		i_mode;
 	uid_t		i_uid;
 	gid_t		i_gid;
@@ -471,8 +470,6 @@ struct tux3_inode {
 
 	/* Per-delta dirty data for inode */
 	unsigned state;			/* inode dirty state */
-	unsigned present;		/* Attributes decoded from or
-					 * to be encoded to itree */
 	struct inode_delta_dirty i_ddc[TUX3_MAX_DELTA];
 #ifdef __KERNEL__
 	int (*io)(int rw, struct bufvec *bufvec);

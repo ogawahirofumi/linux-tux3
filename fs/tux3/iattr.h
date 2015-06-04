@@ -24,25 +24,15 @@ enum atkind {
 	MAX_ATTRS,
 };
 
-enum atbit {
-	/* Fixed size attrs */
-	GENERIC_BIT	= 1 << GENERIC_ATTR,
-	MODE_OWNER_BIT	= 1 << MODE_OWNER_ATTR,
-	CTIME_SIZE_BIT	= 1 << CTIME_SIZE_ATTR,
-	DATA_BTREE_BIT	= 1 << DATA_BTREE_ATTR,
-	LINK_COUNT_BIT	= 1 << LINK_COUNT_ATTR,
-	MTIME_BIT	= 1 << MTIME_ATTR,
-	/* Variable size (extended) attrs */
-	IDATA_BIT	= 1 << IDATA_ATTR,
-	XATTR_BIT	= 1 << XATTR_ATTR,
-};
-
 extern unsigned atsize[MAX_ATTRS];
 
+#define IATTR_PRESENT_NR	BITS_TO_LONGS(MAX_ATTRS)
 struct iattr_req_data {
 	struct tux3_iattr_data *idata;		/* inode attributes */
 	struct btree *btree;			/* inode dtree */
 	struct inode *inode;			/* extended attributes */
+	/* attrs info to save */
+	unsigned long present[IATTR_PRESENT_NR];
 };
 
 /* Decode from on-disk to inode field */

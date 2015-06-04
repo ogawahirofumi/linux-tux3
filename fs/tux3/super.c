@@ -44,8 +44,8 @@ static void tux3_inode_init_once(void *mem)
 		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_buffers);
 		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_holes);
 		INIT_LIST_HEAD(&tuxnode->i_ddc[i].dirty_list);
-		/* For debugging, set invalid value to ->present */
-		tuxnode->i_ddc[i].idata.present = TUX3_INVALID_PRESENT;
+		/* For debugging, set invalid value */
+		tuxnode->i_ddc[i].idata.i_mode = TUX3_INVALID_IDATA;
 	}
 
 	/* Initialize generic part */
@@ -58,7 +58,6 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 	struct inode *inode = &tuxnode->vfs_inode;
 
 	tuxnode->btree		= (struct btree){ };
-	tuxnode->present	= 0;
 	tuxnode->flags		= 0;
 	tuxnode->xcache		= NULL;
 	tuxnode->generic	= 0;

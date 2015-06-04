@@ -70,7 +70,6 @@ struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
 	inode = new_inode(vfs_sb(sb));
 	if (!inode)
 		return NULL;
-	assert(!tux_inode(inode)->present);
 
 	tux_inode_init_owner(inode, dir, iattr);
 
@@ -80,15 +79,12 @@ struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
 	case S_IFCHR:
 		/* vfs, trying to be helpful, will rewrite the field */
 		inode->i_rdev = iattr->rdev;
-		tux_inode(inode)->present |= GENERIC_BIT;
 		break;
 	case S_IFDIR:
 		inc_nlink(inode);
 		tux_inode(inode)->parent_inum = parent_inum;
-		tux_inode(inode)->present |= GENERIC_BIT;
 		break;
 	}
-	tux_inode(inode)->present |= CTIME_SIZE_BIT|MTIME_BIT|MODE_OWNER_BIT|LINK_COUNT_BIT;
 
 	init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
 
@@ -398,48 +394,6 @@ struct inode *tux_create_specific_inode(struct sb *sb, struct inode *dir,
 	return inode;
 }
 
-static int check_present(struct inode *inode)
-{
-	struct tux3_inode *tuxnode = tux_inode(inode);
-
-	switch (inode->i_mode & S_IFMT) {
-	case S_IFSOCK:
-	case S_IFIFO:
-		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & GENERIC_BIT));
-		break;
-	case S_IFBLK:
-	case S_IFCHR:
-		assert(tuxnode->present & MODE_OWNER_BIT);
-//		assert(tuxnode->present & GENERIC_BIT);
-		break;
-	case S_IFREG:
-		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & GENERIC_BIT));
-		break;
-	case S_IFDIR:
-		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(tuxnode->present & GENERIC_BIT);
-		break;
-	case S_IFLNK:
-		assert(tuxnode->present & MODE_OWNER_BIT);
-		assert(!(tuxnode->present & GENERIC_BIT));
-		break;
-	case 0: /* internal inode */
-		if (tux_inode(inode)->inum == TUX_VOLMAP_INO)
-			assert(tuxnode->present == 0);
-		else
-			assert(!(tuxnode->present & GENERIC_BIT));
-		break;
-	default:
-		tux3_fs_error(tux_sb(inode->i_sb),
-			      "Unknown mode: inum %Lx, mode %07ho",
-			      tuxnode->inum, inode->i_mode);
-		break;
-	}
-	return 0;
-}
-
 static int open_inode(struct inode *inode)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
@@ -467,10 +421,8 @@ static int open_inode(struct inode *inode)
 		.data	= inode,
 	};
 	err = btree_read(cursor, &rq.key);
-	if (!err) {
-		check_present(inode);
+	if (!err)
 		tux_setup_inode(inode);
-	}
 
 	release_cursor(cursor);
 out:
@@ -548,6 +500,7 @@ static int save_inode(struct inode *inode, struct tux3_iattr_data *idata,
 		.idata	= idata,
 		.btree	= &tux_inode(inode)->btree,
 		.inode	= inode,
+		/* .present = {}, zero initialize */
 	};
 	struct ileaf_req rq = {
 		.key = {

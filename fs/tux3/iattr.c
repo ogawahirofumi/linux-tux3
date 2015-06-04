@@ -44,16 +44,6 @@ static inline s64 tuxtime(const struct timespec ts)
 	return timespec_to_ns(&ts);
 }
 
-static unsigned encode_asize(unsigned bits)
-{
-	unsigned need = 0;
-
-	for (int kind = 0; kind < VAR_ATTRS; kind++)
-		if ((bits & (1 << kind)))
-			need += atsize[kind] + 2;
-	return need;
-}
-
 /* unused */
 int attr_check(void *attrs, unsigned size)
 {
@@ -72,45 +62,94 @@ int attr_check(void *attrs, unsigned size)
 	return 1;
 }
 
-void dump_attrs(struct inode *inode)
+/*
+ * If attr is default value, we don't need to save those attrs.
+ * This should match with cond_decode()
+ */
+static int cond_encode_asize(struct iattr_req_data *iattr_data)
 {
-	//tux3_dbg("present = %x", inode->present);
-	struct tux3_inode *tuxnode = tux_inode(inode);
+	struct tux3_iattr_data *idata = iattr_data->idata;
+	int size = 0;
 
-	for (int kind = 0; kind < MAX_ATTRS; kind++) {
-		if (!(tux_inode(inode)->present & (1 << kind)))
-			continue;
-		switch (kind) {
-		case GENERIC_ATTR:
-			if (S_ISBLK(inode->i_mode) || S_ISCHR(inode->i_mode))
-				__tux3_dbg("rdev %x:%x ", MAJOR(inode->i_rdev), MINOR(inode->i_rdev));
-			else
-				__tux3_dbg("parent %Lx ", tux_inode(inode)->parent_inum);
-			break;
-		case MODE_OWNER_ATTR:
-			__tux3_dbg("mode %07ho uid %x gid %x ", inode->i_mode, i_uid_read(inode), i_gid_read(inode));
-			break;
-		case CTIME_SIZE_ATTR:
-			__tux3_dbg("ctime %Lx size %Lx ", tuxtime(inode->i_ctime), (s64)inode->i_size);
-			break;
-		case LINK_COUNT_ATTR:
-			__tux3_dbg("links %u ", inode->i_nlink);
-			break;
-		case MTIME_ATTR:
-			__tux3_dbg("mtime %Lx ", tuxtime(inode->i_mtime));
-			break;
-		case XATTR_ATTR:
-			__tux3_dbg("xattr(s) ");
-			break;
-		default:
-			__tux3_dbg("<%i>? ", kind);
-			break;
-		}
+	/* generic == 0 by default */
+	if (idata->generic) {
+		__set_bit(GENERIC_ATTR, iattr_data->present);
+		size += atsize[GENERIC_ATTR] + 2;
 	}
-	if (has_root(&tuxnode->btree))
-		__tux3_dbg("root %Lx:%u ", tuxnode->btree.root.block,
-			   tuxnode->btree.root.depth);
-	__tux3_dbg("\n");
+
+	/* no_root by default */
+	if (!has_no_root(iattr_data->btree)) {
+		__set_bit(DATA_BTREE_ATTR, iattr_data->present);
+		size += atsize[DATA_BTREE_ATTR] + 2;
+	}
+
+	/* dir->nlink == 2 or other->nlink == 1 by default */
+	if (!(S_ISDIR(idata->i_mode) && idata->i_nlink == 2) &&
+	    !(!S_ISDIR(idata->i_mode) && idata->i_nlink == 1)) {
+		__set_bit(LINK_COUNT_ATTR, iattr_data->present);
+		size += atsize[LINK_COUNT_ATTR] + 2;
+	}
+
+	/* same with ctime by default */
+	if (idata->i_ctime.tv_sec != idata->i_mtime.tv_sec ||
+	    idata->i_ctime.tv_nsec != idata->i_mtime.tv_nsec) {
+		__set_bit(MTIME_ATTR, iattr_data->present);
+		size += atsize[MTIME_ATTR] + 2;
+	}
+
+	return size;
+}
+
+/*
+ * Set default value if attr is not presented.
+ * This should match with cond_encode_asize()
+ */
+static int cond_decode(struct inode *inode, unsigned long *present, u64 generic)
+{
+	struct sb *sb = tux_sb(inode->i_sb);
+	int err = 0;
+
+	if (test_bit(GENERIC_ATTR, present)) {
+		if (!iattr_decode_generic(inode, generic)) {
+			/* FIXME: report corruption? */
+			return -1;
+		}
+	} else {
+		inode->i_rdev = 0;
+		tux_inode(inode)->parent_inum = 0;
+	}
+
+	if (!test_bit(DATA_BTREE_ATTR, present))
+		init_btree(&tux_inode(inode)->btree, sb, no_root, &dtree_ops);
+
+	if (!test_bit(LINK_COUNT_ATTR, present)) {
+		if (S_ISDIR(inode->i_mode))
+			set_nlink(inode, 2);
+		else
+			set_nlink(inode, 1);
+	}
+
+	if (!test_bit(MTIME_ATTR, present))
+		inode->i_mtime = inode->i_ctime;
+
+	return err;
+}
+
+/* Calculate size and present. */
+static int encode_asize(struct iattr_req_data *iattr_data)
+{
+	int size = 0;
+
+	/* Attributes which is always presented */
+	__set_bit(MODE_OWNER_ATTR, iattr_data->present);
+	size += atsize[MODE_OWNER_ATTR] + 2;
+	__set_bit(CTIME_SIZE_ATTR, iattr_data->present);
+	size += atsize[CTIME_SIZE_ATTR] + 2;
+	/* i_version; */
+
+	size += cond_encode_asize(iattr_data);
+
+	return size;
 }
 
 void *encode_kind(void *attrs, unsigned kind, unsigned version)
@@ -128,7 +167,7 @@ static void *encode_attrs(struct btree *btree, void *data, void *attrs,
 	void *limit = attrs + size - 3;
 
 	for (int kind = 0; kind < VAR_ATTRS; kind++) {
-		if (!(idata->present & (1 << kind)))
+		if (!test_bit(kind, iattr_data->present))
 			continue;
 		if (attrs >= limit)
 			break;
@@ -175,7 +214,7 @@ static void *decode_attrs(struct inode *inode, void *attrs, unsigned size)
 	trace_off("decode %u attr bytes", size);
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	struct root btree_root = no_root;
+	unsigned long present[IATTR_PRESENT_NR] = {};
 	void *limit = attrs + size;
 	u64 v64, generic = 0;
 	u32 v32;
@@ -207,8 +246,8 @@ static void *decode_attrs(struct inode *inode, void *attrs, unsigned size)
 			break;
 		case DATA_BTREE_ATTR:
 			attrs = decode64(attrs, &v64);
-			btree_root = unpack_root(v64);
-			goto skip_present;
+			init_btree(&tuxnode->btree, sb, unpack_root(v64),
+				   &dtree_ops);
 			break;
 		case LINK_COUNT_ATTR: {
 			unsigned nlink;
@@ -224,32 +263,27 @@ static void *decode_attrs(struct inode *inode, void *attrs, unsigned size)
 			attrs = decode_xattr(inode, attrs);
 			break;
 		default:
-			return NULL;
+			/* FIXME: report corruption? */
+			goto error;
 		}
 
-		tuxnode->present |= 1 << kind;
-	skip_present:
-		;
+		__set_bit(kind, present);
 	}
 
-	if (tuxnode->present & GENERIC_BIT) {
-		if (!iattr_decode_generic(inode, generic)) {
-			/* FIXME: Add FS corruption handling */
-		}
-	}
-
-	/* We don't use ->present for btree root */
-	init_btree(&tuxnode->btree, sb, btree_root, &dtree_ops);
+	if (cond_decode(inode, present, generic) < 0)
+		goto error;
 
 	return attrs;
+
+error:
+	return NULL;
 }
 
+/* Calculate size and present to save */
 static int iattr_encoded_size(struct btree *btree, void *data)
 {
 	struct iattr_req_data *iattr_data = data;
-	struct inode *inode = iattr_data->inode;
-
-	return encode_asize(iattr_data->idata->present) + encode_xsize(inode);
+	return encode_asize(iattr_data) + encode_xsize(iattr_data->inode);
 }
 
 static void iattr_encode(struct btree *btree, void *data, void *attrs, int size)
@@ -275,9 +309,9 @@ static int iattr_decode(struct btree *btree, void *data, void *attrs, int size)
 			return err;
 	}
 
-	decode_attrs(inode, attrs, size); // error???
-	if (tux3_trace)
-		dump_attrs(inode);
+	if (decode_attrs(inode, attrs, size) == NULL)
+		return -EIO;
+
 	if (tux_inode(inode)->xcache)
 		xcache_dump(inode);
 
