@@ -288,6 +288,25 @@ static int cmd_graph(struct sb *sb, const char *progname, const char *command,
 	return err;
 }
 
+static void print_inode(struct inode *inode)
+{
+	struct tux3_inode *tuxnode = tux_inode(inode);
+
+	printf("mode %07ho uid %x gid %x ",
+	       inode->i_mode, i_uid_read(inode), i_gid_read(inode));
+	printf("ctime %ld.%09ld size %Lx ",
+	       inode->i_ctime.tv_sec, inode->i_ctime.tv_nsec,
+	       (s64)inode->i_size);
+	printf("mtime %ld.%09ld ",
+	       inode->i_mtime.tv_sec, inode->i_mtime.tv_nsec);
+	printf("links %u ", inode->i_nlink);
+	printf("xattr(s) %p ", tuxnode->xcache);
+	if (!has_no_root(&tuxnode->btree)) {
+		printf("root %Lx:%u ",
+		       tuxnode->btree.root.block, tuxnode->btree.root.depth);
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	const char *progname = optbasename(argv[0]);
@@ -627,7 +646,7 @@ int main(int argc, char *argv[])
 			err = PTR_ERR(inode);
 			goto error;
 		}
-		dump_attrs(inode);
+		print_inode(inode);
 		iput(inode);
 		free(argv2optv(args));
 		break;

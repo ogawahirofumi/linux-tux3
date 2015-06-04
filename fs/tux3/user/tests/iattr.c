@@ -27,7 +27,6 @@ static void clean_main(struct sb *sb)
 /* Test encode_attrs() and decode_attrs() */
 static void test01(struct sb *sb)
 {
-	unsigned abits = GENERIC_BIT|MODE_OWNER_BIT|CTIME_SIZE_BIT|LINK_COUNT_BIT|MTIME_BIT;
 	struct inode *inode1 = rapid_new_inode(sb, NULL, S_IFCHR | 0644);
 	struct inode *inode2 = rapid_new_inode(sb, NULL, 0x666);
 	unsigned delta;
@@ -43,7 +42,6 @@ static void test01(struct sb *sb)
 	inode1->i_size	= 0x123456789ULL;
 	inode1->i_ctime	= spectime(0xdec0de01dec0de02ULL);
 	inode1->i_mtime	= spectime(0xbadface1badface2ULL);
-	tux_inode(inode1)->present = abits;
 	tux_inode(inode1)->btree = (struct btree){
 		.root = { .block = 0xcaba1f00dULL, .depth = 4 },
 	};
@@ -55,7 +53,6 @@ static void test01(struct sb *sb)
 
 	struct tux3_iattr_data idata;
 	tux3_iattr_read_and_clear(inode1, &idata, delta);
-	tux3_iattr_adjust_for_btree(inode1, &idata);
 
 	struct iattr_req_data iattr_data = {
 		.idata	= &idata,
@@ -65,7 +62,7 @@ static void test01(struct sb *sb)
 	change_end_atomic(sb);
 
 	/* encode inode1 to attrs, then decode attrs to inode2 */
-	size = encode_asize(idata.present);
+	size = encode_asize(&iattr_data);
 	p = encode_attrs(itree_btree(sb), &iattr_data, attrs, size);
 	test_assert(p - attrs == size);
 	p = decode_attrs(inode2, attrs, size);
@@ -74,18 +71,19 @@ static void test01(struct sb *sb)
 	/* Compare inode1 and inode2 */
 	struct tux3_inode *tuxnode1 = tux_inode(inode1);
 	struct tux3_inode *tuxnode2 = tux_inode(inode2);
-	test_assert(tuxnode1->present == tuxnode2->present);
 	test_assert(inode1->i_rdev == inode2->i_rdev);
 	test_assert(inode1->i_mode == inode2->i_mode);
 	test_assert(uid_eq(inode1->i_uid, inode2->i_uid));
 	test_assert(gid_eq(inode1->i_gid, inode2->i_gid));
 	test_assert(inode1->i_size == inode2->i_size);
+	test_assert(inode1->i_nlink == inode2->i_nlink);
 	test_assert(inode1->i_ctime.tv_sec == inode2->i_ctime.tv_sec);
 	test_assert(inode1->i_ctime.tv_nsec == inode2->i_ctime.tv_nsec);
 	test_assert(inode1->i_mtime.tv_sec == inode2->i_mtime.tv_sec);
 	test_assert(inode1->i_mtime.tv_nsec == inode2->i_mtime.tv_nsec);
 	test_assert(tuxnode1->btree.root.block == tuxnode2->btree.root.block);
 	test_assert(tuxnode1->btree.root.depth == tuxnode2->btree.root.depth);
+	test_assert(tuxnode1->generic == tuxnode2->generic);
 
 	rapid_free_inode(inode1);
 	rapid_free_inode(inode2);
