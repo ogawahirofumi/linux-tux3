@@ -503,12 +503,6 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
 		dirty = tux3_dirty_flags(inode, delta);
 
 	if (dirty & (TUX3_DIRTY_BTREE | I_DIRTY_SYNC | I_DIRTY_DATASYNC)) {
-		/*
-		 * If there is btree root, adjust present after
-		 * tux3_flush_buffers().
-		 */
-		tux3_iattr_adjust_for_btree(inode, &idata);
-
 		err = tux3_save_inode(inode, &idata, delta);
 		if (err && !ret)
 			ret = err;

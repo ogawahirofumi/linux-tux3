@@ -32,7 +32,6 @@ TUX3_DEFINE_STATE_FNS(unsigned, iattr, IATTR_DIRTY,
 /* Caller must hold tuxnode->lock. */
 static void idata_copy(struct inode *inode, struct tux3_iattr_data *idata)
 {
-	idata->present		= tux_inode(inode)->present;
 	idata->i_mode		= inode->i_mode;
 	idata->i_uid		= i_uid_read(inode);
 	idata->i_gid		= i_gid_read(inode);
@@ -144,7 +143,7 @@ static loff_t tux3_iattr_peek_i_size(struct inode *inode, unsigned *deleted,
 		/* If dirty and forked, use copy */
 		struct tux3_iattr_data *idata =
 			&tux3_inode_ddc(inode, delta)->idata;
-		assert(idata->present != TUX3_INVALID_PRESENT);
+		assert(idata->i_mode != TUX3_INVALID_IDATA);
 		i_size = idata->i_size;
 	}
 
@@ -188,22 +187,10 @@ static void tux3_iattr_read_and_clear(struct inode *inode,
 		/* If dirty and forked, use copy */
 		struct tux3_iattr_data *idata =
 			&tux3_inode_ddc(inode, delta)->idata;
-		assert(idata->present != TUX3_INVALID_PRESENT);
+		assert(idata->i_mode != TUX3_INVALID_IDATA);
 		*result = *idata;
 	}
 
-	/* For debugging, set invalid value to ->present after read */
-	tux3_inode_ddc(inode, delta)->idata.present = TUX3_INVALID_PRESENT;
-}
-
-/*
- * DATA_BTREE_BIT is not set in normal state. We set it only when
- * flush inode.  So, this is called to flush inode.
- */
-static void tux3_iattr_adjust_for_btree(struct inode *inode,
-					struct tux3_iattr_data *idata)
-{
-	struct btree *btree = &tux_inode(inode)->btree;
-	if (!has_no_root(btree))
-		idata->present |= DATA_BTREE_BIT;
+	/* For debugging, set invalid value after read */
+	tux3_inode_ddc(inode, delta)->idata.i_mode = TUX3_INVALID_IDATA;
 }
