@@ -171,10 +171,16 @@ enum { MAX_DIRECT_COUNT = SHRT_MAX };
 /* FIXME: maybe better to remove struct root to reduce holes in structure? */
 struct root {
 	unsigned short direct; /* block/depth is an extent instead of btree */
+#if 0
+	/* gcc-4.4 seems to not support to use initializer for unnamed union */
 	union {
 		short count;	/* Number of blocks in direct extent */
 		short depth;	/* Btree levels include leaf level */
 	};
+#else
+	short depth;		/* direct=0: Btree levels include leaf level.
+				 * direct=1: Blocks in direct extent */
+#endif
 	block_t block;	/* Disk location of btree root */
 };
 

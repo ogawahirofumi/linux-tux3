@@ -175,14 +175,14 @@ int dtree_chop(struct btree *btree, tuxkey_t start, u64 len)
 {
 	if (has_direct_extent(btree)) {
 		block_t block = btree->root.block;
-		unsigned count = btree->root.count;
+		unsigned count = btree->root.depth;
 		/* FIXME: does not support hole_punch yet. */
 		assert(len == TUXKEY_LIMIT);
 		if (start < count) {
 			if (start == 0)
 				btree->root = no_root;
 			else
-				btree->root.count = start;
+				btree->root.depth = start;
 			tux3_mark_btree_dirty(btree);
 			seg_free(btree, block + start, count - start);
 		}
@@ -211,8 +211,8 @@ static int map_direct(struct btree *btree, block_t start, unsigned count,
 		 * Map direct extent. If mapping is only hole,
 		 * btree stuff handles it.
 		 */
-		if (start < btree->root.count) {
-			unsigned direct_count = btree->root.count;
+		if (start < btree->root.depth) {
+			unsigned direct_count = btree->root.depth;
 			seg[0] = (struct block_segment){
 				.block = btree->root.block + start,
 				.count = count,
@@ -240,7 +240,7 @@ static int map_direct(struct btree *btree, block_t start, unsigned count,
 		if (start != 0 || count > MAX_DIRECT_COUNT)
 			return 0;
 		/* Rewriting existing extent partially */
-		if (count < btree->root.count)
+		if (count < btree->root.depth)
 			return 0;
 
 		segs = seg_alloc_one(btree, start, count, seg);
@@ -248,12 +248,12 @@ static int map_direct(struct btree *btree, block_t start, unsigned count,
 			return segs;
 		log_balloc(btree->sb, seg->block, seg->count);
 
-		if (btree->root.count)
-			seg_free(btree, btree->root.block, btree->root.count);
+		if (btree->root.depth)
+			seg_free(btree, btree->root.block, btree->root.depth);
 
 		btree->root = (struct root){
 			.direct = 1,
-			.count = seg->count,
+			.depth = seg->count,
 			.block = seg->block,
 		};
 		tux3_mark_btree_dirty(btree);

@@ -119,7 +119,7 @@ static int dleaf_init(struct btree *btree, void *leaf)
 
 		dleaf->count = cpu_to_be16(2);
 		put_extent(dex, sb->version, 0, btree->root.block);
-		put_extent(dex + 1, sb->version, btree->root.count, 0);
+		put_extent(dex + 1, sb->version, btree->root.depth, 0);
 
 		btree->root = no_root;
 	}

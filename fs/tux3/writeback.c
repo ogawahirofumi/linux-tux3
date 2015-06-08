@@ -110,7 +110,7 @@ void tux3_dirty_inode(struct inode *inode, int flags)
 	unsigned delta = tux3_inode_delta(inode);
 	unsigned mask = tux3_dirty_mask(flags, delta);
 	struct sb_delta_dirty *s_ddc;
-	struct inode_delta_dirty *i_ddc;
+	struct inode_delta_dirty *uninitialized_var(i_ddc);
 	int re_dirtied = 0;
 
 	if ((tuxnode->state & mask) == mask)

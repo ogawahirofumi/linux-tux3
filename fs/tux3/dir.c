@@ -139,8 +139,9 @@ loff_t tux_alloc_entry(struct inode *dir, const char *name, unsigned len,
 	struct sb *sb = tux_sb(dir->i_sb);
 	struct tux3_dirent *entry;
 	struct buffer_head *buffer, *clone;
-	unsigned reclen = TUX_REC_LEN(len), rec_len, offset;
+	unsigned reclen = TUX_REC_LEN(len), offset;
 	unsigned uninitialized_var(name_len);
+	unsigned uninitialized_var(rec_len);
 	unsigned blocksize = sb->blocksize;
 	block_t block, blocks = *size >> sb->blockbits;
 	void *olddata;
