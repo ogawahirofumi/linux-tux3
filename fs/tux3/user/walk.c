@@ -214,7 +214,7 @@ static void walk_dtree(struct btree *btree, struct buffer_head *ileafbuf,
 	if (has_direct_extent(btree)) {
 		if (cb->extent) {
 			block_t block = btree->root.block;
-			unsigned count = btree->root.count;
+			unsigned count = btree->root.depth;
 			cb->extent(btree, ileafbuf, 0, block, count, data);
 		}
 		return;
