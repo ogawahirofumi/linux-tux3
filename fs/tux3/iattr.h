@@ -1,18 +1,20 @@
 #ifndef TUX3_IATTR_H
 #define TUX3_IATTR_H
 
+#define KIND_SIZE		sizeof(__be16)
+
 enum atkind {
 	/* Fixed size attrs */
-	GENERIC_ATTR	= 0,	/* i_rdev for chr/blk,  parent inum for dir */
-	MODE_OWNER_ATTR	= 1,
-	DATA_BTREE_ATTR	= 2,
-	CTIME_SIZE_ATTR	= 3,
-	LINK_COUNT_ATTR	= 4,
-	MTIME_ATTR	= 5,
-	/* i_blocks	= 6 */
-	/* i_generation	= 7 */
-	/* i_version	= 8 */
-	/* i_flag	= 9 */
+	MODE_OWNER_ATTR	= 0,
+	CTIME_SIZE_ATTR	= 1,
+	LINK_COUNT_ATTR	= 2,
+	MTIME_ATTR	= 3,
+	DATA_BTREE_ATTR	= 4,
+	/* i_blocks	= 5 */
+	/* i_generation	= 6 */
+	/* i_version	= 7 */
+	/* i_flag	= 8 */
+	GENERIC_ATTR	= 9,	/* i_rdev for chr/blk,  parent inum for dir */
 	RESERVED1_ATTR	= 10,
 	VAR_ATTRS,
 	/* Variable size (extended) attrs */
@@ -24,7 +26,7 @@ enum atkind {
 	MAX_ATTRS,
 };
 
-extern unsigned atsize[MAX_ATTRS];
+extern const unsigned atsize[MAX_ATTRS];
 
 #define IATTR_PRESENT_NR	BITS_TO_LONGS(MAX_ATTRS)
 struct iattr_req_data {

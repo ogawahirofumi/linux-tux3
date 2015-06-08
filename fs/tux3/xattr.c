@@ -850,7 +850,7 @@ unsigned encode_xsize(struct inode *inode)
 	struct xcache_entry *xlimit = xcache_limit(xcache);
 
 	while (xattr < xlimit) {
-		xsize += 2 + xatsize + get_unaligned(&xattr->size);
+		xsize += KIND_SIZE + xatsize + get_unaligned(&xattr->size);
 		xattr = xcache_next(xattr);
 	}
 	assert(xattr == xlimit);
