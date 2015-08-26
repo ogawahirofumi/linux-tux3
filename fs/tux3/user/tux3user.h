@@ -51,7 +51,10 @@ struct super_block {
 	unsigned int s_max_links;	/* maximum link counts */
 };
 
+static inline struct sb *tux_sb(struct super_block *sb);
+static inline struct super_block *vfs_sb(struct sb *sb);
 static inline map_t *mapping(struct inode *inode);
+static inline struct dev *sb_dev(struct sb *sb);
 
 #include "../tux3.h"
 
