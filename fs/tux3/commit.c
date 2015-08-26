@@ -80,14 +80,16 @@ static int save_metablock(struct sb *sb, int req_flag)
 
 /* Delta transition */
 
-static int relog_frontend_defer_as_bfree(struct sb *sb, u64 val)
+static int relog_frontend_defer_as_bfree(u64 val, void *data)
 {
+	struct sb *sb = data;
 	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
 	return 0;
 }
 
-static int relog_as_bfree(struct sb *sb, u64 val)
+static int relog_as_bfree(u64 val, void *data)
 {
+	struct sb *sb = data;
 	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
 	return stash_value(&sb->defree, val);
 }
@@ -145,14 +147,14 @@ static int unify_log(struct sb *sb)
 	 * bitmap yet), we have to re-log it on this cycle. Because we
 	 * obsolete all logs in past.
 	 */
-	stash_walk(sb, &sb->defree, relog_frontend_defer_as_bfree);
+	stash_walk(&sb->defree, relog_frontend_defer_as_bfree, sb);
 #endif
 	/*
 	 * Re-logging defered bfree blocks after unify as defered
 	 * bfree (LOG_BFREE_RELOG) after delta.  With this, we can
 	 * obsolete log records on previous unify.
 	 */
-	unstash(sb, &sb->deunify, relog_as_bfree);
+	unstash(&sb->deunify, relog_as_bfree, sb);
 
 	/*
 	 * Merge the dirty bnode buffers to volmap dirty list, and
@@ -259,8 +261,9 @@ static int write_log(struct sb *sb)
 	return tux3_flush_inode_internal(sb->logmap, TUX3_INIT_DELTA, REQ_META);
 }
 
-static int apply_defered_bfree(struct sb *sb, u64 val)
+static int apply_defered_bfree(u64 val, void *data)
 {
+	struct sb *sb = data;
 	return bfree(sb, val & ((1ULL << 48) - 1), val >> 48);
 }
 
@@ -297,7 +300,7 @@ static int commit_delta(struct sb *sb)
 	tux3_wake_delta_commit(sb);
 
 	/* Commit was finished, apply defered bfree. */
-	return unstash(sb, &sb->defree, apply_defered_bfree);
+	return unstash(&sb->defree, apply_defered_bfree, sb);
 }
 
 static void post_commit(struct sb *sb, unsigned delta)
