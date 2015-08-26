@@ -81,7 +81,7 @@ static void clean_snapshot(void)
 
 static block_t check_block;
 
-static int check_defree_block(struct sb *sb, u64 val)
+static int check_defree_block(u64 val, void *data)
 {
 	block_t block = val & ((1ULL << 48) - 1);
 	int count = val >> 48;
@@ -94,9 +94,9 @@ static int check_defree_block(struct sb *sb, u64 val)
 static int buffer_is_allocated(struct sb *sb, struct buffer_head *buf)
 {
 	check_block = bufindex(buf);
-	if (stash_walk(sb, &sb->defree, check_defree_block) < 0)
+	if (stash_walk(&sb->defree, check_defree_block, NULL) < 0)
 		return 0; /* buffer is defree block */
-	if (stash_walk(sb, &sb->deunify, check_defree_block) < 0)
+	if (stash_walk(&sb->deunify, check_defree_block, NULL) < 0)
 		return 0; /* buffer is deunify block */
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);
