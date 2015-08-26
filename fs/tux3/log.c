@@ -530,7 +530,7 @@ static void empty_stash(struct stash *stash)
  * Call actor() for each entries. And, prepare to add new entry to stash.
  * (NOTE: after this, stash keeps one page for future stash_value().)
  */
-int unstash(struct sb *sb, struct stash *stash, unstash_t actor)
+int unstash(struct stash *stash, unstash_t actor, void *data)
 {
 	struct flink_head *head = &stash->head;
 	struct page *page;
@@ -545,7 +545,7 @@ int unstash(struct sb *sb, struct stash *stash, unstash_t actor)
 		if (top == stash->top)
 			top = stash->pos;
 		for (; vec < top; vec++) {
-			int err = actor(sb, *vec);
+			int err = actor(*vec, data);
 			if (err)
 				return err;
 		}
@@ -561,7 +561,7 @@ int unstash(struct sb *sb, struct stash *stash, unstash_t actor)
 /*
  * Call actor() for each entries without freeing pages.
  */
-int stash_walk(struct sb *sb, struct stash *stash, unstash_t actor)
+int stash_walk(struct stash *stash, unstash_t actor, void *data)
 {
 	struct flink_head *head = &stash->head;
 	struct page *page;
@@ -579,7 +579,7 @@ int stash_walk(struct sb *sb, struct stash *stash, unstash_t actor)
 		if (top == stash->top)
 			top = stash->pos;
 		for (; vec < top; vec++) {
-			int err = actor(sb, *vec);
+			int err = actor(*vec, data);
 			if (err)
 				return err;
 		}

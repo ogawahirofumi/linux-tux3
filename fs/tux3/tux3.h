@@ -266,7 +266,10 @@ enum {
 	LOG_TYPES
 };
 
-struct stash { struct flink_head head; u64 *pos, *top; };
+struct stash {
+	struct flink_head head;
+	u64 *pos, *top;
+};
 
 #ifndef TUX3_FLUSHER_SYNC
 /* For each delta + 1 remaining until bdi call complete() + safety */
@@ -970,13 +973,14 @@ void log_freeblocks(struct sb *sb, block_t freeblocks);
 void log_delta(struct sb *sb);
 void log_unify(struct sb *sb);
 
-typedef int (*unstash_t)(struct sb *sb, u64 val);
+typedef int (*unstash_t)(u64 val, void *data);
 void stash_init(struct stash *stash);
 int stash_value(struct stash *stash, u64 value);
-int unstash(struct sb *sb, struct stash *defree, unstash_t actor);
-int stash_walk(struct sb *sb, struct stash *stash, unstash_t actor);
-int defer_bfree(struct sb *sb, struct stash *defree,
-		block_t block, unsigned count);
+int unstash(struct stash *stash, unstash_t actor, void *data);
+int stash_walk(struct stash *stash, unstash_t actor, void *data);
+
+int defer_bfree(struct sb *sb, struct stash *defree, block_t block,
+		unsigned count);
 void destroy_defer_bfree(struct stash *defree);
 
 /* orphan.c */
