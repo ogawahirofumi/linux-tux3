@@ -41,9 +41,9 @@ static int check_defree_block(u64 val, void *data)
 static int buffer_is_allocated(struct sb *sb, struct buffer_head *buf)
 {
 	check_block = bufindex(buf);
-	if (stash_walk(&sb->defree, check_defree_block, NULL) < 0)
+	if (stash_walk(&sb->defree.stash, check_defree_block, NULL) < 0)
 		return 0; /* buffer is defree block */
-	if (stash_walk(&sb->deunify, check_defree_block, NULL) < 0)
+	if (stash_walk(&sb->deunify.stash, check_defree_block, NULL) < 0)
 		return 0; /* buffer is deunify block */
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);

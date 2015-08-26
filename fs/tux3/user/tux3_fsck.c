@@ -502,7 +502,7 @@ static int fsck_main(struct sb *sb)
 	fsck_mark_superblock(sb, &context);
 
 	fsck_unstash_context = &context;
-	stash_walk(&sb->deunify, fsck_unstash_mark, sb);
+	stash_walk(&sb->deunify.stash, fsck_unstash_mark, sb);
 
 	walk_btree(itree_btree(sb), &fsck_itree_ops, &context);
 	walk_btree(otree_btree(sb), &fsck_otree_ops, &context);
