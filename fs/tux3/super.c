@@ -211,7 +211,7 @@ static void cleanup_dirty_for_umount(struct sb *sb)
 	clean_orphan_list(&sb->orphan_del);
 
 	/* defree must be flushed for each delta */
-	assert(flink_empty(&sb->defree.head)||flink_is_last(&sb->defree.head));
+	assert(sb->defree.blocks == 0);
 }
 
 static void __tux3_put_super(struct sb *sbi)
@@ -369,8 +369,8 @@ static int init_sb(struct sb *sb)
 
 	INIT_LIST_HEAD(&sb->orphan_add);
 	INIT_LIST_HEAD(&sb->orphan_del);
-	stash_init(&sb->defree);
-	stash_init(&sb->deunify);
+	defer_bfree_init(&sb->defree);
+	defer_bfree_init(&sb->deunify);
 	INIT_LIST_HEAD(&sb->unify_buffers);
 	INIT_LIST_HEAD(&sb->phase2_buffers);
 

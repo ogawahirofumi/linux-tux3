@@ -508,7 +508,7 @@ int stash_value(struct stash *stash, u64 value)
 }
 
 /* Free all pages in stash to empty. */
-static void empty_stash(struct stash *stash)
+void empty_stash(struct stash *stash)
 {
 	struct flink_head *head = &stash->head;
 
@@ -588,38 +588,4 @@ int stash_walk(struct stash *stash, unstash_t actor, void *data)
 	} while (link != first);
 
 	return 0;
-}
-
-/* Deferred free blocks list */
-
-int defer_bfree(struct sb *sb, struct stash *defree,
-		block_t block, unsigned count)
-{
-	static const unsigned limit = ULLONG_MAX >> 48;
-
-	assert(count > 0);
-	assert(block + count <= sb->volblocks);
-
-	/*
-	 * count field of stash is 16bits. So, this separates to
-	 * multiple records to avoid overflow.
-	 */
-	while (count) {
-		unsigned c = min(count, limit);
-		int err;
-
-		err = stash_value(defree, ((u64)c << 48) + block);
-		if (err)
-			return err;
-
-		count -= c;
-		block += c;
-	}
-
-	return 0;
-}
-
-void destroy_defer_bfree(struct stash *defree)
-{
-	empty_stash(defree);
 }

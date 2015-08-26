@@ -57,6 +57,104 @@ static void schedule_flush_delta(struct sb *sb, struct delta_ref *delta_ref);
  */
 #define ALLOW_FRONTEND_MODIFY
 
+
+/*
+ * Deferred free blocks list
+ */
+
+void defer_bfree_init(struct defree *defree)
+{
+	stash_init(&defree->stash);
+	defree->blocks = 0;
+}
+
+void destroy_defer_bfree(struct defree *defree)
+{
+	empty_stash(&defree->stash);
+	defree->blocks = 0;
+}
+
+int defer_bfree(struct sb *sb, struct defree *defree, block_t block,
+		unsigned count)
+{
+	static const unsigned limit = ULLONG_MAX >> 48;
+
+	assert(count > 0);
+	assert(block + count <= sb->volblocks);
+
+	/*
+	 * count field of stash is 16bits. So, this separates to
+	 * multiple records to avoid overflow.
+	 */
+	while (count) {
+		unsigned c = min(count, limit);
+		int err;
+
+		err = stash_value(&defree->stash, ((u64)c << 48) + block);
+		if (err)
+			return err;
+
+		defree->blocks += c;
+		count -= c;
+		block += c;
+	}
+
+	return 0;
+}
+
+#ifdef ALLOW_FRONTEND_MODIFY
+/* Re-log defree by frontend on this cycle. */
+static int relog_frontend_defree_fn(u64 val, void *data)
+{
+	struct sb *sb = data;
+	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
+	return 0;
+}
+
+static void relog_frontend_defree(struct sb *sb)
+{
+	stash_walk(&sb->defree.stash, relog_frontend_defree_fn, sb);
+}
+#endif
+
+/* Re-log and move deunify to defree for obsoleting previous unify. */
+static int move_deunify_to_defree_fn(u64 val, void *data)
+{
+	struct sb *sb = data;
+	int err = stash_value(&sb->defree.stash, val);
+	if (!err) {
+		block_t block = val & ((1ULL << 48) - 1);
+		unsigned count = val >> 48;
+		log_bfree_relog(sb, block, count);
+
+		sb->defree.blocks += count;
+		sb->deunify.blocks -= count;
+	}
+	return err;
+}
+
+static int move_deunify_to_defree(struct sb *sb)
+{
+	return unstash(&sb->deunify.stash, move_deunify_to_defree_fn, sb);
+}
+
+/* Apply defree to bitmap. */
+static int defree_apply_bfree_fn(u64 val, void *data)
+{
+	struct sb *sb = data;
+	block_t block = val & ((1ULL << 48) - 1);
+	unsigned count = val >> 48;
+	int err = bfree(sb, block, count);
+	if (!err)
+		sb->defree.blocks -= count;
+	return err;
+}
+
+static int defree_apply_bfree(struct sb *sb)
+{
+	return unstash(&sb->defree.stash, defree_apply_bfree_fn, sb);
+}
+
 /* FIXME: we are using sb for now, should use metablock instead. */
 static int save_metablock(struct sb *sb, int req_flag)
 {
@@ -79,20 +177,6 @@ static int save_metablock(struct sb *sb, int req_flag)
 }
 
 /* Delta transition */
-
-static int relog_frontend_defer_as_bfree(u64 val, void *data)
-{
-	struct sb *sb = data;
-	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
-	return 0;
-}
-
-static int relog_as_bfree(u64 val, void *data)
-{
-	struct sb *sb = data;
-	log_bfree_relog(sb, val & ((1ULL << 48) - 1), val >> 48);
-	return stash_value(&sb->defree, val);
-}
 
 /* Obsolete the old unify, then start the log of new unify */
 static void new_cycle_log(struct sb *sb)
@@ -147,14 +231,14 @@ static int unify_log(struct sb *sb)
 	 * bitmap yet), we have to re-log it on this cycle. Because we
 	 * obsolete all logs in past.
 	 */
-	stash_walk(&sb->defree, relog_frontend_defer_as_bfree, sb);
+	relog_frontend_defree(sb);
 #endif
 	/*
 	 * Re-logging defered bfree blocks after unify as defered
 	 * bfree (LOG_BFREE_RELOG) after delta.  With this, we can
 	 * obsolete log records on previous unify.
 	 */
-	unstash(&sb->deunify, relog_as_bfree, sb);
+	move_deunify_to_defree(sb);
 
 	/*
 	 * Merge the dirty bnode buffers to volmap dirty list, and
@@ -261,12 +345,6 @@ static int write_log(struct sb *sb)
 	return tux3_flush_inode_internal(sb->logmap, TUX3_INIT_DELTA, REQ_META);
 }
 
-static int apply_defered_bfree(u64 val, void *data)
-{
-	struct sb *sb = data;
-	return bfree(sb, val & ((1ULL << 48) - 1), val >> 48);
-}
-
 static int commit_delta(struct sb *sb)
 {
 	int req_flag = tux3_io_req_flag(sb->ioinfo);
@@ -300,7 +378,7 @@ static int commit_delta(struct sb *sb)
 	tux3_wake_delta_commit(sb);
 
 	/* Commit was finished, apply defered bfree. */
-	return unstash(&sb->defree, apply_defered_bfree, sb);
+	return defree_apply_bfree(sb);
 }
 
 static void post_commit(struct sb *sb, unsigned delta)
