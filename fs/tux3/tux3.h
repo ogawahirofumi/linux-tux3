@@ -271,6 +271,11 @@ struct stash {
 	u64 *pos, *top;
 };
 
+struct defree {
+	block_t blocks;
+	struct stash stash;
+};
+
 #ifndef TUX3_FLUSHER_SYNC
 /* For each delta + 1 remaining until bdi call complete() + safety */
 #define TUX3_MAX_WB_WORK	(TUX3_MAX_DELTA + 2)
@@ -381,8 +386,8 @@ struct sb {
 	struct list_head orphan_add; /* defered orphan inode add list */
 	struct list_head orphan_del; /* defered orphan inode del list */
 
-	struct stash defree;	/* defer extent frees until after delta */
-	struct stash deunify;	/* defer extent frees until after unify */
+	struct defree defree;	/* defer extent frees until after delta */
+	struct defree deunify;	/* defer extent frees until after unify */
 
 	struct list_head unify_buffers; /* dirty metadata flushed at unify */
 	struct list_head phase2_buffers; /* 2nd phase volmap buffers to clean */
@@ -834,6 +839,11 @@ int replay_bnode_del(struct replay *rp, block_t bnode, tuxkey_t key, unsigned co
 int replay_bnode_adjust(struct replay *rp, block_t bnode, tuxkey_t from, tuxkey_t to);
 
 /* commit.c */
+void defer_bfree_init(struct defree *defree);
+void destroy_defer_bfree(struct defree *defree);
+int defer_bfree(struct sb *sb, struct defree *defree, block_t block,
+		unsigned count);
+
 void tux3_start_backend(struct sb *sb);
 void tux3_end_backend(void);
 int tux3_under_backend(struct sb *sb);
@@ -978,10 +988,7 @@ void stash_init(struct stash *stash);
 int stash_value(struct stash *stash, u64 value);
 int unstash(struct stash *stash, unstash_t actor, void *data);
 int stash_walk(struct stash *stash, unstash_t actor, void *data);
-
-int defer_bfree(struct sb *sb, struct stash *defree, block_t block,
-		unsigned count);
-void destroy_defer_bfree(struct stash *defree);
+void empty_stash(struct stash *stash);
 
 /* orphan.c */
 void clean_orphan_list(struct list_head *head);
