@@ -930,7 +930,10 @@ int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 
 	if (need_lock)
 		down_write(&tux_inode(inode)->truncate_lock);
-	change_begin(sb);
+	if (change_begin(sb, 2)) {
+		err = -ENOSPC;
+		goto unlock;
+	}
 
 	if (need_truncate)
 		err = tux3_truncate(inode, iattr->ia_size);
@@ -941,6 +944,7 @@ int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 	}
 
 	change_end(sb);
+unlock:
 	if (need_lock)
 		up_write(&tux_inode(inode)->truncate_lock);
 
@@ -1006,7 +1010,8 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 		return 0;
 
 	/* FIXME: no i_mutex, so this is racy */
-	change_begin(sb);
+	if (change_begin(sb, 1))
+		return -ENOSPC;
 	if (flags & S_VERSION)
 		inode_inc_iversion(inode);
 	if (flags & S_CTIME)

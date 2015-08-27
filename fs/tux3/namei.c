@@ -37,13 +37,16 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 			struct tux_iattr *iattr)
 {
 	struct inode *inode;
+	struct sb *sb = tux_sb(dir->i_sb);
 	int err;
 
 	if (!huge_valid_dev(iattr->rdev) &&
 	    (S_ISBLK(iattr->mode) || S_ISCHR(iattr->mode)))
 		return -EINVAL;
 
-	change_begin(tux_sb(dir->i_sb));
+	if (change_begin(sb, 5))
+		return -ENOSPC;
+
 	inode = tux_create_dirent_and_inode(dir, &dentry->d_name, iattr);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
@@ -56,7 +59,7 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 		inode_inc_link_count(dir);
 	err = 0;
 out:
-	change_end(tux_sb(dir->i_sb));
+	change_end(sb);
 	return err;
 }
 
@@ -93,7 +96,8 @@ static int tux3_link(struct dentry *old_dentry, struct inode *dir,
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err;
 
-	change_begin(sb);
+	if (change_begin(sb, 5))
+		return -ENOSPC;
 	tux3_iattrdirty(inode);
 	inode->i_ctime = gettime();
 	inode_inc_link_count(inode);
@@ -134,7 +138,8 @@ static int __tux3_symlink(struct inode *dir, struct dentry *dentry,
 	if (len > PAGE_CACHE_SIZE)
 		return -ENAMETOOLONG;
 
-	change_begin(sb);
+	if (change_begin(sb, 6))
+		return -ENOSPC;
 	inode = tux_create_dirent_and_inode(dir, &dentry->d_name, iattr);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
@@ -181,7 +186,8 @@ static int tux3_unlink(struct inode *dir, struct dentry *dentry)
 	struct inode *inode = dentry->d_inode;
 	struct sb *sb = tux_sb(inode->i_sb);
 
-	change_begin(sb);
+	if (change_begin_unlink(sb, 1))
+		return -ENOSPC;
 	int err = tux_del_dirent(dir, dentry);
 	if (!err) {
 		tux3_iattrdirty(inode);
@@ -201,7 +207,8 @@ static int tux3_rmdir(struct inode *dir, struct dentry *dentry)
 	int err = tux_dir_is_empty(inode);
 
 	if (!err) {
-		change_begin(sb);
+		if (change_begin_unlink(sb, 3))
+			return -ENOSPC;
 		err = tux_del_dirent(dir, dentry);
 		if (!err) {
 			tux3_iattrdirty(inode);
@@ -237,7 +244,8 @@ static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
 	/* FIXME: is this needed? */
 	assert(be64_to_cpu(old_entry->inum) == tux_inode(old_inode)->inum);
 
-	change_begin(sb);
+	if (change_begin(sb, 20))
+		return -ENOSPC;
 	delta = tux3_get_current_delta();
 
 	new_subdir = S_ISDIR(old_inode->i_mode) && new_dir != old_dir;

@@ -724,7 +724,8 @@ int set_xattr(struct inode *inode, const char *name, unsigned len,
 	struct inode *atable = sb->atable;
 
 	mutex_lock(&atable->i_mutex);
-	change_begin(sb);
+	/* FIXME: cost */
+	change_begin(sb, 0);
 
 	atom_t atom;
 	int err = make_atom(atable, name, len, &atom);
@@ -748,7 +749,8 @@ int del_xattr(struct inode *inode, const char *name, unsigned len)
 	int err;
 
 	mutex_lock(&atable->i_mutex);
-	change_begin(sb);
+	/* FIXME: cost */
+	change_begin(sb, 0);
 
 	atom_t atom;
 	err = find_atom(atable, name, len, &atom);
