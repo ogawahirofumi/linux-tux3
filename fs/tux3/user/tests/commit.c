@@ -453,7 +453,7 @@ static void check_orphan_inum(struct replay *rp, struct orphan_data *data,
 		struct tux3_inode *tuxnode;
 		struct list_head *head;
 		int err = -ENOENT;
-		head = &sb->orphan_add;
+		head = &sb->orphan.add_head;
 		list_for_each_entry(tuxnode, head, orphan_list) {
 			if (data[i].inum == tuxnode->inum) {
 				err = 0;
@@ -510,6 +510,8 @@ static void test04(struct sb *sb)
 				/* Add into sb->otree */
 				test_assert(force_unify(sb) == 0);
 				list_move(&tuxnode->orphan_list, &orphans);
+				test_assert(sb->orphan.count == 1);
+				test_assert(sb->orphan.count_del == 0);
 				break;
 			case 1:
 			case 2:
@@ -518,20 +520,40 @@ static void test04(struct sb *sb)
 				test_assert(force_unify(sb) == 0);
 				iput(inodes[i]);
 				if (i == 1) {
+					test_assert(sb->orphan.count == 2);
+					test_assert(sb->orphan.count_del == 0);
+
 					/* Delete from sb->otree */
 					test_assert(force_unify(sb) == 0);
+					test_assert(sb->orphan.count == 1);
+					test_assert(sb->orphan.count_del == 0);
+				} else {
+					/* Schedule delete from sb->otree */
+					test_assert(force_delta(sb) == 0);
+					test_assert(sb->orphan.count == 1);
+					test_assert(sb->orphan.count_del == 1);
 				}
 				break;
 			case 3:
 				data[i].err = 0;
+				/* Add LOG_ORPHAN_ADD */
 				test_assert(force_delta(sb) == 0);
 				list_move(&tuxnode->orphan_list, &orphans);
+				test_assert(sb->orphan.count == 2);
+				test_assert(sb->orphan.count_del == 1);
 				break;
 			case 4:
+				/* Add LOG_ORPHAN_ADD and LOG_ORPHAN_DEL */
 				data[i].err = -ENOENT;
 				test_assert(force_delta(sb) == 0);
+				test_assert(sb->orphan.count == 3);
+				test_assert(sb->orphan.count_del == 1);
+
 				iput(inodes[i]);
+
 				test_assert(force_delta(sb) == 0);
+				test_assert(sb->orphan.count == 2);
+				test_assert(sb->orphan.count_del == 1);
 				break;
 			}
 		}
@@ -551,6 +573,9 @@ static void test04(struct sb *sb)
 		/* Replay */
 		struct replay *rp = check_replay(sb);
 
+		test_assert(sb->orphan.count == 2);
+		test_assert(sb->orphan.count_del == 1);
+
 		/* Check orphan inodes */
 		check_orphan_inum(rp, data, NR_ORPHAN);
 
@@ -569,12 +594,18 @@ static void test04(struct sb *sb)
 		/* Replay */
 		struct replay *rp = check_replay(sb);
 
+		test_assert(sb->orphan.count == 2);
+		test_assert(sb->orphan.count_del == 1);
+
 		/* Destroy orphan inodes */
 		int err = replay_stage3(rp, 1);
 		test_assert(!err);
 
 		/* Just add defer orphan deletion request */
 		test_assert(force_delta(sb) == 0);
+		test_assert(sb->orphan.count == 0);
+		test_assert(sb->orphan.count_del == 2);
+
 		clean_sb(sb);
 
 		fsck(sb);
@@ -592,6 +623,9 @@ static void test04(struct sb *sb)
 		/* Replay */
 		struct replay *rp = check_replay(sb);
 
+		test_assert(sb->orphan.count == 0);
+		test_assert(sb->orphan.count_del == 2);
+
 		/* Check orphan inodes */
 		check_orphan_inum(rp, data, NR_ORPHAN);
 
@@ -600,6 +634,9 @@ static void test04(struct sb *sb)
 
 		/* Remove orphan from sb->otree */
 		test_assert(force_unify(sb) == 0);
+		test_assert(sb->orphan.count == 0);
+		test_assert(sb->orphan.count_del == 0);
+
 		clean_sb(sb);
 
 		fsck(sb);
@@ -612,6 +649,9 @@ static void test04(struct sb *sb)
 	if (test_start("test04.4")) {
 		/* Replay */
 		struct replay *rp = check_replay(sb);
+
+		test_assert(sb->orphan.count == 0);
+		test_assert(sb->orphan.count_del == 0);
 
 		/* Check orphan inodes */
 		check_orphan_inum(rp, data, NR_ORPHAN);
