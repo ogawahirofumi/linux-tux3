@@ -284,6 +284,15 @@ struct defree {
 	struct stash stash;
 };
 
+/* Orphaned inode/inum management */
+struct orphan_head {
+	long long count;	/* Orphans in log-records + otree */
+	long long count_del;	/* Inode was delete, but inum is in otree */
+
+	struct list_head add_head;	/* defered orphan inode add list */
+	struct list_head del_head;	/* defered orphan inode del list */
+};
+
 #ifndef TUX3_FLUSHER_SYNC
 /* For each delta + 1 remaining until bdi call complete() + safety */
 #define TUX3_MAX_WB_WORK	(TUX3_MAX_DELTA + 2)
@@ -399,8 +408,7 @@ struct sb {
 	struct inode *logmap;	/* Log block cache */
 	struct logpos logpos;
 
-	struct list_head orphan_add; /* defered orphan inode add list */
-	struct list_head orphan_del; /* defered orphan inode del list */
+	struct orphan_head orphan;	/* Orphaned inode management */
 
 	struct defree defree;	/* defer extent frees until after delta */
 	struct defree deunify;	/* defer extent frees until after unify */
@@ -1027,8 +1035,9 @@ int stash_walk(struct stash *stash, unstash_t actor, void *data);
 void empty_stash(struct stash *stash);
 
 /* orphan.c */
-void clean_orphan_list(struct list_head *head);
+long long clean_orphan_list(struct list_head *head);
 extern struct ileaf_attr_ops oattr_ops;
+void tux3_orphan_init(struct sb *sb);
 int tux3_unify_orphan_add(struct sb *sb, struct list_head *orphan_add);
 int tux3_unify_orphan_del(struct sb *sb, struct list_head *orphan_del);
 int tux3_make_orphan_add(struct inode *inode);

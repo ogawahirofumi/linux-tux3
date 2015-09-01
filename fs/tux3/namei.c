@@ -359,6 +359,8 @@ const struct inode_operations tux_dir_iops = {
 //	.listxattr	= ext3_listxattr,
 //	.removexattr	= generic_removexattr,
 //	.permission	= ext3_permission,
+	/* NOTE: tmpfile(2) allow to call link(2). I.e. we have to
+	 * handle nlink==0 => 1 (remove orphan). */
 //	.tmpfile	= tux3_tmpfile,
 	/* FIXME: why doesn't ext4 support this for directory? */
 //	.fallocate	= ext4_fallocate,

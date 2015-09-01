@@ -206,9 +206,11 @@ static void cleanup_dirty_for_umount(struct sb *sb)
 	}
 
 	/* orphan_add should be empty */
-	assert(list_empty(&sb->orphan_add));
+	assert(sb->orphan.count == 0);
+	assert(list_empty(&sb->orphan.add_head));
 	/* Deferred orphan deletion request is not flushed for each delta  */
-	clean_orphan_list(&sb->orphan_del);
+	sb->orphan.count_del -= clean_orphan_list(&sb->orphan.del_head);
+	assert(sb->orphan.count_del == 0);
 
 	/* defree must be flushed for each delta */
 	assert(sb->defree.blocks == 0);
@@ -370,8 +372,7 @@ static int init_sb(struct sb *sb)
 
 	tux3_delta_init(sb);
 
-	INIT_LIST_HEAD(&sb->orphan_add);
-	INIT_LIST_HEAD(&sb->orphan_del);
+	tux3_orphan_init(sb);
 	defer_bfree_init(&sb->defree);
 	defer_bfree_init(&sb->deunify);
 	INIT_LIST_HEAD(&sb->unify_buffers);
