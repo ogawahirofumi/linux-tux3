@@ -256,30 +256,30 @@ static void tux3fuse_readlink(fuse_req_t req, fuse_ino_t ino)
 {
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
-	int err;
+	int ret;
 
 	trace("(%lx)", ino);
 
 	inode = tux3fuse_iget(sb, ino);
 	if (IS_ERR(inode)) {
-		err = PTR_ERR(inode);
+		ret = PTR_ERR(inode);
 		goto error;
 	}
 
-	err = -ENOMEM;
-	char *buf = malloc(inode->i_size);
+	ret = -ENOMEM;
+	char *buf = malloc(inode->i_size + 1);
 	if (buf) {
-		err = page_readlink(inode, buf, inode->i_size);
-		if (!err) {
-			buf[inode->i_size - 1] = '\0';
+		ret = page_readlink(inode, buf, inode->i_size + 1);
+		if (ret > 0) {
+			buf[inode->i_size] = '\0';
 			fuse_reply_readlink(req, buf);
 		}
 		free(buf);
 	}
 	iput(inode);
 error:
-	if (err)
-		fuse_reply_err(req, -err);
+	if (ret <= 0)
+		fuse_reply_err(req, -ret);
 }
 
 static struct inode *__tux3fuse_mknod(fuse_req_t req, fuse_ino_t parent,
