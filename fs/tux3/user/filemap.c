@@ -322,7 +322,7 @@ void tuxseek(struct file *file, loff_t pos)
 
 int page_symlink(struct inode *inode, const char *symname, int len)
 {
-	struct file file = { .f_inode = inode, };
+	struct file file = FILE_INIT(inode, 0);
 	int ret;
 
 	assert(inode->i_size == 0);
@@ -339,7 +339,7 @@ int page_symlink(struct inode *inode, const char *symname, int len)
 
 int page_readlink(struct inode *inode, void *buf, unsigned size)
 {
-	struct file file = { .f_inode = inode, };
+	struct file file = FILE_INIT(inode, 0);
 	unsigned len = min_t(loff_t, inode->i_size, size);
 	int ret;
 

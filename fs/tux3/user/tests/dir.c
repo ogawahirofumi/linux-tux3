@@ -93,7 +93,7 @@ static int filldir(struct dir_context *ctx, const char *name, int namelen,
 /* Test readdir */
 static void test02(struct sb *sb, struct inode *dir)
 {
-	struct file *file = &(struct file){ .f_inode = dir };
+	struct file *file = &(struct file)FILE_INIT(dir, 0);
 	int err;
 
 	change_begin_atomic(sb);

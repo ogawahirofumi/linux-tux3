@@ -44,7 +44,7 @@ static void test01(struct sb *sb)
 	inode = tuxcreate(sb->rootdir, name, strlen(name), &iattr);
 	test_assert(!IS_ERR(inode));
 
-	struct file *file = &(struct file){ .f_inode = inode };
+	struct file *file = &(struct file)FILE_INIT(inode, 0);
 	int seek_pos = 4092;
 	char buf[] = "hello world!";
 	int size = strlen(buf);
@@ -69,7 +69,7 @@ static void test01(struct sb *sb)
 	inode = tuxopen(sb->rootdir, name, strlen(name));
 	test_assert(!IS_ERR(inode));
 	/* Check data */
-	file = &(struct file){ .f_inode = inode, };
+	file = &(struct file)FILE_INIT(inode, 0);
 	tuxseek(file, seek_pos);
 	char data[100];
 	memset(data, 0, sizeof(data));

@@ -510,7 +510,7 @@ int main(int argc, char *argv[])
 			err = PTR_ERR(inode);
 			goto error;
 		}
-		file = &(struct file){ .f_inode = inode };
+		file = &(struct file)FILE_INIT(inode, 0);
 		struct stat stat;
 		if ((fstat(0, &stat)) == -1)
 			strerror_exit(1, errno, "fstat");
@@ -552,7 +552,7 @@ int main(int argc, char *argv[])
 			err = PTR_ERR(inode);
 			goto error;
 		}
-		file = &(struct file){ .f_inode = inode };
+		file = &(struct file)FILE_INIT(inode, 0);
 		char buf[100];
 		memset(buf, 0, sizeof(buf));
 		if (vars.seek)

@@ -103,6 +103,13 @@ static inline struct dev *sb_dev(struct sb *sb)
 	},					\
 })
 
+/* struct file initializer */
+#define FILE_INIT(i, p)		{		\
+	.f_inode	= i,			\
+	.f_version	= (i)->i_version,	\
+	.f_pos		= p,			\
+}
+
 /* commit.c */
 int force_unify(struct sb *sb);
 int force_delta(struct sb *sb);

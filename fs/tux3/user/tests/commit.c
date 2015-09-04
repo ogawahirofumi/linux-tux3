@@ -250,7 +250,7 @@ static void test01(struct sb *sb)
 		 * to check punch hole working.
 		 */
 		if (i == NUM_FILES - 1) {
-			struct file *file = &(struct file){ .f_inode = inode };
+			struct file *file = &(struct file)FILE_INIT(inode, 0);
 			char data[1024] = {};
 			for (int j = 0; j < 1024; j++) {
 				int size = tuxwrite(file, data, sizeof(data));
@@ -326,7 +326,7 @@ static void test02(struct sb *sb)
 	inode = tuxcreate(sb->rootdir, r.name, r.namelen, &iattr);
 	test_assert(!IS_ERR(inode));
 
-	struct file *file = &(struct file){ .f_inode = inode };
+	struct file *file = &(struct file)FILE_INIT(inode, 0);
 	char data[1024] = {};
 	for (int i = 0; i < 1024; i++) {
 		int size = tuxwrite(file, data, sizeof(data));
@@ -365,7 +365,7 @@ static void test03(struct sb *sb)
 	inode = tuxcreate(sb->rootdir, r.name, r.namelen, &iattr);
 	test_assert(!IS_ERR(inode));
 
-	struct file *file = &(struct file){ .f_inode = inode };
+	struct file *file = &(struct file)FILE_INIT(inode, 0);
 	char data[1024] = {};
 	for (int i = 0; i < 1024; i++) {
 		int size = tuxwrite(file, data, sizeof(data));
@@ -429,7 +429,7 @@ static struct inode *make_orphan_inode(struct sb *sb, const char *name)
 	inode = tuxcreate(sb->rootdir, name, strlen(name), &iattr);
 	test_assert(!IS_ERR(inode));
 
-	file = &(struct file){ .f_inode = inode };
+	file = &(struct file)FILE_INIT(inode, 0);
 	size = tuxwrite(file, data, sizeof(data));
 	test_assert(size == sizeof(data));
 
@@ -973,7 +973,7 @@ static void test08(struct sb *sb)
 		tmp[n] = i;
 		inode = tuxcreate(sb->rootdir, tmp, strlen(tmp), &iattr);
 		test_assert(inode);
-		struct file *file = &(struct file){ .f_inode = inode };
+		struct file *file = &(struct file)FILE_INIT(inode, 0);
 		char buf[10] = {};
 		test_assert(tuxwrite(file, buf, sizeof(buf)) == sizeof(buf));
 		iput(inode);
@@ -991,7 +991,7 @@ static void test08(struct sb *sb)
 	const char name[] = "a";
 	inode = tuxcreate(sb->rootdir, name, strlen(name), &iattr);
 	test_assert(inode);
-	struct file *file = &(struct file){ .f_inode = inode };
+	struct file *file = &(struct file)FILE_INIT(inode, 0);
 	char buf[10] = {};
 	test_assert(tuxwrite(file, buf, sizeof(buf)) == sizeof(buf));
 	test_assert(force_delta(sb) == 0);

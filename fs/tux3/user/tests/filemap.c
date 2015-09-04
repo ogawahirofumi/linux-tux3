@@ -379,9 +379,7 @@ static void test05(struct sb *sb, struct inode *inode)
 /* Test of filemap_hole stuff */
 static void test06(struct sb *sb, struct inode *inode)
 {
-	struct file file = {
-		.f_inode = inode,
-	};
+	struct file file = FILE_INIT(inode, 0);
 	char *buf;
 	int ret;
 

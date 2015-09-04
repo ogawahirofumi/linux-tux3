@@ -555,7 +555,7 @@ static void tux3fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size,
 {
 	trace("(%lx)", ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
-	struct file *file = &(struct file){ .f_inode = inode, };
+	struct file *file = &(struct file)FILE_INIT(inode, 0);
 	int err;
 
 	/* FIXME: better to use filemap() directly */
@@ -598,7 +598,7 @@ static void tux3fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
 {
 	trace("(%lx)", ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
-	struct file *file = &(struct file){ .f_inode = inode };
+	struct file *file = &(struct file)FILE_INIT(inode, 0);
 
 	/* FIXME: better to use filemap() directly */
 	tuxseek(file, offset);
@@ -690,11 +690,7 @@ static void tux3fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
 {
 	trace("(%lx)", ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
-	struct file *dirfile = &(struct file){
-		.f_inode = inode,
-		.f_version = 0,		/* revalidate offset always */
-		.f_pos = offset,
-	};
+	struct file *dirfile = &(struct file)FILE_INIT(inode, offset);
 	char *buf;
 
 	buf = malloc(size);
