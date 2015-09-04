@@ -224,7 +224,7 @@ static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
 static int tuxio(struct file *file, void *data, unsigned len, int write)
 {
 	unsigned delta = write ? tux3_get_current_delta() : 0;
-	struct inode *inode = file->f_inode;
+	struct inode *inode = file_inode(file);
 	struct sb *sb = tux_sb(inode->i_sb);
 	loff_t pos = file->f_pos;
 	int err = 0;
@@ -307,7 +307,7 @@ int tuxread(struct file *file, void *data, unsigned len)
 
 int tuxwrite(struct file *file, const void *data, unsigned len)
 {
-	struct sb *sb = tux_sb(file->f_inode->i_sb);
+	struct sb *sb = tux_sb(file_inode(file)->i_sb);
 	int ret;
 	change_begin(sb);
 	ret = tuxio(file, (void *)data, len, 1);
