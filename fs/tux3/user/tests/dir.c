@@ -131,6 +131,14 @@ static void test02(struct sb *sb, struct inode *dir)
 	err = tux_readdir(file, &ctx);
 	test_assert(!err);
 
+	/* Test invalid offset (tux_readdir()'s revalidate) */
+	ctx.pos -= TUX_DIR_ALIGN; /* set invalid offset */
+	file->f_pos = ctx.pos;
+	file->f_version = 0;
+	err = tux_readdir(file, &ctx);
+	test_assert(!err);
+	test_assert(ctx.pos >= file->f_pos);
+
 	change_end_atomic(sb);
 
 	clean_main(sb, dir);
