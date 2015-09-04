@@ -174,9 +174,26 @@ retry:
 		return -ENOMEM;
 
 	if (tux3_flags & TUX3_F_SEP_DELTA) {
+		struct sb *sb = tux_sb(mapping->host->i_sb);
+		int cost = one_page_cost(mapping->host);
 		/* Separate big write transaction to small chunk. */
 		assert(S_ISREG(mapping->host->i_mode));
-		change_begin_if_needed(tux_sb(mapping->host->i_sb), 1);
+
+		if (change_active())
+			change_end(sb);
+
+		if (PageDirty(page))
+			change_begin_nocheck(sb);
+		else if (change_begin_nospc(sb, cost, 0)) {
+			unlock_page(page);
+			page_cache_release(page);
+			if (nospc_wait_and_check(sb, cost, 0)) {
+				/* Fail path will truncate page */
+				change_begin_nocheck(sb);
+				return -ENOSPC;
+			}
+			goto retry;
+		}
 	}
 
 	/*

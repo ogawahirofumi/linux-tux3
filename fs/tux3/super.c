@@ -345,6 +345,9 @@ struct replay *tux3_init_fs(struct sb *sbi)
 		goto error;
 	}
 
+	/* Initialize ENOSPC state with latest freeblocks. */
+	nospc_init_balance(sbi);
+
 	return rp;
 
 error_inode:
@@ -420,6 +423,12 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 
 	sb->blocksize = 1 << sb->blockbits;
 	sb->blockmask = (1 << sb->blockbits) - 1;
+#ifdef __KERNEL__
+	sb->blocks_per_page_bits = PAGE_CACHE_SHIFT - sb->blockbits;
+#else
+	sb->blocks_per_page_bits = 0;
+#endif
+	sb->blocks_per_page = 1 << sb->blocks_per_page_bits;
 	sb->groupbits = 13; // FIXME: put in disk super?
 	sb->volmask = roundup_pow_of_two64(sb->volblocks) - 1;
 	sb->entries_per_node = calc_entries_per_node(sb->blocksize);
@@ -438,6 +447,11 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	sb->atomdictsize = be64_to_cpu(super->atomdictsize);
 	sb->atomgen = be32_to_cpu(super->atomgen);
 	sb->freeatom = be32_to_cpu(super->freeatom);
+
+	setup_roots(sb, super);
+	/* This will be re-initialized if replayed logs. */
+	nospc_init_balance(sb);
+
 	/* logchain and logcount are read from super directly */
 	trace("blocksize %u, blockbits %u, blockmask %08x, groupbits %u",
 	      sb->blocksize, sb->blockbits, sb->blockmask, sb->groupbits);
@@ -449,8 +463,6 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	      (s64)sb->atomdictsize, sb->freeatom, sb->atomgen);
 	trace("logchain %Lu, logcount %u",
 	      be64_to_cpu(super->logchain), be32_to_cpu(super->logcount));
-
-	setup_roots(sb, super);
 }
 
 /* Load on-disk super block, and call setup_sb() with it */
@@ -655,12 +667,14 @@ static int tux3_statfs(struct dentry *dentry, struct kstatfs *buf)
 {
 	struct super_block *sb = dentry->d_sb;
 	struct sb *sbi = tux_sb(sb);
+	/* balance can be negative */
+	block_t balance = max_t(block_t, atomic64_read(&sbi->nospc.balance), 0);
 
 	buf->f_type = sb->s_magic;
 	buf->f_bsize = sbi->blocksize;
-	buf->f_blocks = sbi->volblocks;
-	buf->f_bfree = sbi->freeblocks;
-	buf->f_bavail = sbi->freeblocks;
+	buf->f_blocks = sbi->volblocks - nospc_min_reserve();
+	buf->f_bfree = balance;
+	buf->f_bavail = balance; /* FIXME: no special privilege for root yet */
 	buf->f_files = MAX_INODES;
 	buf->f_ffree = sbi->freeinodes;
 #if 0

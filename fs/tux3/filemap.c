@@ -877,8 +877,8 @@ static int tux3_file_write_end(struct file *file, struct address_space *mapping,
 
 	/* Separate big write transaction to small chunk. */
 	assert(S_ISREG(mapping->host->i_mode));
-	change_end_if_needed(tux_sb(mapping->host->i_sb));
-
+	if (change_active())
+		change_end(tux_sb(mapping->host->i_sb));
 	return ret;
 }
 

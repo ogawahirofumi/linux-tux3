@@ -271,6 +271,14 @@ struct stash {
 	u64 *pos, *top;
 };
 
+/* ENOSPC management */
+struct nospc_data {
+	block_t free;		/* Available freeblocks for delta (backend)*/
+	block_t reserve;	/* Reserved blocks for delta (backend) */
+	atomic64_t budget;	/* Usable blocks for delta */
+	atomic64_t balance;	/* Current remaining blocks */
+};
+
 struct defree {
 	block_t blocks;
 	struct stash stash;
@@ -298,6 +306,8 @@ struct delta_ref {
 /* Per-delta data structure for sb */
 struct sb_delta_dirty {
 	struct list_head dirty_inodes;	/* dirty inodes list */
+	atomic64_t nospc_charged;	/* dirty block allocation upper bound
+					 * for this delta */
 };
 
 /* Pin a block in cache and keep a pointer to it */
@@ -363,11 +373,17 @@ struct sb {
 	struct inode *atable;	/* xattr atom special file */
 
 	unsigned blocksize, blockbits, blockmask, groupbits;
+	unsigned blocks_per_page, blocks_per_page_bits;
+
+	block_t volblocks, volmask;
+
+	block_t freeblocks;	/* Number of free blocks on backend. */
+	block_t nextblock;
 	u64 freeinodes;		/* Number of free inode numbers. This is
 				 * including the deferred allocated inodes */
-	block_t volblocks, volmask, freeblocks, nextblock;
 	inum_t nextinum;	/* FIXME: temporary hack to avoid to find
 				 * same area in itree for free inum. */
+
 	unsigned entries_per_node; /* must be per-btree type, get rid of this */
 	unsigned version;	/* Currently mounted volume version view */
 
@@ -397,6 +413,7 @@ struct sb {
 	/*
 	 * For frontend and backend
 	 */
+	struct nospc_data nospc;	/* ENOSPC management */
 	spinlock_t countmap_lock;
 	struct countmap_pin countmap_pin;
 	struct tux3_idefer_map *idefer_map;
@@ -693,6 +710,15 @@ static inline int has_no_root(struct btree *btree)
 	return btree->root.depth == 0;
 }
 
+/* Estimate backend allocation cost per data page */
+static inline unsigned one_page_cost(struct inode *inode)
+{
+	struct sb *sb = tux_sb(inode->i_sb);
+	struct btree *btree = &tux_inode(inode)->btree;
+	unsigned depth = has_root(btree) ? btree->root.depth : 0;
+	return sb->blocks_per_page + 2 * depth + 1;
+}
+
 /* Redirect ptr which is pointing data of src from src to dst */
 static inline void *ptr_redirect(void *ptr, void *src, void *dst)
 {
@@ -844,6 +870,15 @@ void destroy_defer_bfree(struct defree *defree);
 int defer_bfree(struct sb *sb, struct defree *defree, block_t block,
 		unsigned count);
 
+block_t nospc_min_reserve(void);
+int nospc_wait_and_check(struct sb *sb, int cost, int limit);
+void nospc_init_balance(struct sb *sb);
+
+static inline int change_active(void)
+{
+	return !!current->journal_info;
+}
+
 void tux3_start_backend(struct sb *sb);
 void tux3_end_backend(void);
 int tux3_under_backend(struct sb *sb);
@@ -856,10 +891,11 @@ void change_begin_atomic(struct sb *sb);
 void change_end_atomic(struct sb *sb);
 void change_begin_atomic_nested(struct sb *sb, void **ptr);
 void change_end_atomic_nested(struct sb *sb, void *ptr);
-void change_begin(struct sb *sb);
+void change_begin_nocheck(struct sb *sb);
+int change_begin_nospc(struct sb *sb, int cost, int limit);
+int change_begin(struct sb *sb, int cost);
+int change_begin_unlink(struct sb *sb, int cost);
 int change_end(struct sb *sb);
-void change_begin_if_needed(struct sb *sb, int need_sep);
-void change_end_if_needed(struct sb *sb);
 
 /* dir.c */
 void tux_set_entry(struct buffer_head *buffer, struct tux3_dirent *entry,

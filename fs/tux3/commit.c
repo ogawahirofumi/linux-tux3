@@ -155,6 +155,202 @@ static int defree_apply_bfree(struct sb *sb)
 	return unstash(&sb->defree.stash, defree_apply_bfree_fn, sb);
 }
 
+/*
+ * ENOSPC management
+ */
+
+/* FIXME: magic number */
+enum {
+	min_reserve = 32,
+	max_reserve = 128,
+};
+
+block_t nospc_min_reserve(void)
+{
+	return min_reserve;
+}
+
+/* Available free blocks for next delta */
+static block_t nospc_free(struct sb *sb)
+{
+	return sb->freeblocks + sb->defree.blocks;
+}
+
+/*
+ * Reserve size should vary with budget. The reserve can include the
+ * log block overhead on the assumption that every block in the budget
+ * is a data block that generates one log record (or two?).
+ */
+static inline block_t nospc_reserve(block_t free)
+{
+	/* FIXME: magic number */
+	return clamp_val(free >> 7, min_reserve, max_reserve);
+}
+
+/*
+ * After transition, the front delta may have used some of the balance
+ * left over from this delta. The charged amount of the back delta is
+ * now stable and gives the exact balance at transition by subtracting
+ * from the old budget. The difference between the new budget and the
+ * balance at transition, which must never be negative, is added to
+ * the current balance, so the effect is exactly the same as if we had
+ * set the new budget and balance atomically at transition time. But
+ * we do not know the new balance at transition time and even if we
+ * did, we would need to add serialization against frontend changes,
+ * which are currently lockless and would like to stay that way. So we
+ * let the current delta charge against the remaining balance until
+ * flush is done, here, then adjust the balance to what it would have
+ * been if the budget had been reset exactly at transition.
+ *
+ * We have:
+ *
+ *    consumed = oldfree - free
+ *    oldbudget = oldfree - reserve
+ *    newbudget = free - reserve
+ *    transition_balance = oldbudget - charged
+ *
+ * Factoring out the reserve, the balance adjustment is:
+ *
+ *    adjust = newbudget - transition_balance
+ *           = (free - reserve) - ((oldfree - reserve) - charged)
+ *           = free + (charged - oldfree)
+ *           = charged + (free - oldfree)
+ *           = charged - consumed
+ *
+ * To extend for variable reserve size, add the difference between
+ * old and new reserve size to the balance adjustment.
+ *
+ *    adjust = oldreserve - reserve
+ */
+static void nospc_adjust_balance(struct sb *sb, unsigned delta,
+				 block_t unify_cost)
+{
+	enum { initial_logblock = 0 };
+	struct nospc_data *nospc = &sb->nospc;
+	block_t charged = atomic64_read(&tux3_sb_ddc(sb, delta)->nospc_charged);
+	block_t old_free = nospc->free;
+	block_t old_reserve = nospc->reserve;
+	block_t consumed, adjust_reserve;
+
+	/* Re-initialize charged for future. */
+	atomic64_set(&tux3_sb_ddc(sb, delta)->nospc_charged, 0);
+
+	/* Update budget for next delta. */
+	nospc->free = nospc_free(sb);
+	nospc->reserve = nospc_reserve(nospc->free);
+	atomic64_set(&nospc->budget, nospc->free - nospc->reserve);
+
+	/*
+	 * Adjust balance to new state. (Note, both can be negative)
+	 *
+	 * 1) Add over estimated blocks (charged - consumed).
+	 * 2) Add adjusted reserve (old_reserve - reserve).
+	 */
+	consumed = old_free - nospc->free;
+	adjust_reserve = old_reserve - nospc->reserve;
+	atomic64_add((charged - consumed) + adjust_reserve, &nospc->balance);
+
+	trace("budget %Ld, balance %Ld, charged %Lu, consumed %Ld, freeblocks %Lu, defree %Lu, unify %Lu",
+	      (long long)atomic64_read(&nospc->budget),
+	      (long long)atomic64_read(&nospc->balance),
+	      charged, consumed, sb->freeblocks, sb->defree.blocks, unify_cost);
+
+	if (consumed - initial_logblock - unify_cost > charged)
+		tux3_warn(sb, "delta %u estimate exceeded by %Lu blocks",
+			delta, consumed - charged);
+}
+
+/*
+ * nospc_atomic64_add_if_ge - add if the number is greater equal than
+ * a given value
+ * @v: pointer of type atomic64_t
+ * @a: the amount to add to v...
+ * @u: ...unless v is greater equal than u.
+ *
+ * Atomically adds @a to @v, so long as it was greater than @u.
+ * Returns true if success to sub.
+ *
+ * FIXME: move to core.
+ */
+static inline long long
+nospc_atomic64_add_if_ge(atomic64_t *v, long long a, long long u)
+{
+	long c, old;
+	c = atomic64_read(v);
+	for (;;) {
+		if (unlikely(c < u))
+			break;
+		old = atomic64_cmpxchg(v, c, c + a);
+		if (likely(old == c))
+			break;
+		c = old;
+	}
+	return c >= u;
+}
+
+/*
+ * Add cost to balance if balance is greater than limit.
+ * limit: negative limit is to use reserve blocks.
+ *
+ * FIXME: If file is temporary, we may want to remove cost from
+ * balance when unlinked. But is there a value to add field to
+ * remember per-inode cost?
+ */
+static inline int nospc_add_cost(struct sb *sb, int cost, int limit)
+{
+	struct nospc_data *nospc = &sb->nospc;
+
+	/* Subs "cost" from "balance" if result is >= "limit" */
+	if (nospc_atomic64_add_if_ge(&nospc->balance, -cost, limit + cost)) {
+		unsigned delta = tux3_get_current_delta();
+		atomic64_add(cost, &tux3_sb_ddc(sb, delta)->nospc_charged);
+		return 0;
+	}
+	return -ENOSPC;
+}
+
+int nospc_wait_and_check(struct sb *sb, int cost, int limit)
+{
+	struct nospc_data *nospc = &sb->nospc;
+
+	/*
+	 * FIXME: We want to wait update of budget/balance, not full commit.
+	 * FIXME: Retry can be unfair, so we may want to use queue to wakeup?
+	 * I.e. one process may stay in loop of ENOSPC check so long.
+	 */
+	assert(!change_active());
+	sync_current_delta(sb);
+
+	trace("test budget, budget %Ld, balance %Ld, cost %u, limit %d",
+	      (long long)atomic64_read(&nospc->budget),
+	      (long long)atomic64_read(&nospc->balance),
+	      cost, limit);
+
+	if (limit + cost > atomic64_read(&nospc->budget)) {
+		tux3_msg(sb, "*** out of space ***");
+		return -ENOSPC;
+	}
+
+	return 0;
+}
+
+void nospc_init_balance(struct sb *sb)
+{
+	struct nospc_data *nospc = &sb->nospc;
+
+	nospc->free = 0;
+	nospc->reserve = 0;
+	atomic64_set(&nospc->budget, 0);
+	atomic64_set(&nospc->balance, 0);
+
+	/* Set initial budget/balance */
+	nospc_adjust_balance(sb, TUX3_INIT_DELTA, 0);
+}
+
+/*
+ * Commit stuff
+ */
+
 /* FIXME: we are using sb for now, should use metablock instead. */
 static int save_metablock(struct sb *sb, int req_flag)
 {
@@ -402,13 +598,13 @@ static int need_unify(struct sb *sb)
 /* For debugging */
 void tux3_start_backend(struct sb *sb)
 {
-	assert(current->journal_info == NULL);
+	assert(!change_active());
 	current->journal_info = sb;
 }
 
 void tux3_end_backend(void)
 {
-	assert(current->journal_info);
+	assert(change_active());
 	current->journal_info = NULL;
 }
 
@@ -424,6 +620,7 @@ static int do_commit(struct sb *sb, int flags)
 	int no_unify = flags & __NO_UNIFY;
 	struct blk_plug plug;
 	struct ioinfo ioinfo;
+	block_t unify_cost = 0;
 	int err = 0;
 
 	trace(">>>>>>>>> commit delta %u", delta);
@@ -440,8 +637,11 @@ static int do_commit(struct sb *sb, int flags)
 	 * FIXME: there is no need to commit if normal inodes are not
 	 * dirty? better way?
 	 */
-	if (!(flags & __FORCE_DELTA) && !tux3_has_dirty_inodes(sb, delta))
+	if (!(flags & __FORCE_DELTA) && !tux3_has_dirty_inodes(sb, delta)) {
+		/* There was no dirty, reset charged cost */
+		nospc_adjust_balance(sb, delta, 0);
 		goto out;
+	}
 
 	/* Prepare to wait I/O */
 	tux3_io_init(&ioinfo, flags);
@@ -483,9 +683,11 @@ static int do_commit(struct sb *sb, int flags)
 #endif
 
 	if ((!no_unify && need_unify(sb)) || (flags & __FORCE_UNIFY)) {
+		unify_cost = sb->freeblocks;
 		err = unify_log(sb);
 		if (err)
 			goto error; /* FIXME: error handling */
+		unify_cost -= sb->freeblocks;
 
 		/* Add delta log for debugging. */
 		log_delta(sb);
@@ -494,6 +696,9 @@ static int do_commit(struct sb *sb, int flags)
 	write_btree(sb, delta);
 	write_log(sb);
 	blk_finish_plug(&plug);
+
+	/* Adjust ENOSPC state after all block allocation was done. */
+	nospc_adjust_balance(sb, delta, unify_cost);
 
 	/*
 	 * Commit last block (for now, this is sync I/O).
@@ -742,7 +947,7 @@ unsigned tux3_inode_delta(struct inode *inode)
  */
 void change_begin_atomic(struct sb *sb)
 {
-	assert(current->journal_info == NULL);
+	assert(!change_active());
 	current->journal_info = delta_get(sb);
 }
 
@@ -750,7 +955,7 @@ void change_begin_atomic(struct sb *sb)
 void change_end_atomic(struct sb *sb)
 {
 	struct delta_ref *delta_ref = current->journal_info;
-	assert(delta_ref != NULL);
+	assert(change_active());
 	current->journal_info = NULL;
 	delta_put(sb, delta_ref);
 }
@@ -778,11 +983,10 @@ void change_end_atomic_nested(struct sb *sb, void *ptr)
  * Normal version of change_begin/end. If there is no special
  * requirement, we should use this version.
  *
- * This checks backend job and run if disabled asynchronous backend,
- * and blocked if disabled asynchronous backend and backend is
- * running.
+ * This checks backend job and run if disabled asynchronous backend.
  */
-void change_begin(struct sb *sb)
+
+static inline void __change_begin(struct sb *sb)
 {
 #ifdef TUX3_FLUSHER_SYNC
 	down_read(&sb->delta_lock);
@@ -790,46 +994,67 @@ void change_begin(struct sb *sb)
 	change_begin_atomic(sb);
 }
 
+static inline void __change_end(struct sb *sb)
+{
+	change_end_atomic(sb);
+#ifdef TUX3_FLUSHER_SYNC
+	up_read(&sb->delta_lock);
+#endif
+}
+
+/* Start transaction without ENOSPC check. */
+void change_begin_nocheck(struct sb *sb)
+{
+	__change_begin(sb);
+}
+
+/* Start transaction with first ENOSPC check. */
+int change_begin_nospc(struct sb *sb, int cost, int limit)
+{
+	__change_begin(sb);
+
+	if (nospc_add_cost(sb, cost, limit)) {
+		__change_end(sb);
+		return -ENOSPC;
+	}
+
+	return 0;
+}
+
+/* Start transaction with full ENOSPC check. */
+static inline int change_begin_check(struct sb *sb, int cost, int limit)
+{
+	while (change_begin_nospc(sb, cost, limit)) {
+		if (nospc_wait_and_check(sb, cost, limit)) {
+			return -ENOSPC;
+		}
+	}
+	return 0;
+}
+
+/* For other than unlink/rmdir */
+int change_begin(struct sb *sb, int cost)
+{
+	return change_begin_check(sb, cost, 0);
+}
+
+/* For unlink/rmdir */
+int change_begin_unlink(struct sb *sb, int cost)
+{
+	/* Use 75% of reserve. FIXME: magic number */
+	int limit = min_reserve * 3 / 4;
+	/* Can use reserve blocks too (negative limit) */
+	return change_begin_check(sb, cost, -limit);
+}
+
 int change_end(struct sb *sb)
 {
 	int err = 0;
 
-	change_end_atomic(sb);
-#ifdef TUX3_FLUSHER_SYNC
-	up_read(&sb->delta_lock);
+	__change_end(sb);
 
+#ifdef TUX3_FLUSHER_SYNC
 	err = try_flush_delta(sb);
 #endif
 	return err;
-}
-
-/*
- * This is used for simplify the error path, or separates big chunk to
- * small chunk in loop.
- *
- * E.g. the following
- *
- * change_begin()
- * while (stop) {
- *	change_begin_if_need()
- *	if (do_something() < 0)
- *		break;
- *	change_end_if_need()
- * }
- * change_end_if_need()
- */
-void change_begin_if_needed(struct sb *sb, int need_sep)
-{
-	if (current->journal_info == NULL)
-		change_begin(sb);
-	else if (need_sep) {
-		change_end(sb);
-		change_begin(sb);
-	}
-}
-
-void change_end_if_needed(struct sb *sb)
-{
-	if (current->journal_info)
-		change_end(sb);
 }

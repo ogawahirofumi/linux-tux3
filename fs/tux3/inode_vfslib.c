@@ -21,10 +21,15 @@ static ssize_t tux3_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	mutex_lock(&inode->i_mutex);
 	/* For each ->write_end() calls change_end(). */
-	change_begin(sb);
+	if (change_begin(sb, 1)) {
+		mutex_unlock(&inode->i_mutex);
+		return -ENOSPC;
+	}
+
 	/* FIXME: file_update_time() in this can be race with mmap */
 	ret = __generic_file_write_iter(iocb, from);
-	change_end_if_needed(sb);
+	if (change_active())
+		change_end(sb);
 	mutex_unlock(&inode->i_mutex);
 
 	if (ret > 0) {
