@@ -629,28 +629,62 @@ static void tux3fuse_releasedir(fuse_req_t req, fuse_ino_t ino,
 
 struct fillstate {
 	struct dir_context ctx;
-	char *dirent;
-	int done;
-	u64 ino;
-	unsigned type;
+	fuse_req_t req;
+	void *buf;
+	size_t bufsize;
+
+	void *prev_buf;
+	size_t prev_bufsize;
+	char prev_namebuf[TUX_NAME_LEN + 1];
+	u64 prev_ino;
+	unsigned prev_type;
 };
+
+static size_t tux3fuse_add_dir(struct fillstate *state, loff_t next_off)
+{
+	trace("bufsize %zu, name '%s', ino %Lu, type %d, offset %Ld",
+	      state->prev_bufsize, state->prev_namebuf, state->prev_ino,
+	      state->prev_type, (long long)next_off);
+
+	/* Shift for DT_* to S_IF* */
+#define TYPE_SHIFT	12
+	struct stat stbuf = {
+		.st_ino = state->prev_ino,
+		.st_mode = state->prev_type << TYPE_SHIFT,
+	};
+	return fuse_add_direntry(state->req, state->prev_buf,
+				 state->prev_bufsize, state->prev_namebuf,
+				 &stbuf, next_off);
+}
 
 static int tux3fuse_filler(struct dir_context *ctx, const char *name,
 			   int namelen, loff_t offset, u64 ino, unsigned type)
 {
 	struct fillstate *state = container_of(ctx, struct fillstate, ctx);
-	if (state->done || namelen > TUX_NAME_LEN)
+	char namebuf[TUX_NAME_LEN + 1];
+	size_t need;
+
+	memcpy(namebuf, name, min(namelen, TUX_NAME_LEN));
+	namebuf[namelen] = '\0';
+	need = fuse_add_direntry(state->req, NULL, 0, namebuf, NULL, 0);
+	if (state->bufsize < need)
 		return -EINVAL;
-	trace("'%.*s'\n", namelen, name);
-	memcpy(state->dirent, name, namelen);
-	state->dirent[namelen] = 0;
-	state->ino = ino;
-	state->type = type;
-	state->done = 1;
+
+	if (state->prev_buf)
+		tux3fuse_add_dir(state, offset);
+
+	state->prev_buf = state->buf;
+	state->prev_bufsize = state->bufsize;
+	strcpy(state->prev_namebuf, namebuf);
+	state->prev_ino = ino;
+	state->prev_type = type;
+
+	state->buf += need;
+	state->bufsize -= need;
+
 	return 0;
 }
 
-/* FIXME: this should return more than one dirent per tux_readdir */
 static void tux3fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
 			     off_t offset, struct fuse_file_info *fi)
 {
@@ -658,44 +692,44 @@ static void tux3fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
 	struct file *dirfile = &(struct file){
 		.f_inode = inode,
+		.f_version = 0,		/* revalidate offset always */
 		.f_pos = offset,
 	};
-	char dirent[TUX_NAME_LEN + 1];
-	char *buf = malloc(size);
+	char *buf;
+
+	buf = malloc(size);
 	if (!buf) {
 		fuse_reply_err(req, ENOMEM);
 		return;
 	}
 
-	while (dirfile->f_pos < dirfile->f_inode->i_size) {
-		struct fillstate fstate = {
-			.ctx = {
-				.actor = tux3fuse_filler,
-			},
-			.dirent = dirent,
-		};
-		int err;
+	/* Revalidate offset always */
+	dirfile->f_version = 0;
 
-		fstate.ctx.pos = dirfile->f_pos;
-		err = tux_readdir(dirfile, &fstate.ctx);
-		dirfile->f_pos = fstate.ctx.pos;
-		if (err) {
+	struct fillstate fstate = {
+		.ctx = {
+			.actor = tux3fuse_filler,
+		},
+		.req = req,
+		.buf = buf,
+		.bufsize = size,
+	};
+	int err;
+
+	fstate.ctx.pos = dirfile->f_pos;
+	err = tux_readdir(dirfile, &fstate.ctx);
+	dirfile->f_pos = fstate.ctx.pos;
+
+	if (fstate.prev_buf) {
+		tux3fuse_add_dir(&fstate, dirfile->f_pos);
+		fuse_reply_buf(req, buf, size - fstate.bufsize);
+	} else {
+		if (err)
 			fuse_reply_err(req, -err);
-			free(buf);
-			return;
-		}
-		struct stat stbuf = {
-			.st_ino = fstate.ino,
-			.st_mode = fstate.type,
-		};
-		size_t len = fuse_add_direntry(req, buf, size, dirent, &stbuf,
-					       dirfile->f_pos);
-		fuse_reply_buf(req, buf, len);
-		free(buf);
-		return;
+		else
+			fuse_reply_buf(req, NULL, 0);
 	}
 
-	fuse_reply_buf(req, NULL, 0);
 	free(buf);
 }
 
