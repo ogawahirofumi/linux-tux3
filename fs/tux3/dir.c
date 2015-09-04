@@ -358,6 +358,32 @@ static unsigned tux_validate_entry(void *base, unsigned offset)
 	return (void *)p - base;
 }
 
+static bool tux3_dir_emit_dots(struct file *file, struct dir_context *ctx)
+{
+	if (ctx->pos == 0) {
+		struct inode *dir = file_inode(file);
+		if (!dir_emit(ctx, ".", 1, tux_inode(dir)->inum, DT_DIR))
+			return false;
+		ctx->pos = 1;
+	}
+	if (ctx->pos == 1) {
+#ifdef __KERNEL__
+		struct dentry *dentry = file->f_path.dentry;
+		inum_t inum;
+
+		spin_lock(&dentry->d_lock);
+		inum = tux_inode(dentry->d_parent->d_inode)->inum;
+		spin_unlock(&dentry->d_lock);
+#else
+		inum_t inum = 0;
+#endif
+		if (!dir_emit(ctx, "..", 2, inum, DT_DIR))
+			return false;
+		ctx->pos = 2;
+	}
+	return true;
+}
+
 int tux_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct inode *dir = file_inode(file);
@@ -365,13 +391,23 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 	struct sb *sb = tux_sb(dir->i_sb);
 	unsigned blockbits = sb->blockbits;
 	block_t block, blocks = dir->i_size >> blockbits;
-	unsigned offset = ctx->pos & sb->blockmask;
+	unsigned offset;
 
 	assert(!(dir->i_size & sb->blockmask));
 
-	/* Clearly invalid offset */
-	if (unlikely(offset & (TUX_DIR_ALIGN - 1)))
-		return -ENOENT;
+	/* Handle "." and ".." */
+	if (!tux3_dir_emit_dots(file, ctx))
+		return 0;
+
+	/* pos == 2 is the start of real entries in dir blocks */
+	if (ctx->pos == 2)
+		offset = 0;
+	else {
+		/* Clearly invalid offset */
+		if (unlikely(ctx->pos & (TUX_DIR_ALIGN - 1)))
+			return -ENOENT;
+		offset = ctx->pos & sb->blockmask;
+	}
 
 	for (block = ctx->pos >> blockbits; block < blocks; block++) {
 		struct buffer_head *buffer = blockread(mapping(dir), block);
@@ -382,6 +418,8 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 			if (offset) {
 				offset = tux_validate_entry(base, offset);
 				ctx->pos = (block << blockbits) + offset;
+				/* Adjust pos for fake "." and ".." */
+				ctx->pos = max_t(loff_t, ctx->pos, 2);
 			}
 			file->f_version = dir->i_version;
 			revalidate = 0;
@@ -390,7 +428,7 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 		for (struct tux3_dirent *entry = base + offset; entry <= limit; entry = next_entry(entry)) {
 			if (check_dir_entry(dir, buffer, entry)) {
 				/* On error, skip to next block */
-				ctx->pos = (ctx->pos | (sb->blocksize - 1)) + 1;
+				ctx->pos = (ctx->pos | sb->blockmask) + 1;
 				break;
 			}
 			if (!is_deleted(entry)) {
@@ -401,7 +439,11 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 					return 0;
 				}
 			}
-			ctx->pos += tux_rec_len_from_disk(entry->rec_len);
+			/* Adjust pos for fake "." and ".." */
+			if (ctx->pos == 2)
+				ctx->pos = tux_rec_len_from_disk(entry->rec_len);
+			else
+				ctx->pos += tux_rec_len_from_disk(entry->rec_len);
 		}
 		blockput(buffer);
 		offset = 0;
