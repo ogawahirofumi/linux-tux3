@@ -225,7 +225,12 @@ static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 		return;
 	}
 
-	change_begin(sb);
+	if (change_begin(sb, 2)) {
+		iput(inode);
+		fuse_reply_err(req, ENOSPC);
+		return;
+	}
+
 	if (to_set & FUSE_SET_ATTR_SIZE)
 		__tuxtruncate(inode, attr->st_size);
 	if (to_set & SET_ATTRS) {

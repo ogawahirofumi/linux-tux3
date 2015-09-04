@@ -354,7 +354,8 @@ int tuxtruncate(struct inode *inode, loff_t size)
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err;
 
-	change_begin(sb);
+	/* FIXME: change_begin(sb, 1, -10); */
+	change_begin(sb, 1);
 	err = __tuxtruncate(inode, size);
 	change_end(sb);
 

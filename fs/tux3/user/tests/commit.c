@@ -921,7 +921,7 @@ static void test06(struct sb *sb)
 static void add_dirty_inode(struct sb *sb)
 {
 	/* Add dirty inode, but no actual flushing data */
-	change_begin(sb);
+	change_begin(sb, 0); /* ignore ENOSPC */
 	__tux3_mark_inode_dirty(sb->rootdir, I_DIRTY_PAGES);
 	change_end(sb);
 }

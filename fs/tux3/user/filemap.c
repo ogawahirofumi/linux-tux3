@@ -309,7 +309,7 @@ int tuxwrite(struct file *file, const void *data, unsigned len)
 {
 	struct sb *sb = tux_sb(file_inode(file)->i_sb);
 	int ret;
-	change_begin(sb);
+	change_begin(sb, 2 * len);
 	ret = tuxio(file, (void *)data, len, 1);
 	change_end(sb);
 	return ret;

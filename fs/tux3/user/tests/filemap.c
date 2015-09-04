@@ -389,7 +389,7 @@ static void test06(struct sb *sb, struct inode *inode)
 	memset(buf, 'a', size);
 
 	/* Prevent flush */
-	change_begin(sb);
+	change_begin(sb, 0); /* ignore ENOSPC */
 
 	/* Write 10 blocks */
 	ret = tuxio(&file, buf, size, 1);
