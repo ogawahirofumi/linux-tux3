@@ -122,6 +122,22 @@ static void tux3_queue_wb_work(struct sb *sb, struct delta_ref *delta_ref)
 	/* TUX3_FLUSHER_SYNC, so nothing to do */
 }
 #else /* !TUX3_FLUSHER_SYNC */
+/*
+ * BDI and tux3_wb_work interaction.
+ *
+ * When delta refcount == 0, schedule_flush_delta() queues tux3_wb_work
+ * if needed. But BDI can be run by non-tux3 requests (e.g. WB_REASON_PERIODIC).
+ * So if WB_REASON (current dequeued wb_work) is not WB_REASON_TUX3_PENDING,
+ * we have to dequeue tux3_wb_work for current delta. (otherwise, we need
+ * unsure number of tux3_wb_work[].)
+ *
+ * To make sure dequeue, we wait queuing of tux3_wb_work by
+ * tux3_wait_for_pending(), then dequeue it. (Special optimize is
+ * ->flusher_is_waiting. If schedule_flush_delta() sees
+ * ->flusher_is_waiting==1, schedule_flush_delta() skips to queue
+ * tux3_wb_work. We check "wb_work->work.list" if it was skipped.)
+ */
+
 #define WB_REASON_TUX3_PENDING	((enum wb_reason)WB_REASON_MAX + 1)
 
 static struct tux3_wb_work *tux3_to_wb_work(struct sb *sb, unsigned delta)
