@@ -13,17 +13,16 @@
 #include <linux/parser.h>
 #include <linux/seq_file.h>
 #include "kcompat.h"
-
-/* This will go to include/linux/magic.h */
-#ifndef TUX3_SUPER_MAGIC
-#define TUX3_SUPER_MAGIC	0x74757833
-#endif
-
 #define trace trace_on
 
 /* FIXME: this should be mount option? */
 int tux3_trace;
 module_param(tux3_trace, int, 0644);
+#endif
+
+/* This will go to include/linux/magic.h */
+#ifndef TUX3_SUPER_MAGIC
+#define TUX3_SUPER_MAGIC	0x74757833
 #endif
 
 static struct kmem_cache *tux_inode_cachep;
@@ -488,6 +487,30 @@ static int load_sb(struct sb *sb)
 	return 0;
 }
 
+static int tux3_statfs(struct dentry *dentry, struct kstatfs *buf)
+{
+	struct super_block *sb = dentry->d_sb;
+	struct sb *sbi = tux_sb(sb);
+	/* balance can be negative */
+	block_t balance = max_t(block_t, atomic64_read(&sbi->nospc.balance), 0);
+
+	buf->f_type = TUX3_SUPER_MAGIC;
+	buf->f_bsize = sbi->blocksize;
+	buf->f_blocks = sbi->volblocks - nospc_min_reserve();
+	buf->f_bfree = balance;
+	buf->f_bavail = balance; /* FIXME: no special privilege for root yet */
+	buf->f_files = MAX_INODES;
+	buf->f_ffree = sbi->freeinodes;
+#if 0
+	buf->f_fsid.val[0] = sbi->serial_number;
+	/*buf->f_fsid.val[1];*/
+#endif
+	buf->f_namelen = TUX_NAME_LEN;
+//	buf->f_frsize = sbi->blocksize;
+
+	return 0;
+}
+
 /* Default mount options */
 const struct tux3_mount_opt tux3_default_mopt = {
 	.flags		= TUX3_MOPT_BARRIER,
@@ -662,30 +685,6 @@ static void tux3_put_super(struct super_block *sb)
 	__tux3_put_super(sbi);
 	sb->s_fs_info = NULL;
 	kfree(sbi);
-}
-
-static int tux3_statfs(struct dentry *dentry, struct kstatfs *buf)
-{
-	struct super_block *sb = dentry->d_sb;
-	struct sb *sbi = tux_sb(sb);
-	/* balance can be negative */
-	block_t balance = max_t(block_t, atomic64_read(&sbi->nospc.balance), 0);
-
-	buf->f_type = sb->s_magic;
-	buf->f_bsize = sbi->blocksize;
-	buf->f_blocks = sbi->volblocks - nospc_min_reserve();
-	buf->f_bfree = balance;
-	buf->f_bavail = balance; /* FIXME: no special privilege for root yet */
-	buf->f_files = MAX_INODES;
-	buf->f_ffree = sbi->freeinodes;
-#if 0
-	buf->f_fsid.val[0] = sbi->serial_number;
-	/*buf->f_fsid.val[1];*/
-#endif
-	buf->f_namelen = TUX_NAME_LEN;
-//	buf->f_frsize = sbi->blocksize;
-
-	return 0;
 }
 
 static int tux3_remount(struct super_block *sb, int *flags, char *data)
