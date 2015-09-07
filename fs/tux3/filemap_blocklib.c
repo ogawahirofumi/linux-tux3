@@ -175,7 +175,7 @@ retry:
 
 	if (tux3_flags & TUX3_F_SEP_DELTA) {
 		struct sb *sb = tux_sb(mapping->host->i_sb);
-		int cost = one_page_cost(mapping->host);
+		int cost = nospc_one_page_cost(mapping->host);
 		/* Separate big write transaction to small chunk. */
 		assert(S_ISREG(mapping->host->i_mode));
 

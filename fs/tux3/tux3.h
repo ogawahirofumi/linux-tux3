@@ -725,15 +725,6 @@ static inline int has_no_root(struct btree *btree)
 	return btree->root.depth == 0;
 }
 
-/* Estimate backend allocation cost per data page */
-static inline unsigned one_page_cost(struct inode *inode)
-{
-	struct sb *sb = tux_sb(inode->i_sb);
-	struct btree *btree = &tux_inode(inode)->btree;
-	unsigned depth = has_root(btree) ? btree->root.depth : 0;
-	return sb->blocks_per_page + 2 * depth + 1;
-}
-
 /* Redirect ptr which is pointing data of src from src to dst */
 static inline void *ptr_redirect(void *ptr, void *src, void *dst)
 {
@@ -888,6 +879,7 @@ int defer_bfree(struct sb *sb, struct defree *defree, block_t block,
 block_t nospc_min_reserve(void);
 int nospc_wait_and_check(struct sb *sb, int cost, int limit);
 void nospc_init_balance(struct sb *sb);
+unsigned nospc_one_page_cost(struct inode *inode);
 
 static inline int change_active(void)
 {

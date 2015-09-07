@@ -363,6 +363,15 @@ void nospc_init_balance(struct sb *sb)
 	nospc_adjust_balance(sb, TUX3_INIT_DELTA, 0);
 }
 
+/* Estimate backend allocation cost per data page */
+unsigned nospc_one_page_cost(struct inode *inode)
+{
+	struct sb *sb = tux_sb(inode->i_sb);
+	struct btree *btree = &tux_inode(inode)->btree;
+	unsigned depth = has_root(btree) ? btree->root.depth : 0;
+	return sb->blocks_per_page + 2 * depth + 1;
+}
+
 /*
  * Commit stuff
  */
@@ -990,7 +999,7 @@ void change_end_atomic(struct sb *sb)
  * This is used for nested change_begin/end. We should not use this
  * usually (nesting change_begin/end is wrong for normal operations).
  *
- * For now, this is only used for ->evict_inode() debugging, and page fault.
+ * For now, this is only used for ->evict_inode() debugging.
  */
 void change_begin_atomic_nested(struct sb *sb, void **ptr)
 {
