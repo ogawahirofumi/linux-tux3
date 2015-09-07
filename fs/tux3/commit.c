@@ -956,6 +956,20 @@ unsigned tux3_inode_delta(struct inode *inode)
 	return tux3_get_current_delta();
 }
 
+static inline void __change_begin_atomic(struct sb *sb)
+{
+	assert(!change_active());
+	current->journal_info = delta_get(sb);
+}
+
+static inline void __change_end_atomic(struct sb *sb)
+{
+	struct delta_ref *delta_ref = current->journal_info;
+	assert(change_active());
+	current->journal_info = NULL;
+	delta_put(sb, delta_ref);
+}
+
 /*
  * This is used to avoid to run backend (if disabled asynchronous
  * backend), and never be blocked. This is used in atomic context, or
@@ -963,17 +977,13 @@ unsigned tux3_inode_delta(struct inode *inode)
  */
 void change_begin_atomic(struct sb *sb)
 {
-	assert(!change_active());
-	current->journal_info = delta_get(sb);
+	__change_begin_atomic(sb);
 }
 
 /* change_end() without starting do_commit(). Use this only if necessary. */
 void change_end_atomic(struct sb *sb)
 {
-	struct delta_ref *delta_ref = current->journal_info;
-	assert(change_active());
-	current->journal_info = NULL;
-	delta_put(sb, delta_ref);
+	__change_end_atomic(sb);
 }
 
 /*
@@ -986,12 +996,12 @@ void change_begin_atomic_nested(struct sb *sb, void **ptr)
 {
 	*ptr = current->journal_info;
 	current->journal_info = NULL;
-	change_begin_atomic(sb);
+	__change_begin_atomic(sb);
 }
 
 void change_end_atomic_nested(struct sb *sb, void *ptr)
 {
-	change_end_atomic(sb);
+	__change_end_atomic(sb);
 	current->journal_info = ptr;
 }
 
@@ -1007,12 +1017,12 @@ static inline void __change_begin(struct sb *sb)
 #ifdef TUX3_FLUSHER_SYNC
 	down_read(&sb->delta_lock);
 #endif
-	change_begin_atomic(sb);
+	__change_begin_atomic(sb);
 }
 
 static inline void __change_end(struct sb *sb)
 {
-	change_end_atomic(sb);
+	__change_end_atomic(sb);
 #ifdef TUX3_FLUSHER_SYNC
 	up_read(&sb->delta_lock);
 #endif
@@ -1041,9 +1051,8 @@ int change_begin_nospc(struct sb *sb, int cost, int limit)
 static inline int change_begin_check(struct sb *sb, int cost, int limit)
 {
 	while (change_begin_nospc(sb, cost, limit)) {
-		if (nospc_wait_and_check(sb, cost, limit)) {
+		if (nospc_wait_and_check(sb, cost, limit))
 			return -ENOSPC;
-		}
 	}
 	return 0;
 }
