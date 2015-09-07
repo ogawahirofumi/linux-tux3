@@ -170,10 +170,18 @@ block_t nospc_min_reserve(void)
 	return min_reserve;
 }
 
+/* Cost for in-flight orphans. */
+static inline block_t nospc_orphan_cost(struct sb *sb)
+{
+	return sb->orphan.count * TUX3_COST_ORPHAN +
+		sb->orphan.count_del * TUX3_COST_ORPHAN_DEL;
+}
+
 /* Available free blocks for next delta */
 static block_t nospc_free(struct sb *sb)
 {
-	return sb->freeblocks + sb->defree.blocks;
+	/* orphan_cost is used as non-free blocks */
+	return sb->freeblocks + sb->defree.blocks - nospc_orphan_cost(sb);
 }
 
 /*
@@ -221,6 +229,14 @@ static inline block_t nospc_reserve(block_t free)
  * old and new reserve size to the balance adjustment.
  *
  *    adjust = oldreserve - reserve
+ *
+ * We have to keep cost for orphan until finishing real deletion of
+ * inode. To keep cost, we track number of orphans, and calculate
+ * orphan_cost from it. Then, we think the orphan_cost as non-free
+ * blocks.  (because orphan is pinned by user control, so have to
+ * return ENOSPC, instead of waiting).
+ *
+ *    free -= orphan_cost
  */
 static void nospc_adjust_balance(struct sb *sb, unsigned delta,
 				 block_t unify_cost)
@@ -255,9 +271,9 @@ static void nospc_adjust_balance(struct sb *sb, unsigned delta,
 	      (long long)atomic64_read(&nospc->balance),
 	      charged, consumed, sb->freeblocks, sb->defree.blocks, unify_cost);
 
-	if (consumed - initial_logblock - unify_cost > charged)
-		tux3_warn(sb, "delta %u estimate exceeded by %Lu blocks",
-			delta, consumed - charged);
+	WARN(consumed - initial_logblock - unify_cost > charged,
+	     "delta %u estimate exceeded by %Lu blocks\n",
+	     delta, consumed - charged);
 }
 
 /*
@@ -1039,10 +1055,15 @@ int change_begin(struct sb *sb, int cost)
 }
 
 /* For unlink/rmdir */
-int change_begin_unlink(struct sb *sb, int cost)
+int change_begin_unlink(struct sb *sb, int cost, bool orphaned)
 {
 	/* Use 75% of reserve. FIXME: magic number */
 	int limit = min_reserve * 3 / 4;
+
+	/* Add cost for orphan. */
+	if (orphaned)
+		cost += TUX3_COST_ORPHAN + TUX3_COST_ORPHAN_DEL;
+
 	/* Can use reserve blocks too (negative limit) */
 	return change_begin_check(sb, cost, -limit);
 }

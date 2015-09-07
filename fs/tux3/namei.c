@@ -185,10 +185,12 @@ static int tux3_unlink(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = dentry->d_inode;
 	struct sb *sb = tux_sb(inode->i_sb);
+	bool orphaned = inode->i_nlink == 1;
+	int err;
 
-	if (change_begin_unlink(sb, 1))
+	if (change_begin_unlink(sb, 1, orphaned))
 		return -ENOSPC;
-	int err = tux_del_dirent(dir, dentry);
+	err = tux_del_dirent(dir, dentry);
 	if (!err) {
 		tux3_iattrdirty(inode);
 		inode->i_ctime = dir->i_ctime;
@@ -204,10 +206,11 @@ static int tux3_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct sb *sb = tux_sb(dir->i_sb);
 	struct inode *inode = dentry->d_inode;
-	int err = tux_dir_is_empty(inode);
+	int err;
 
+	err = tux_dir_is_empty(inode);
 	if (!err) {
-		if (change_begin_unlink(sb, 3))
+		if (change_begin_unlink(sb, 3, true))
 			return -ENOSPC;
 		err = tux_del_dirent(dir, dentry);
 		if (!err) {

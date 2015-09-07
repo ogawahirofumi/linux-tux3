@@ -54,6 +54,7 @@ void tux3_mark_inode_to_delete(struct inode *inode)
 	if (tux3_inode_is_dead(tuxnode))
 		return;
 
+	/* Cost is already added by unlink/rmdir, so no need ENOSPC check. */
 	change_begin_atomic(sb);
 
 	delta = tux3_inode_delta(inode);

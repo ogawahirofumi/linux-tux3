@@ -278,6 +278,13 @@ struct nospc_data {
 	atomic64_t budget;	/* Usable blocks for delta */
 	atomic64_t balance;	/* Current remaining blocks */
 };
+/*
+ * Cost of operations. (Exclude cost in unify stage.)
+ */
+/* inode deletion and orphan entry add. FIXME: no need oleaf? */
+#define TUX3_COST_ORPHAN	2	/* ileaf + oleaf */
+/* orphan entry deletion. FIXME: no need oleaf? */
+#define TUX3_COST_ORPHAN_DEL	1	/* oleaf */
 
 struct defree {
 	block_t blocks;
@@ -902,7 +909,7 @@ void change_end_atomic_nested(struct sb *sb, void *ptr);
 void change_begin_nocheck(struct sb *sb);
 int change_begin_nospc(struct sb *sb, int cost, int limit);
 int change_begin(struct sb *sb, int cost);
-int change_begin_unlink(struct sb *sb, int cost);
+int change_begin_unlink(struct sb *sb, int cost, bool orphaned);
 int change_end(struct sb *sb);
 
 /* dir.c */
