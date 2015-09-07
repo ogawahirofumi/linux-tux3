@@ -568,8 +568,6 @@ static int tux3_truncate(struct inode *inode, loff_t newsize)
 	if (newsize == oldsize)
 		return 0;
 
-	/* inode_dio_wait(inode); */	/* FIXME: for direct I/O */
-
 	err = 0;
 	is_expand = newsize > oldsize;
 
@@ -854,62 +852,6 @@ static inline void tux_setup_inode_common(struct inode *inode)
 	}
 }
 
-#ifdef __KERNEL__
-/* This is used by tux3_clear_dirty_inodes() to tell inode state was changed */
-void iget_if_dirty(struct inode *inode)
-{
-	assert(!(inode->i_state & I_FREEING));
-	if (atomic_read(&inode->i_count)) {
-		atomic_inc(&inode->i_count);
-		return;
-	}
-	/* i_count == 0 should happen only dirty inode */
-	assert(inode->i_state & I_DIRTY);
-	atomic_inc(&inode->i_count);
-}
-
-/* Synchronize changes to a file and directory. */
-int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
-{
-	struct inode *inode = file->f_mapping->host;
-	struct sb *sb = tux_sb(inode->i_sb);
-
-	/* FIXME: this is sync(2). We should implement real one */
-	static int print_once;
-	if (!print_once) {
-		print_once++;
-		tux3_warn(sb,
-			  "fsync(2) fall-back to sync(2): %Lx-%Lx, datasync %d",
-			  start, end, datasync);
-	}
-
-	return sync_current_delta(sb);
-}
-
-int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
-{
-	struct inode *inode = dentry->d_inode;
-	struct sb *sb = tux_sb(inode->i_sb);
-
-	generic_fillattr(inode, stat);
-	stat->ino = tux_inode(inode)->inum;
-	/*
-	 * FIXME: need to implement ->i_blocks?
-	 *
-	 * If we want to add i_blocks account, we have to check
-	 * existent extent for dirty buffer.  And only if there is no
-	 * existent extent, we add to ->i_blocks.
-	 *
-	 * Yes, ->i_blocks must be including delayed allocation buffers
-	 * as allocated, because some apps (e.g. tar) think it is empty file
-	 * if i_blocks == 0.
-	 *
-	 * But, it is purely unnecessary overhead.
-	 */
-	stat->blocks = ALIGN(i_size_read(inode), sb->blocksize) >> 9;
-	return 0;
-}
-
 int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 {
 	struct inode *inode = dentry->d_inode;
@@ -949,6 +891,62 @@ unlock:
 		up_write(&tux_inode(inode)->truncate_lock);
 
 	return err;
+}
+
+#ifdef __KERNEL__
+int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
+{
+	struct inode *inode = dentry->d_inode;
+	struct sb *sb = tux_sb(inode->i_sb);
+
+	generic_fillattr(inode, stat);
+	stat->ino = tux_inode(inode)->inum;
+	/*
+	 * FIXME: need to implement ->i_blocks?
+	 *
+	 * If we want to add i_blocks account, we have to check
+	 * existent extent for dirty buffer.  And only if there is no
+	 * existent extent, we add to ->i_blocks.
+	 *
+	 * Yes, ->i_blocks must be including delayed allocation buffers
+	 * as allocated, because some apps (e.g. tar) think it is empty file
+	 * if i_blocks == 0.
+	 *
+	 * But, it is purely unnecessary overhead.
+	 */
+	stat->blocks = ALIGN(i_size_read(inode), sb->blocksize) >> 9;
+	return 0;
+}
+
+/* This is used by tux3_clear_dirty_inodes() to tell inode state was changed */
+void iget_if_dirty(struct inode *inode)
+{
+	assert(!(inode->i_state & I_FREEING));
+	if (atomic_read(&inode->i_count)) {
+		atomic_inc(&inode->i_count);
+		return;
+	}
+	/* i_count == 0 should happen only dirty inode */
+	assert(inode->i_state & I_DIRTY);
+	atomic_inc(&inode->i_count);
+}
+
+/* Synchronize changes to a file and directory. */
+int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
+{
+	struct inode *inode = file->f_mapping->host;
+	struct sb *sb = tux_sb(inode->i_sb);
+
+	/* FIXME: this is sync(2). We should implement real one */
+	static int print_once;
+	if (!print_once) {
+		print_once++;
+		tux3_warn(sb,
+			  "fsync(2) fall-back to sync(2): %Lx-%Lx, datasync %d",
+			  start, end, datasync);
+	}
+
+	return sync_current_delta(sb);
 }
 
 /*
