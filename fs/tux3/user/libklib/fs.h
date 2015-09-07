@@ -12,6 +12,60 @@
 struct nameidata {
 };
 
+/*
+ * Attribute flags.  These should be or-ed together to figure out what
+ * has been changed!
+ */
+#define ATTR_MODE	(1 << 0)
+#define ATTR_UID	(1 << 1)
+#define ATTR_GID	(1 << 2)
+#define ATTR_SIZE	(1 << 3)
+#define ATTR_ATIME	(1 << 4)
+#define ATTR_MTIME	(1 << 5)
+#define ATTR_CTIME	(1 << 6)
+#define ATTR_ATIME_SET	(1 << 7)
+#define ATTR_MTIME_SET	(1 << 8)
+#define ATTR_FORCE	(1 << 9) /* Not a change, but a change it */
+#define ATTR_ATTR_FLAG	(1 << 10)
+#define ATTR_KILL_SUID	(1 << 11)
+#define ATTR_KILL_SGID	(1 << 12)
+#define ATTR_FILE	(1 << 13)
+#define ATTR_KILL_PRIV	(1 << 14)
+#define ATTR_OPEN	(1 << 15) /* Truncating from open(O_TRUNC) */
+#define ATTR_TIMES_SET	(1 << 16)
+
+/*
+ * This is the Inode Attributes structure, used for notify_change().  It
+ * uses the above definitions as flags, to know which values have changed.
+ * Also, in this manner, a Filesystem can look at only the values it cares
+ * about.  Basically, these are the attributes that the VFS layer can
+ * request to change from the FS layer.
+ *
+ * Derek Atkins <warlord@MIT.EDU> 94-10-20
+ */
+struct iattr {
+	unsigned int	ia_valid;
+	umode_t		ia_mode;
+	kuid_t		ia_uid;
+	kgid_t		ia_gid;
+	loff_t		ia_size;
+	struct timespec	ia_atime;
+	struct timespec	ia_mtime;
+	struct timespec	ia_ctime;
+#ifdef __KERNEL__
+	/*
+	 * Not an attribute, but an auxiliary info for filesystems wanting to
+	 * implement an ftruncate() like method.  NOTE: filesystem should
+	 * check for (ia_valid & ATTR_FILE), and not for (ia_file != NULL).
+	 */
+	struct file	*ia_file;
+#endif
+};
+
+int inode_change_ok(const struct inode *inode, struct iattr *attr);
+int inode_newsize_ok(const struct inode *inode, loff_t offset);
+void setattr_copy(struct inode *inode, const struct iattr *attr);
+
 /* Generic inode */
 struct inode {
 	struct super_block	*i_sb;
@@ -160,6 +214,10 @@ static inline bool dir_emit(struct dir_context *ctx,
 static inline bool dir_relax(struct inode *inode)
 {
 	return true;
+}
+
+static inline void inode_dio_wait(struct inode *inode)
+{
 }
 
 void inc_nlink(struct inode *inode);
