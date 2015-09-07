@@ -170,10 +170,18 @@ block_t nospc_min_reserve(void)
 	return min_reserve;
 }
 
+/* Cost for in-flight orphans. */
+static inline block_t nospc_orphan_cost(struct sb *sb)
+{
+	return sb->orphan.count * TUX3_COST_ORPHAN +
+		sb->orphan.count_del * TUX3_COST_ORPHAN_DEL;
+}
+
 /* Available free blocks for next delta */
 static block_t nospc_free(struct sb *sb)
 {
-	return sb->freeblocks + sb->defree.blocks;
+	/* orphan_cost is used as non-free blocks */
+	return sb->freeblocks + sb->defree.blocks - nospc_orphan_cost(sb);
 }
 
 /*
@@ -221,6 +229,14 @@ static inline block_t nospc_reserve(block_t free)
  * old and new reserve size to the balance adjustment.
  *
  *    adjust = oldreserve - reserve
+ *
+ * We have to keep cost for orphan until finishing real deletion of
+ * inode. To keep cost, we track number of orphans, and calculate
+ * orphan_cost from it. Then, we think the orphan_cost as non-free
+ * blocks.  (because orphan is pinned by user control, so have to
+ * return ENOSPC, instead of waiting).
+ *
+ *    free -= orphan_cost
  */
 static void nospc_adjust_balance(struct sb *sb, unsigned delta,
 				 block_t unify_cost)
@@ -255,9 +271,9 @@ static void nospc_adjust_balance(struct sb *sb, unsigned delta,
 	      (long long)atomic64_read(&nospc->balance),
 	      charged, consumed, sb->freeblocks, sb->defree.blocks, unify_cost);
 
-	if (consumed - initial_logblock - unify_cost > charged)
-		tux3_warn(sb, "delta %u estimate exceeded by %Lu blocks",
-			delta, consumed - charged);
+	WARN(consumed - initial_logblock - unify_cost > charged,
+	     "delta %u estimate exceeded by %Lu blocks\n",
+	     delta, consumed - charged);
 }
 
 /*
@@ -345,6 +361,15 @@ void nospc_init_balance(struct sb *sb)
 
 	/* Set initial budget/balance */
 	nospc_adjust_balance(sb, TUX3_INIT_DELTA, 0);
+}
+
+/* Estimate backend allocation cost per data page */
+unsigned nospc_one_page_cost(struct inode *inode)
+{
+	struct sb *sb = tux_sb(inode->i_sb);
+	struct btree *btree = &tux_inode(inode)->btree;
+	unsigned depth = has_root(btree) ? btree->root.depth : 0;
+	return sb->blocks_per_page + 2 * depth + 1;
 }
 
 /*
@@ -940,19 +965,13 @@ unsigned tux3_inode_delta(struct inode *inode)
 	return tux3_get_current_delta();
 }
 
-/*
- * This is used to avoid to run backend (if disabled asynchronous
- * backend), and never be blocked. This is used in atomic context, or
- * from backend task to avoid to run backend recursively.
- */
-void change_begin_atomic(struct sb *sb)
+static inline void __change_begin_atomic(struct sb *sb)
 {
 	assert(!change_active());
 	current->journal_info = delta_get(sb);
 }
 
-/* change_end() without starting do_commit(). Use this only if necessary. */
-void change_end_atomic(struct sb *sb)
+static inline void __change_end_atomic(struct sb *sb)
 {
 	struct delta_ref *delta_ref = current->journal_info;
 	assert(change_active());
@@ -961,21 +980,37 @@ void change_end_atomic(struct sb *sb)
 }
 
 /*
+ * This is used to avoid to run backend (if disabled asynchronous
+ * backend), and never be blocked. This is used in atomic context, or
+ * from backend task to avoid to run backend recursively.
+ */
+void change_begin_atomic(struct sb *sb)
+{
+	__change_begin_atomic(sb);
+}
+
+/* change_end() without starting do_commit(). Use this only if necessary. */
+void change_end_atomic(struct sb *sb)
+{
+	__change_end_atomic(sb);
+}
+
+/*
  * This is used for nested change_begin/end. We should not use this
  * usually (nesting change_begin/end is wrong for normal operations).
  *
- * For now, this is only used for ->evict_inode() debugging, and page fault.
+ * For now, this is only used for ->evict_inode() debugging.
  */
 void change_begin_atomic_nested(struct sb *sb, void **ptr)
 {
 	*ptr = current->journal_info;
 	current->journal_info = NULL;
-	change_begin_atomic(sb);
+	__change_begin_atomic(sb);
 }
 
 void change_end_atomic_nested(struct sb *sb, void *ptr)
 {
-	change_end_atomic(sb);
+	__change_end_atomic(sb);
 	current->journal_info = ptr;
 }
 
@@ -991,12 +1026,12 @@ static inline void __change_begin(struct sb *sb)
 #ifdef TUX3_FLUSHER_SYNC
 	down_read(&sb->delta_lock);
 #endif
-	change_begin_atomic(sb);
+	__change_begin_atomic(sb);
 }
 
 static inline void __change_end(struct sb *sb)
 {
-	change_end_atomic(sb);
+	__change_end_atomic(sb);
 #ifdef TUX3_FLUSHER_SYNC
 	up_read(&sb->delta_lock);
 #endif
@@ -1025,9 +1060,8 @@ int change_begin_nospc(struct sb *sb, int cost, int limit)
 static inline int change_begin_check(struct sb *sb, int cost, int limit)
 {
 	while (change_begin_nospc(sb, cost, limit)) {
-		if (nospc_wait_and_check(sb, cost, limit)) {
+		if (nospc_wait_and_check(sb, cost, limit))
 			return -ENOSPC;
-		}
 	}
 	return 0;
 }
@@ -1039,10 +1073,15 @@ int change_begin(struct sb *sb, int cost)
 }
 
 /* For unlink/rmdir */
-int change_begin_unlink(struct sb *sb, int cost)
+int change_begin_unlink(struct sb *sb, int cost, bool orphaned)
 {
 	/* Use 75% of reserve. FIXME: magic number */
 	int limit = min_reserve * 3 / 4;
+
+	/* Add cost for orphan. */
+	if (orphaned)
+		cost += TUX3_COST_ORPHAN + TUX3_COST_ORPHAN_DEL;
+
 	/* Can use reserve blocks too (negative limit) */
 	return change_begin_check(sb, cost, -limit);
 }

@@ -142,8 +142,7 @@ static int tux3_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct inode *inode = file_inode(vma->vm_file);
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct page *clone, *page;
-	void *ptr;
-	int ret;
+	int cost, ret;
 
 	sb_start_pagefault(inode->i_sb);
 
@@ -159,37 +158,50 @@ retry:
 	}
 
 	/*
-	 * page fault can be happened while holding change_begin/end()
-	 * (e.g. copy of user data between ->write_begin and
-	 * ->write_end for write(2)).
-	 *
-	 * So, we use nested version here.
+	 * FIXME: If page fault happened while holding change_begin/end()
+	 * (e.g. copy of user data between ->write_begin and ->write_end
+	 * for write(2)), this doesn't work. Because this context may hold
+	 * old delta which wants to flush for ENOSPC check.
 	 */
-	change_begin_atomic_nested(sb, &ptr);
+	cost = nospc_one_page_cost(inode);
+	while (change_begin_nospc(sb, cost, 0)) {
+		unlock_page(page);
+		if (nospc_wait_and_check(sb, cost, 0)) {
+			ret = VM_FAULT_SIGBUS; /* -ENOSPC */
+			goto out;
+		}
+
+		lock_page(page);
+		/*
+		 * Since holding ->truncate_lock, so no need to
+		 * recheck page->mapping.
+		 *
+		 * 	if (page->mapping != mapping(inode))
+		 */
+		BUG_ON(page->mapping != mapping(inode));
+	}
 
 	clone = pagefork_for_blockdirty(vma, page, tux3_get_current_delta());
 	if (IS_ERR(clone)) {
-		/* Someone did page fork */
-		pgoff_t index = page->index;
+		int err = PTR_ERR(clone);
 
-		change_end_atomic_nested(sb, ptr);
+		change_end(sb);
 		unlock_page(page);
-		page_cache_release(page);
-		up_read(&tux_inode(inode)->truncate_lock);
 
-		switch (PTR_ERR(clone)) {
-		case -EAGAIN:
+		if (err == -EAGAIN) {
+			pgoff_t index = page->index;
+
+			page_cache_release(page);
+			up_read(&tux_inode(inode)->truncate_lock);
+
+			/* Someone did page fork */
 			vmf->page = find_get_page(inode->i_mapping, index);
 			assert(vmf->page);
 			goto retry;
-		case -ENOMEM:
-			ret = VM_FAULT_OOM;
-			break;
-		default:
-			ret = VM_FAULT_SIGBUS;
-			break;
 		}
 
+		/* Error happened */
+		ret = block_page_mkwrite_return(err);
 		goto out;
 	}
 
@@ -206,7 +218,7 @@ retry:
 	 */
 	tux3_set_page_dirty(clone);
 
-	change_end_atomic_nested(sb, ptr);
+	change_end(sb);
 	vmf->page = clone;
 	ret = VM_FAULT_LOCKED;
 
