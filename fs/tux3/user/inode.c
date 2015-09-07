@@ -344,6 +344,7 @@ void iput(struct inode *inode)
 	}
 }
 
+/* For unit test */
 int __tuxtruncate(struct inode *inode, loff_t size)
 {
 	return tux3_truncate(inode, size);
@@ -351,15 +352,18 @@ int __tuxtruncate(struct inode *inode, loff_t size)
 
 int tuxtruncate(struct inode *inode, loff_t size)
 {
-	struct sb *sb = tux_sb(inode->i_sb);
-	int err;
+	struct dentry dentry = {
+		.d_inode = inode,
+	};
+	struct iattr iattrs = {
+		.ia_valid = ATTR_SIZE,
+		.ia_size = size,
+	};
 
-	/* FIXME: change_begin(sb, 1, -10); */
-	change_begin(sb, 1);
-	err = __tuxtruncate(inode, size);
-	change_end(sb);
+	if (size < 0)
+		return -EINVAL;
 
-	return err;
+	return tux3_setattr(&dentry, &iattrs);
 }
 
 /* Easy way to make a dummy inode. */

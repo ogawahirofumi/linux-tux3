@@ -208,13 +208,43 @@ static void tux3fuse_getattr(fuse_req_t req, fuse_ino_t ino,
 	fuse_reply_attr(req, &stbuf, 0.0);
 }
 
+static void tux3fuse_to_iattr(struct iattr *iattr, struct stat *attr, int to_set)
+{
+	iattr->ia_valid = 0;
+
+	if (to_set & FUSE_SET_ATTR_SIZE) {
+		iattr->ia_valid |= ATTR_SIZE;
+		iattr->ia_size = attr->st_size;
+	}
+	if (to_set & FUSE_SET_ATTR_MODE) {
+		iattr->ia_valid |= ATTR_MODE;
+		iattr->ia_mode = attr->st_mode;
+	}
+	if (to_set & FUSE_SET_ATTR_UID) {
+		iattr->ia_valid |= ATTR_UID;
+		iattr->ia_uid = make_kuid(&init_user_ns, attr->st_uid);
+	}
+	if (to_set & FUSE_SET_ATTR_GID) {
+		iattr->ia_valid |= ATTR_GID;
+		iattr->ia_gid = make_kgid(&init_user_ns, attr->st_gid);
+	}
+	if (to_set & FUSE_SET_ATTR_ATIME) {
+		if (!(to_set & FUSE_SET_ATTR_ATIME_NOW))
+			iattr->ia_valid |= ATTR_ATIME_SET;
+		iattr->ia_valid |= ATTR_ATIME;
+		iattr->ia_atime = attr->st_atim;
+	}
+	if (to_set & FUSE_SET_ATTR_MTIME) {
+		if (!(to_set & FUSE_SET_ATTR_MTIME_NOW))
+			iattr->ia_valid |= ATTR_MTIME_SET;
+		iattr->ia_valid |= ATTR_MTIME;
+		iattr->ia_mtime = attr->st_mtim;
+	}
+}
+
 static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 			     int to_set, struct fuse_file_info *fi)
 {
-#define SET_ATTRS	(FUSE_SET_ATTR_MODE | FUSE_SET_ATTR_UID |	\
-			 FUSE_SET_ATTR_GID | FUSE_SET_ATTR_ATIME |	\
-			 FUSE_SET_ATTR_MTIME)
-
 	trace("(%lx)", ino);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
@@ -225,29 +255,16 @@ static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 		return;
 	}
 
-	if (change_begin(sb, 2)) {
-		iput(inode);
-		fuse_reply_err(req, ENOSPC);
+	struct dentry dentry = {
+		.d_inode = inode,
+	};
+	struct iattr iattr;
+	tux3fuse_to_iattr(&iattr, attr, to_set);
+	int err = tux3_setattr(&dentry, &iattr);
+	if (err) {
+		fuse_reply_err(req, -err);
 		return;
 	}
-
-	if (to_set & FUSE_SET_ATTR_SIZE)
-		__tuxtruncate(inode, attr->st_size);
-	if (to_set & SET_ATTRS) {
-		tux3_iattrdirty(inode);
-		if (to_set & FUSE_SET_ATTR_MODE)
-			inode->i_mode = attr->st_mode;
-		if (to_set & FUSE_SET_ATTR_UID)
-			i_uid_write(inode, attr->st_uid);
-		if (to_set & FUSE_SET_ATTR_GID)
-			i_gid_write(inode, attr->st_gid);
-		if (to_set & FUSE_SET_ATTR_ATIME)
-			inode->i_atime = attr->st_atim;
-		if (to_set & FUSE_SET_ATTR_MTIME)
-			inode->i_mtime = attr->st_mtim;
-		tux3_mark_inode_dirty(inode);
-	}
-	change_end(sb);
 
 	struct stat stbuf;
 	tux3fuse_fill_stat(&stbuf, inode);
