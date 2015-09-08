@@ -311,6 +311,25 @@ ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
 	return seq.count + 1;
 }
 
+int tux3_get_kstatfs(struct sb *sb, struct kstatfs *kstatfs)
+{
+	struct dentry dentry = {
+		.d_sb = vfs_sb(sb),
+	};
+	int err;
+
+	memset(kstatfs, 0, sizeof(*kstatfs));
+	err = tux3_statfs(&dentry, kstatfs);
+	if (!err) {
+		/* FIXME: need to fill mount flags? */
+		kstatfs->f_flags = 0;
+		/* tux3_statvfs() may not fill */
+		if (kstatfs->f_frsize == 0)
+			kstatfs->f_frsize = kstatfs->f_bsize;
+	}
+	return err;
+}
+
 #include "aligncheck.h"
 
 int tux3_init_mem(unsigned poolsize, int debug)

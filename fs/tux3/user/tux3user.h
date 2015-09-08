@@ -178,6 +178,7 @@ int __mkfs_tux3(struct sb *sb);
 int mkfs_tux3(struct sb *sb);
 int setup_mount_options(struct sb *sb, void *data);
 ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all);
+int tux3_get_kstatfs(struct sb *sb, struct kstatfs *kstatfs);
 int tux3_init_mem(unsigned poolsize, int debug);
 void tux3_exit_mem(void);
 

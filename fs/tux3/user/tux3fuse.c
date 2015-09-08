@@ -754,18 +754,32 @@ static void tux3fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
 static void tux3fuse_statfs(fuse_req_t req, fuse_ino_t ino)
 {
 	struct sb *sb = tux3fuse_get_sb(req);
+	struct kstatfs kstatfs;
+	int err;
+
+	err = tux3_get_kstatfs(sb, &kstatfs);
+	if (err) {
+		fuse_reply_err(req, -err);
+		return;
+	}
+
 	struct statvfs statvfs = {
-		.f_bsize	= sb->blocksize,
-		.f_frsize	= sb->blocksize,
-		.f_blocks	= sb->volblocks,
-		.f_bfree	= sb->freeblocks,
-		.f_bavail	= sb->freeblocks,
-		.f_files	= MAX_INODES,
-		.f_ffree	= sb->freeinodes,
-		.f_favail	= sb->freeinodes,
-		//.f_fsid	= ,
-		//.f_flag	= ,
-		.f_namemax	= TUX_NAME_LEN,
+		.f_bsize	= kstatfs.f_bsize,
+		.f_frsize	= kstatfs.f_frsize,
+		.f_blocks	= kstatfs.f_blocks,
+		.f_bfree	= kstatfs.f_bfree,
+		.f_bavail	= kstatfs.f_bavail,
+		.f_files	= kstatfs.f_files,
+		.f_ffree	= kstatfs.f_ffree,
+		.f_favail	= kstatfs.f_ffree,
+#if BITS_PER_LONG == 64
+		.f_fsid		= kstatfs.f_fsid.val[0]
+			| (unsigned long)kstatfs.f_fsid.val[0] << 32,
+#else
+		.f_fsid		= kstatfs.f_fsid.val[0],
+#endif
+		.f_flag		= kstatfs.f_flags,
+		.f_namemax	= kstatfs.f_namelen,
 	};
 
 	fuse_reply_statfs(req, &statvfs);
