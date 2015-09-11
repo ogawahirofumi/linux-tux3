@@ -412,8 +412,8 @@ static int unify_log(struct sb *sb)
 	 * apply those to sb->otree.
 	 */
 	/* FIXME: orphan_add/del has no race with frontend for now */
-	list_splice_init(&sb->orphan_add, &orphan_add);
-	list_splice_init(&sb->orphan_del, &orphan_del);
+	list_splice_init(&sb->orphan.add_head, &orphan_add);
+	list_splice_init(&sb->orphan.del_head, &orphan_del);
 
 	/* This is starting the new unify cycle of the log */
 	new_cycle_log(sb);

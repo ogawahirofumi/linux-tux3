@@ -577,6 +577,9 @@ error:
 /*
  * Replay pending frontend request like orphan, etc. I.e. this starts
  * to modify FS.
+ *
+ * NOTE: if apply == 0, you can't run unify at least. Otherwise,
+ * LOG_ORPHAN_ADD can be gone without storing to otree.
  */
 int replay_stage3(struct replay *rp, int apply)
 {

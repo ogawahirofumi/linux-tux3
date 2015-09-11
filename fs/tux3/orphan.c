@@ -52,13 +52,19 @@ static void free_orphan(struct orphan *orphan)
 }
 
 /* Caller must care about locking if needed */
-void clean_orphan_list(struct list_head *head)
+long long clean_orphan_list(struct list_head *head)
 {
+	long long count = 0;
+
 	while (!list_empty(head)) {
 		struct orphan *orphan = orphan_entry(head->next);
 		list_del(&orphan->list);
 		free_orphan(orphan);
+
+		count++;
 	}
+
+	return count;
 }
 
 /*
@@ -89,6 +95,14 @@ struct ileaf_attr_ops oattr_ops = {
 	.encoded_size	= oattr_encoded_size,
 	.encode		= oattr_encode,
 };
+
+void tux3_orphan_init(struct sb *sb)
+{
+	sb->orphan.count = 0;
+	sb->orphan.count_del = 0;
+	INIT_LIST_HEAD(&sb->orphan.add_head);
+	INIT_LIST_HEAD(&sb->orphan.del_head);
+}
 
 /* Add inum into sb->otree */
 int tux3_unify_orphan_add(struct sb *sb, struct list_head *orphan_add)
@@ -163,6 +177,9 @@ int tux3_unify_orphan_del(struct sb *sb, struct list_head *orphan_del)
 
 		list_del(&orphan->list);
 		free_orphan(orphan);
+
+		/* inum was deleted from otree */
+		sb->orphan.count_del--;
 	}
 
 	return 0;
@@ -180,9 +197,12 @@ int tux3_make_orphan_add(struct inode *inode)
 	trace("inum %Lu", tuxnode->inum);
 
 	assert(list_empty(&tuxnode->orphan_list));
-	list_add(&tuxnode->orphan_list, &sb->orphan_add);
+	list_add(&tuxnode->orphan_list, &sb->orphan.add_head);
 
 	log_orphan_add(sb, sb->version, tuxnode->inum);
+
+	/* Inode become orphan. */
+	sb->orphan.count++;
 
 	return 0;
 }
@@ -199,7 +219,10 @@ static int add_defer_orphan_del(struct sb *sb, inum_t inum)
 		return PTR_ERR(orphan);
 
 	/* Add orphan deletion (from sb->otree) request. */
-	list_add(&orphan->list, &sb->orphan_del);
+	list_add(&orphan->list, &sb->orphan.del_head);
+
+	/* Inode is deleted, but inum is still in otree until next unify. */
+	sb->orphan.count_del++;
 
 	return 0;
 }
@@ -211,6 +234,9 @@ int tux3_make_orphan_del(struct inode *inode)
 	struct tux3_inode *tuxnode = tux_inode(inode);
 
 	trace("inum %Lu", tuxnode->inum);
+
+	/* Inode is deleted. */
+	sb->orphan.count--;
 
 	if (!list_empty(&tuxnode->orphan_list)) {
 		/* This orphan is not applied to sb->otree yet. */
@@ -294,13 +320,16 @@ void replay_iput_orphan_inodes(struct sb *sb,
 	struct tux3_inode *tuxnode, *safe;
 
 	/* orphan inodes not in sb->otree */
-	list_for_each_entry_safe(tuxnode, safe, &sb->orphan_add, orphan_list) {
+	list_for_each_entry_safe(tuxnode, safe, &sb->orphan.add_head,
+				 orphan_list) {
 		struct inode *inode = &tuxnode->vfs_inode;
 
 		if (!destroy) {
 			/* Set i_nlink = 1 prevent to destroy inode. */
 			set_nlink(inode, 1);
 			list_del_init(&tuxnode->orphan_list);
+			/* Unload orphan without destory (dec manually). */
+			sb->orphan.count--;
 		}
 		iput(inode);
 	}
@@ -315,6 +344,8 @@ void replay_iput_orphan_inodes(struct sb *sb,
 		if (!destroy) {
 			/* Set i_nlink = 1 prevent to destroy inode. */
 			set_nlink(inode, 1);
+			/* Unload orphan without destory (dec manually). */
+			sb->orphan.count--;
 		}
 		iput(inode);
 	}
@@ -337,6 +368,9 @@ static int load_orphan_inode(struct sb *sb, inum_t inum, struct list_head *head)
 	/* List inode up, then caller will decide what to do */
 	list_add(&tux_inode(inode)->orphan_list, head);
 
+	/* Count orphaned inode (in log-record or otree) in replay. */
+	sb->orphan.count++;
+
 	return 0;
 }
 
@@ -353,7 +387,7 @@ static int load_enum_inode(struct btree *btree, inum_t inum, void *attrs,
 		return 0;
 
 	/* If inum is in orphan_del, it was dead already */
-	if (replay_find_orphan(&sb->orphan_del, inum))
+	if (replay_find_orphan(&sb->orphan.del_head, inum))
 		return 0;
 
 	return load_orphan_inode(sb, inum, &rp->orphan_in_otree);
@@ -404,7 +438,7 @@ int replay_load_orphan_inodes(struct replay *rp)
 	while (!list_empty(head)) {
 		struct orphan *orphan = orphan_entry(head->next);
 
-		err = load_orphan_inode(sb, orphan->inum, &sb->orphan_add);
+		err = load_orphan_inode(sb, orphan->inum, &sb->orphan.add_head);
 		if (err)
 			goto error;
 
