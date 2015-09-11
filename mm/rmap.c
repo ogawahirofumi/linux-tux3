@@ -1011,7 +1011,7 @@ static int page_cow_one(struct page *oldpage, struct page *newpage,
 	set_pte_at(mm, address, pte, ptval);
 
 	/* Update rmap accounting */
-	BUG_ON(!PageMlocked(oldpage));	/* Caller should migrate mlock flag */
+	BUG_ON(PageMlocked(oldpage));	/* Caller should migrate mlock flag */
 	page_remove_rmap(oldpage);
 	page_add_file_rmap(newpage);
 
