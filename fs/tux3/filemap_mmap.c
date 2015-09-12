@@ -142,7 +142,7 @@ static int tux3_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct inode *inode = file_inode(vma->vm_file);
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct page *clone, *page;
-	int ret;
+	int cost, ret;
 
 	sb_start_pagefault(inode->i_sb);
 
@@ -163,10 +163,22 @@ retry:
 	 * for write(2)), this doesn't work. Because this context may hold
 	 * old delta which wants to flush for ENOSPC check.
 	 */
-	if (change_begin(sb, nospc_one_page_cost(inode))) {
+	cost = nospc_one_page_cost(inode);
+	while (change_begin_nospc(sb, cost, 0)) {
 		unlock_page(page);
-		ret = VM_FAULT_SIGBUS; /* -ENOSPC */
-		goto out;
+		if (nospc_wait_and_check(sb, cost, 0)) {
+			ret = VM_FAULT_SIGBUS; /* -ENOSPC */
+			goto out;
+		}
+
+		lock_page(page);
+		/*
+		 * Since holding ->truncate_lock, so no need to
+		 * recheck page->mapping.
+		 *
+		 * 	if (page->mapping != mapping(inode))
+		 */
+		BUG_ON(page->mapping != mapping(inode));
 	}
 
 	clone = pagefork_for_blockdirty(vma, page, tux3_get_current_delta());
