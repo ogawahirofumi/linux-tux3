@@ -203,8 +203,8 @@ static void tux3fuse_getattr(fuse_req_t req, fuse_ino_t ino,
 
 	struct stat stbuf;
 	tux3fuse_fill_stat(&stbuf, inode);
-
 	iput(inode);
+
 	fuse_reply_attr(req, &stbuf, 0.0);
 }
 
@@ -268,7 +268,6 @@ static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 
 	struct stat stbuf;
 	tux3fuse_fill_stat(&stbuf, inode);
-
 	iput(inode);
 
 	fuse_reply_attr(req, &stbuf, 0.0);
@@ -381,18 +380,18 @@ static void tux3fuse_link(fuse_req_t req, fuse_ino_t ino,
 
 	src_inode = tux3fuse_iget(sb, ino);
 	if (IS_ERR(src_inode)) {
-		err = -PTR_ERR(src_inode);
+		err = PTR_ERR(src_inode);
 		goto error;
 	}
 
 	dir = tux3fuse_iget(sb, newparent);
 	if (IS_ERR(dir)) {
-		err = -PTR_ERR(dir);
+		err = PTR_ERR(dir);
 		goto error_inode;
 	}
 
 	inode = __tuxlink(src_inode, dir, newname, strlen(newname));
-	err = -PTR_ERR(inode);
+	err = PTR_ERR(inode);
 	if (!IS_ERR(inode)) {
 		struct fuse_entry_param ep;
 		tux3fuse_fill_ep(&ep, inode);
@@ -426,7 +425,7 @@ static void tux3fuse_symlink(fuse_req_t req, const char *link,
 
 	dir = tux3fuse_iget(sb, parent);
 	if (IS_ERR(dir)) {
-		err = -PTR_ERR(dir);
+		err = PTR_ERR(dir);
 		goto error;
 	}
 
