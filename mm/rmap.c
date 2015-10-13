@@ -973,13 +973,20 @@ struct page *cow_clone_page(struct page *oldpage)
 }
 EXPORT_SYMBOL_GPL(cow_clone_page);
 
-static int page_cow_one(struct page *oldpage, struct page *newpage,
-			struct vm_area_struct *vma, unsigned long address)
+struct page_cow_arg {
+	struct vm_area_struct *exclude_vma;
+	struct page *newpage;
+	int count;
+};
+
+static int page_cow_one(struct page *oldpage, struct vm_area_struct *vma,
+			unsigned long address, void *arg)
 {
+	struct page_cow_arg *cow_arg = arg;
+	struct page *newpage = cow_arg->newpage;
 	struct mm_struct *mm = vma->vm_mm;
 	pte_t oldptval, ptval, *pte;
 	spinlock_t *ptl;
-	int ret = 0;
 
 	pte = page_check_address(oldpage, mm, address, &ptl, 1);
 	if (!pte)
@@ -1025,41 +1032,50 @@ static int page_cow_one(struct page *oldpage, struct page *newpage,
 
 	/* Release refcount for PTE */
 	page_cache_release(oldpage);
+	cow_arg->count++;
 out:
-	return ret;
+	return SWAP_AGAIN;
+}
+
+static bool invalid_cow_vma(struct vm_area_struct *vma, void *arg)
+{
+	struct page_cow_arg *cow_arg = arg;
+
+	/*
+	 * The exclude_vma's PTE is handled by caller. (e.g. ->page_mkwrite)
+	 */
+	if (vma == cow_arg->exclude_vma)
+		return true;
+	if (!(vma->vm_flags & VM_SHARED))
+		return true;
+
+	return false;
 }
 
 /* Change old page in PTEs to new page exclude orig_vma */
 int page_cow_file(struct vm_area_struct *orig_vma, struct page *oldpage,
 		  struct page *newpage)
 {
-	struct address_space *mapping = page_mapping(oldpage);
-	pgoff_t pgoff = oldpage->index << (PAGE_CACHE_SHIFT - PAGE_SHIFT);
-	struct vm_area_struct *vma;
-	int ret = 0;
+	struct page_cow_arg cow_arg = {
+		.exclude_vma = orig_vma,
+		.newpage = newpage,
+		.count = 0,
+	};
+	struct rmap_walk_control rwc = {
+		.arg = &cow_arg,
+		.rmap_one = page_cow_one,
+		.invalid_vma = invalid_cow_vma,
+	};
 
 	BUG_ON(!PageLocked(oldpage));
 	BUG_ON(!PageLocked(newpage));
-	BUG_ON(PageAnon(oldpage));
-	BUG_ON(mapping == NULL);
+	BUG_ON(PageKsm(oldpage) || PageAnon(oldpage));
+	BUG_ON(page_mapping(oldpage) == NULL);
 
-	i_mmap_lock_read(mapping);
-	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
-		/*
-		 * The orig_vma's PTE is handled by caller.
-		 * (e.g. ->page_mkwrite)
-		 */
-		if (vma == orig_vma)
-			continue;
+	if (page_mapped(oldpage))
+		rmap_walk(oldpage, &rwc);
 
-		if (vma->vm_flags & VM_SHARED) {
-			unsigned long address = vma_address(oldpage, vma);
-			ret += page_cow_one(oldpage, newpage, vma, address);
-		}
-	}
-	i_mmap_unlock_read(mapping);
-
-	return ret;
+	return cow_arg.count;
 }
 EXPORT_SYMBOL_GPL(page_cow_file);
 
