@@ -502,7 +502,8 @@ out:
  * Caller must hold refcount of oldpage and hold lock_page(oldpage)
  */
 struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
-				     struct page *oldpage, unsigned newdelta)
+				     struct page *oldpage, bool keep_refcnt,
+				     unsigned newdelta)
 {
 	struct page *newpage = oldpage;
 	struct sb *sb;
@@ -524,7 +525,7 @@ struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
 	case RET_FORKED:
 		/* This page was already forked. Retry from lookup page. */
 		newpage = ERR_PTR(-EAGAIN);
-		WARN_ON(1);
+		WARN_ON(vma == NULL);
 	case RET_ALREADY_DIRTY:
 		/* This buffer was already dirtied. Done. */
 		goto out;
@@ -555,10 +556,13 @@ struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
 		goto out;
 
 	/*
-	 * We keep page->mapping as is, so inherit refcount of caller
-	 * for radix-tree.
+	 * We keep page->mapping as is for writeback. If keep_refcnt
+	 * is true, keep refcount of oldpage (caller releases). If
+	 * not, inherit refcount of caller for radix-tree (releases
+	 * here).
 	 */
-	/*page_cache_get(oldpage);*/
+	if (keep_refcnt)
+		page_cache_get(oldpage);
 
 	/* Replace oldpage on radix-tree with newpage */
 	err = cow_replace_page_cache(oldpage, newpage);

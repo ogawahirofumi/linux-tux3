@@ -137,24 +137,27 @@ static int tux3_set_page_dirty_bug(struct page *page)
 	return 0;
 }
 
+/*
+ * NOTE: This keeps refcount of original vmf->page, refcount is
+ * released by caller.
+ */
 static int tux3_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct inode *inode = file_inode(vma->vm_file);
 	struct sb *sb = tux_sb(inode->i_sb);
-	struct page *clone, *page;
+	struct page *clone, *page = vmf->page;
+	unsigned delta;
 	int cost, ret;
 
 	sb_start_pagefault(inode->i_sb);
+	down_read(&tux_inode(inode)->truncate_lock);
 
 retry:
-	page = vmf->page;
-
-	down_read(&tux_inode(inode)->truncate_lock);
 	lock_page(page);
 	if (page->mapping != mapping(inode)) {
 		unlock_page(page);
 		ret = VM_FAULT_NOPAGE;
-		goto out;
+		goto error;
 	}
 
 	/*
@@ -168,7 +171,7 @@ retry:
 		unlock_page(page);
 		if (nospc_wait_and_check(sb, cost, 0)) {
 			ret = VM_FAULT_SIGBUS; /* -ENOSPC */
-			goto out;
+			goto error;
 		}
 
 		lock_page(page);
@@ -181,7 +184,8 @@ retry:
 		BUG_ON(page->mapping != mapping(inode));
 	}
 
-	clone = pagefork_for_blockdirty(vma, page, tux3_get_current_delta());
+	delta = tux3_get_current_delta();
+	clone = pagefork_for_blockdirty(vma, page, page == vmf->page, delta);
 	if (IS_ERR(clone)) {
 		int err = PTR_ERR(clone);
 
@@ -191,18 +195,19 @@ retry:
 		if (err == -EAGAIN) {
 			pgoff_t index = page->index;
 
-			page_cache_release(page);
-			up_read(&tux_inode(inode)->truncate_lock);
+			/* Don't touch refcount if old page */
+			if (page != vmf->page)
+				page_cache_release(page);
 
 			/* Someone did page fork */
-			vmf->page = find_get_page(inode->i_mapping, index);
-			assert(vmf->page);
+			page = find_get_page(inode->i_mapping, index);
+			assert(page);
 			goto retry;
 		}
 
 		/* Error happened */
 		ret = block_page_mkwrite_return(err);
-		goto out;
+		goto error;
 	}
 
 	file_update_time(vma->vm_file);
@@ -227,6 +232,12 @@ out:
 	sb_end_pagefault(inode->i_sb);
 
 	return ret;
+
+error:
+	/* Don't touch refcount if orig_page */
+	if (page != vmf->page)
+		page_cache_release(page);
+	goto out;
 }
 
 static const struct vm_operations_struct tux3_file_vm_ops = {

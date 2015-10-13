@@ -206,7 +206,7 @@ retry:
 		unsigned delta = tux3_get_current_delta();
 		struct page *tmp;
 
-		tmp = pagefork_for_blockdirty(NULL, page, delta);
+		tmp = pagefork_for_blockdirty(NULL, page, false, delta);
 		if (IS_ERR(tmp)) {
 			int err;
 			unlock_page(page);
@@ -504,7 +504,7 @@ static int __tux3_truncate_partial_block(struct address_space *mapping,
 retry_find:
 		page = find_lock_page(mapping, index);
 		if (page) {
-			tmp = pagefork_for_blockdirty(NULL, page, delta);
+			tmp = pagefork_for_blockdirty(NULL, page, false, delta);
 			if (IS_ERR(tmp)) {
 				unlock_page(page);
 				page_cache_release(page);
@@ -545,7 +545,7 @@ retry_grab:
 	if (!page)
 		goto out;
 
-	tmp = pagefork_for_blockdirty(NULL, page, delta);
+	tmp = pagefork_for_blockdirty(NULL, page, false, delta);
 	if (IS_ERR(tmp)) {
 		unlock_page(page);
 		page_cache_release(page);

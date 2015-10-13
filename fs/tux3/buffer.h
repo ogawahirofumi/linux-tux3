@@ -149,7 +149,8 @@ static inline int buffer_forked(struct buffer_head *buffer)
 void free_forked_buffers(struct sb *sb, struct inode *inode, int force);
 struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta);
 struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
-				     struct page *oldpage, unsigned newdelta);
+				     struct page *oldpage, bool keep_refcnt,
+				     unsigned newdelta);
 int bufferfork_to_invalidate(struct address_space *mapping, struct page *page);
 #endif /* __KERNEL__ */
 #endif /* !TUX3_BUFFER_H */
