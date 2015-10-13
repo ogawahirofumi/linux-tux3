@@ -2027,10 +2027,10 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		spinlock_t *ptl, pte_t orig_pte)
 	__releases(ptl)
 {
-	struct page *old_page, *new_page = NULL;
+	struct page *old_page, *new_page = NULL, *forked_page = NULL;
 	pte_t entry;
 	int ret = 0;
-	int page_mkwrite = 0, changed = 0;
+	int page_mkwrite = 0;
 	struct page *dirty_page = NULL;
 	unsigned long mmun_start = 0;	/* For mmu_notifiers */
 	unsigned long mmun_end = 0;	/* For mmu_notifiers */
@@ -2096,15 +2096,22 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 
 			vmf.page = old_page;
 			tmp = do_page_mkwrite(vma, &vmf, address);
-			if (old_page != vmf.page) {
-				changed = 1;
-				old_page = vmf.page;
-			}
 			if (unlikely(!tmp || (tmp &
 					(VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
 				page_cache_release(old_page);
 				return tmp;
 			}
+
+			/*
+			 * FIXME: old_page is unlocked if page-forked.
+			 * Do we need to lock to replace PTE?
+			 */
+			/* Replace PTE with new vmf.page. */
+			if (old_page != vmf.page) {
+				forked_page = old_page;
+				old_page = vmf.page;
+			}
+
 			/*
 			 * Since we dropped the lock we need to revalidate
 			 * the PTE as someone else may have changed it.  If
@@ -2115,6 +2122,8 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 							 &ptl);
 			if (!pte_same(*page_table, orig_pte)) {
 				unlock_page(old_page);
+				if (forked_page)
+					page_cache_release(forked_page);
 				goto unlock;
 			}
 
@@ -2133,18 +2142,25 @@ reuse:
 			page_cpupid_xchg_last(old_page, (1 << LAST_CPUPID_SHIFT) - 1);
 
 		flush_cache_page(vma, address, pte_pfn(orig_pte));
-		if (!changed) {
+		if (!forked_page) {
 			entry = pte_mkyoung(orig_pte);
 			entry = maybe_mkwrite(pte_mkdirty(entry), vma);
 			if (ptep_set_access_flags(vma, address, page_table,
 						  entry, 1))
 				update_mmu_cache(vma, address, page_table);
 		} else {
-			entry = mk_pte(old_page, vma->vm_page_prot);
+			/* Similar to do_set_pte(), but no account. */
+			entry = mk_pte(dirty_page, vma->vm_page_prot);
 			entry = pte_mkyoung(entry);
 			entry = maybe_mkwrite(pte_mkdirty(entry), vma);
+			page_cache_get(dirty_page);	/* Add for PTE */
+			page_add_file_rmap(dirty_page);
 			set_pte_at(vma->vm_mm, address, page_table, entry);
 			update_mmu_cache(vma, address, page_table);
+
+			page_remove_rmap(forked_page);
+			page_cache_release(forked_page);/* Remove for PTE */
+			page_cache_release(forked_page);
 		}
 		pte_unmap_unlock(page_table, ptl);
 		ret |= VM_FAULT_WRITE;
@@ -3003,11 +3019,14 @@ static int do_shared_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 
 		vmf.page = fault_page;
 		tmp = do_page_mkwrite(vma, &vmf, address);
-		fault_page = vmf.page;
 		if (unlikely(!tmp ||
 				(tmp & (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
 			page_cache_release(fault_page);
 			return tmp;
+		}
+		if (fault_page != vmf.page) {
+			page_cache_release(fault_page);
+			fault_page = vmf.page;
 		}
 	}
 

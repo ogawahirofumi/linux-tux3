@@ -990,6 +990,8 @@ static int page_cow_one(struct page *oldpage, struct page *newpage,
 
 	/* Take refcount for PTE */
 	page_cache_get(newpage);
+	/* Take rmap accounting */
+	page_add_file_rmap(newpage);
 
 	/*
 	 * vm_page_prot doesn't have writable bit, so page fault will
@@ -1010,10 +1012,9 @@ static int page_cow_one(struct page *oldpage, struct page *newpage,
 #endif
 	set_pte_at(mm, address, pte, ptval);
 
-	/* Update rmap accounting */
+	/* Remove rmap accounting */
 	BUG_ON(PageMlocked(oldpage));	/* Caller should migrate mlock flag */
 	page_remove_rmap(oldpage);
-	page_add_file_rmap(newpage);
 
 	/* no need to invalidate: a not-present page won't be cached */
 	update_mmu_cache(vma, address, pte);
