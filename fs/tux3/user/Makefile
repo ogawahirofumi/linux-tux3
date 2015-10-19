@@ -161,7 +161,7 @@ DEP_DIRS  := $(addsuffix $(DEPDIR),$(OBJS_DIRS))
 MISSING_DEP_DIRS := $(filter-out $(wildcard $(DEP_DIRS)),$(DEP_DIRS))
 
 $(DEP_DIRS):
-	mkdir -p $@
+	$(Q)mkdir -p $@
 
 DEP_FILE = $(dir $@)$(DEPDIR)/$(notdir $@).d
 DEP_ARGS = -MF $(DEP_FILE) -MP -MMD
@@ -170,39 +170,61 @@ DEP_ARGS = -MF $(DEP_FILE) -MP -MMD
 DEP_FILES_PRESENT := $(wildcard $(DEP_FILES))
 -include $(DEP_FILES_PRESENT)
 
+# verbose or quiet
+ifeq ($(V),1)
+Q =
+cmd =	$(2)
+else
+Q =	@
+cmd =	@echo "  "$(1); $(2)
+endif
+export Q
+
+# run checker or nothing
+C ?= $(CHECK)
+ifeq ($(C),1)
+chk =	$(call cmd,$(1),$(2))
+else
+chk =
+endif
+
 # common build rules
 $(COMMON_OBJS): %.o: %.c $(MISSING_DEP_DIRS)
-	$(CC) $(DEP_ARGS) $(CFLAGS) -c -o $@ $<
-ifeq ($(CHECK),1)
-	$(CHECKER) $(CHECKFLAGS) $(CFLAGS) -c $<
-endif
+	$(call cmd,"CC        $@",\
+		$(CC) $(DEP_ARGS) $(CFLAGS) -c -o $@ $<)
+	$(call chk,"CHECK     $<",\
+		$(CHECKER) $(CHECKFLAGS) $(CFLAGS) -c $<)
 
 # use -include tux3user.h to compile ../* without any change
 $(KERN_OBJS): %.o: %.c $(MISSING_DEP_DIRS)
-	$(CC) $(DEP_ARGS) $(CFLAGS) -include tux3user.h -c -o $@ $<
-ifeq ($(CHECK),1)
-	$(CHECKER) $(CHECKFLAGS) $(CFLAGS) -include tux3user.h -c $<
-endif
+	$(call cmd,"CC        $@",\
+		$(CC) $(DEP_ARGS) $(CFLAGS) -include tux3user.h -c -o $@ $<)
+	$(call chk,"CHECK     $<",\
+		$(CHECKER) $(CHECKFLAGS) $(CFLAGS) -include tux3user.h -c $<)
 
 # build libraries rules
 $(LIBTUX3) $(LIBKLIB):
-	rm -f $@ && $(AR) $(AFLAGS) $@ $^
+	$(call cmd,"AR        $@",\
+		rm -f $@ && $(AR) $(AFLAGS) $@ $^)
 
 # build binaries rules
 $(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN):
-	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
+	$(call cmd,"LINK      $@",\
+		$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@)
 
 clean:
-	rm -f $(ALL_BIN) $(ALL_LIBS) $(ALL_OBJS)
-	rm -f a.out $(TESTDIR)/testdev
-	rm -f $(addsuffix *.gcda,$(OBJS_DIRS))
-	rm -f $(addsuffix *.gcno,$(OBJS_DIRS))
-	make -C tests clean
+	$(call cmd,"CLEAN")
+	$(Q)rm -f $(ALL_BIN) $(ALL_LIBS) $(ALL_OBJS)
+	$(Q)rm -f a.out $(TESTDIR)/testdev
+	$(Q)rm -f $(addsuffix *.gcda,$(OBJS_DIRS))
+	$(Q)rm -f $(addsuffix *.gcno,$(OBJS_DIRS))
+	$(Q)make -C tests clean
 
 distclean: clean
-	rm -f $(addsuffix *.orig,$(OBJS_DIRS))
-	rm -rf $(DEP_DIRS)
-	rm -rf $(GCOV_DIR)
+	$(call cmd,"DISTCLEAN")
+	$(Q)rm -f $(addsuffix *.orig,$(OBJS_DIRS))
+	$(Q)rm -rf $(DEP_DIRS)
+	$(Q)rm -rf $(GCOV_DIR)
 
 install: install-bin install-test
 

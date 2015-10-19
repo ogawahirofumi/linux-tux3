@@ -11,7 +11,7 @@ all: test_balloc test_btree test_buffer test_commit test_dir test_dleaf \
 	test_xattr
 
 clean:
-	rm -f foodev
+	$(Q)rm -f foodev
 
 test_balloc: balloc
 	$(VG) ./balloc
