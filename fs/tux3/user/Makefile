@@ -5,6 +5,9 @@ ARCH	= $(shell uname -m)
 CC	= gcc
 AR	= ar
 
+# Target name for per target flags
+basetarget = $(basename $@)
+
 ifeq ($(ARCH),x86_64)
 CFLAGS	+= -m64
 endif
@@ -41,10 +44,15 @@ CFLAGS	+= --coverage
 endif
 # userland can't use async, so use TUX3_FLUSHER_SYNC
 CFLAGS	+= -DTUX3_FLUSHER_SYNC
+# Per target CFLAGS
+CFLAGS	+= $(CFLAGS_$(basetarget).o)
 # user flags
 CFLAGS	+= $(UCFLAGS)
 
 LDFLAGS =
+# Per target LDFLAGS
+LDFLAGS	+= $(LDFLAGS_$(basetarget))
+
 AFLAGS	= rcs
 
 CHECKER	   = sparse
@@ -84,6 +92,8 @@ LIBEXECDIR = $(PREFIX)/libexec/tux3
 TUX3_BIN	= tux3
 ifeq ($(shell pkg-config fuse && echo found), found)
 	FUSE_BIN = tux3fuse
+	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse)
+	LDFLAGS_tux3fuse = -lfuse
 endif
 TEST_BIN	= tests/balloc tests/btree tests/buffer tests/commit \
 	tests/dir tests/dleaf tests/filemap tests/iattr \
@@ -117,10 +127,9 @@ TEST_OBJS	= tests/balloc.o tests/btree.o tests/buffer.o tests/commit.o \
 
 # objects for common build rules
 COMMON_OBJS	= $(USER_OBJS) $(TEST_LIB_OBJS) $(LIBKLIB_OBJS) $(OBJS) \
-	$(TEST_OBJS)
-
-ALL_OBJS	= $(USER_OBJS) $(KERN_OBJS) $(TEST_LIB_OBJS) $(LIBKLIB_OBJS) \
-	$(OBJS) $(FUSE_OBJS) $(TEST_OBJS)
+	$(TEST_OBJS) $(FUSE_OBJS)
+# all objects
+ALL_OBJS	= $(COMMON_OBJS) $(KERN_OBJS)
 # directories includes objects
 OBJS_DIRS := $(sort $(dir $(ALL_OBJS)))
 
@@ -131,6 +140,7 @@ all: $(ALL_BIN)
 $(LIBTUX3): $(USER_OBJS) $(KERN_OBJS) $(TEST_LIB_OBJS)
 $(LIBKLIB): $(LIBKLIB_OBJS)
 tux3: tux3.o $(ALL_LIBS)
+tux3fuse: $(FUSE_OBJS) $(ALL_LIBS)
 tests/balloc: tests/balloc.o $(ALL_LIBS)
 tests/btree: tests/btree.o $(ALL_LIBS)
 tests/buffer: tests/buffer.o $(ALL_LIBS)
@@ -179,14 +189,8 @@ $(LIBTUX3) $(LIBKLIB):
 	rm -f $@ && $(AR) $(AFLAGS) $@ $^
 
 # build binaries rules
-$(TEST_BIN) $(TUX3_BIN):
+$(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN):
 	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@
-
-$(FUSE_BIN): tux3fuse.c $(ALL_LIBS) $(MISSING_DEP_DIRS)
-	$(CC) $(DEP_ARGS) $(CFLAGS) $(LDFLAGS) $$(pkg-config --cflags fuse) tux3fuse.c -lfuse -o tux3fuse $(ALL_LIBS)
-ifeq ($(CHECK),1)
-	$(CHECKER) $(CHECKFLAGS) $(CFLAGS) $$(pkg-config --cflags fuse) tux3fuse.c
-endif
 
 clean:
 	rm -f $(ALL_BIN) $(ALL_LIBS) $(ALL_OBJS)
