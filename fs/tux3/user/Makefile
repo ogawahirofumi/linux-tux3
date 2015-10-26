@@ -218,7 +218,7 @@ clean:
 	$(Q)rm -f a.out $(TESTDIR)/testdev
 	$(Q)rm -f $(addsuffix *.gcda,$(OBJS_DIRS))
 	$(Q)rm -f $(addsuffix *.gcno,$(OBJS_DIRS))
-	$(Q)make -C tests clean
+	$(Q)$(MAKE) -C tests clean
 
 distclean: clean
 	$(call cmd,"DISTCLEAN")
@@ -238,7 +238,7 @@ install-test: install-bin $(TEST_BIN)
 
 # tests rules
 tests: $(TEST_BIN)
-	make -C tests
+	$(MAKE) -C tests
 
 # Use lcov to summarize gcov data
 coverage:
