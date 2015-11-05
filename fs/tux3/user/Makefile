@@ -72,16 +72,21 @@ TESTDIR	= $(TOPDIR)
 OWNER	= root
 GROUP	= root
 
+# check lcov option
+lcov-opt-if = $(shell						\
+	if lcov --help 2> /dev/null | grep -q -- "$(1)"; then	\
+		echo "$(2)";					\
+	else							\
+		echo "$(3)";					\
+	fi)
 # lcov flags
 TUX3_DIR = $(abspath $(TOPDIR)/../)
 GCOV_DIR = gcov
 LCOV_FLAGS = --capture
 GENHTML_FLAGS = --prefix $(TUX3_DIR) --show-details --legend
 # lcov-1.10 or above, branch coverage is off by default, enable it
-ifeq ($(shell lcov --help | grep -q -- --rc && echo has_rc), has_rc)
-	LCOV_FLAGS += --rc lcov_branch_coverage=1
-	GENHTML_FLAGS += --branch-coverage
-endif
+LCOV_FLAGS += $(call lcov-opt-if,--rc,--rc lcov_branch_coverage=1)
+GENHTML_FLAGS += $(call lcov-opt-if,--rc,--branch-coverage)
 
 DISTDIR	=
 PREFIX	= /usr/local
