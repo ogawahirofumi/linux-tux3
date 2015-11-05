@@ -101,7 +101,7 @@ ifeq ($(shell pkg-config fuse && echo found), found)
 	LDFLAGS_tux3fuse = -lfuse
 endif
 TEST_BIN	= tests/balloc tests/btree tests/buffer tests/commit \
-	tests/dir tests/dleaf tests/filemap tests/iattr \
+	tests/dir tests/dleaf tests/fault tests/filemap tests/iattr \
 	tests/ileaf tests/inode tests/log tests/xattr
 ALL_BIN		= $(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN)
 
@@ -126,7 +126,7 @@ LIBKLIB_OBJS	= libklib/find_next_bit.o libklib/fs.o libklib/list_sort.o \
 OBJS		= tux3.o
 FUSE_OBJS	= tux3fuse.o
 TEST_OBJS	= tests/balloc.o tests/btree.o tests/buffer.o tests/commit.o \
-	tests/dir.o tests/dleaf.o tests/filemap.o \
+	tests/dir.o tests/dleaf.o tests/fault.o tests/filemap.o \
 	tests/iattr.o tests/ileaf.o tests/inode.o tests/log.o \
 	tests/xattr.o
 
@@ -152,6 +152,7 @@ tests/buffer: tests/buffer.o $(ALL_LIBS)
 tests/commit: tests/commit.o $(ALL_LIBS)
 tests/dir: tests/dir.o $(ALL_LIBS)
 tests/dleaf: tests/dleaf.o $(ALL_LIBS)
+tests/fault: tests/fault.o $(ALL_LIBS)
 tests/filemap: tests/filemap.o $(ALL_LIBS)
 tests/iattr: tests/iattr.o $(ALL_LIBS)
 tests/ileaf: tests/ileaf.o $(ALL_LIBS)
