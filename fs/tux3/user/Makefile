@@ -34,6 +34,13 @@ CFLAGS	+= -DBUFFER_PARANOIA_DEBUG=1
 #CFLAGS	+= -DCURSOR_DEBUG=1
 # use LOCK_DEBUG
 CFLAGS	+= -DLOCK_DEBUG=1
+# alignment checker
+#ALIGN_CHECK = 1
+ifeq ($(ALIGN_CHECK),1)
+CFLAGS	+= -DALIGN_CHECK=1 -ldl
+# To use memmove() for unaligned access
+CFLAGS	+= -DCONFIG_MEMMOVE_UNALIGNED_ACCESS=1
+endif
 
 # gcc checker (_FORTIFY_SOURCE requires optimize option >= 1)
 # Rethink about this when optimization become default
@@ -113,6 +120,9 @@ ALL_LIBS	= $(LIBTUX3) $(LIBKLIB)
 # LIBTUX3 objects
 USER_OBJS	= commit.o current_task.o dir.o diskio.o filemap.o inode.o \
 	namei.o options.o super.o utility.o writeback.o
+ifeq ($(ALIGN_CHECK),1)
+USER_OBJS	+= aligncheck.o
+endif
 KERN_OBJS	= ../balloc.o ../btree.o ../dleaf.o ../iattr.o ../ileaf.o \
 	../log.o ../orphan.o ../policy.o ../replay.o ../xattr.o
 TEST_LIB_OBJS	= tests/test.o

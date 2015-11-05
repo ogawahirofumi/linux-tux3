@@ -311,6 +311,8 @@ ssize_t get_mount_options(struct sb *sb, char *buf, size_t size, int all)
 	return seq.count + 1;
 }
 
+#include "aligncheck.h"
+
 int tux3_init_mem(unsigned poolsize, int debug)
 {
 	int err;
@@ -328,6 +330,7 @@ int tux3_init_mem(unsigned poolsize, int debug)
 		goto error_idefer;
 
 	init_buffer_params(poolsize, debug);
+	init_alignment_check();
 
 	return 0;
 
