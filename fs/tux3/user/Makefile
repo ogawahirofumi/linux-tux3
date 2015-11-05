@@ -138,6 +138,9 @@ ALL_OBJS	= $(COMMON_OBJS) $(KERN_OBJS)
 # directories includes objects
 OBJS_DIRS := $(sort $(dir $(ALL_OBJS)))
 
+# Per target flags
+LDFLAGS_tests/fault = -ldl
+
 .PHONY: tests
 all: $(ALL_BIN)
 

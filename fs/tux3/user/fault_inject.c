@@ -5,6 +5,7 @@
 #include <time.h>
 #include <fnmatch.h>
 #include <malloc.h>
+#include <dlfcn.h>
 
 #include "fault_inject.h"
 
@@ -173,22 +174,20 @@ void __fault_do_enable(struct fault_pattern *pattern)
  * Memory fault injection hooks for glibc
  */
 
-#define HOOK_TO_GLIBC(err, rettype, name, proto, ...)			\
-rettype __libc_##name proto;						\
-rettype name proto							\
-{									\
-	fault_return("memory:", NULL);					\
-	return __libc_##name(__VA_ARGS__);				\
+#define HOOK_TO_GLIBC(err, rettype, name, proto, args...)	\
+static rettype (*libc_##name) proto;				\
+rettype name proto						\
+{								\
+	fault_return("memory:", err);				\
+	if (libc_##name == NULL)				\
+		libc_##name = dlsym(RTLD_NEXT, #name);		\
+	return libc_##name(args);				\
 }
 
 HOOK_TO_GLIBC(NULL, void *, malloc, (size_t size), size);
 HOOK_TO_GLIBC(NULL, void *, calloc, (size_t nmemb, size_t size), nmemb, size);
 HOOK_TO_GLIBC(NULL, void *, realloc, (void *ptr, size_t size), ptr, size);
-
-void *__libc_memalign(size_t alignment, size_t size);
-void *aligned_alloc(size_t alignment, size_t size)
-{
-	fault_return("memory:", NULL);
-	return __libc_memalign(alignment, size);
-}
+HOOK_TO_GLIBC(ENOMEM, int, posix_memalign,
+	      (void **memptr, size_t alignment, size_t size),
+	      memptr, alignment, size);
 #endif /* !FAULT_INJECTION */
