@@ -581,6 +581,11 @@ static int commit_delta(struct sb *sb)
 	 * We can optimize by delaying deferred free until after next
 	 * REQ_FLUSH in next delta. Therefore, if make it async, we
 	 * can start next delta more early.
+	 *
+	 * (But if data integrity path (sync, fsync, umount, etc.), we
+	 * have to make sure last commit was done. So if those paths,
+	 * we would need REQ_FUA here (or __sync_current_delta() such
+	 * issues REQ_FLUSH instead?).
 	 */
 	if (barrier) {
 		/*
