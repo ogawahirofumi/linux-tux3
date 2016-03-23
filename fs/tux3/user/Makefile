@@ -58,7 +58,7 @@ CFLAGS	+= $(UCFLAGS)
 
 LDFLAGS =
 # Per target LDFLAGS
-LDFLAGS	+= $(LDFLAGS_$(basetarget))
+LDFLAGS	+= $(LDFLAGS_$@)
 
 AFLAGS	= rcs
 
