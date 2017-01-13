@@ -34,6 +34,25 @@
  */
 #define MIN_WRITEBACK_PAGES	(4096UL >> (PAGE_CACHE_SHIFT - 10))
 
+/*
+ * Passed into wb_writeback(), essentially a subset of writeback_control
+ */
+struct wb_writeback_work {
+	long nr_pages;
+	struct super_block *sb;
+	unsigned long *older_than_this;
+	enum writeback_sync_modes sync_mode;
+	unsigned int tagged_writepages:1;
+	unsigned int for_kupdate:1;
+	unsigned int range_cyclic:1;
+	unsigned int for_background:1;
+	unsigned int for_sync:1;	/* sync(2) WB_SYNC_ALL writeback */
+	enum wb_reason reason;		/* why was writeback initiated? */
+
+	struct list_head list;		/* pending work list */
+	struct completion *done;	/* set if the caller waits */
+};
+
 /**
  * writeback_in_progress - determine whether there is writeback in progress
  * @bdi: the device's backing_dev_info structure.
@@ -171,36 +190,6 @@ void inode_wb_list_del(struct inode *inode)
 	list_del_init(&inode->i_wb_list);
 	spin_unlock(&bdi->wb.list_lock);
 }
-
-/*
- * Remove inode from writeback list if clean.
- */
-void inode_writeback_done(struct inode *inode)
-{
-	struct backing_dev_info *bdi = inode_to_bdi(inode);
-
-	spin_lock(&bdi->wb.list_lock);
-	spin_lock(&inode->i_lock);
-	if (!(inode->i_state & I_DIRTY))
-		list_del_init(&inode->i_wb_list);
-	spin_unlock(&inode->i_lock);
-	spin_unlock(&bdi->wb.list_lock);
-}
-EXPORT_SYMBOL_GPL(inode_writeback_done);
-
-/*
- * Add inode to writeback dirty list with current time.
- */
-void inode_writeback_touch(struct inode *inode)
-{
-	struct backing_dev_info *bdi = inode_to_bdi(inode);
-
-	spin_lock(&bdi->wb.list_lock);
-	inode->dirtied_when = jiffies;
-	list_move(&inode->i_wb_list, &bdi->wb.b_dirty);
-	spin_unlock(&bdi->wb.list_lock);
-}
-EXPORT_SYMBOL_GPL(inode_writeback_touch);
 
 /*
  * Redirty an inode: set its when-it-was dirtied timestamp and move it to the
@@ -621,9 +610,9 @@ static long writeback_chunk_size(struct backing_dev_info *bdi,
  *
  * Return the number of pages and/or inodes written.
  */
-static long generic_writeback_sb_inodes(struct super_block *sb,
-					struct bdi_writeback *wb,
-					struct wb_writeback_work *work)
+static long writeback_sb_inodes(struct super_block *sb,
+				struct bdi_writeback *wb,
+				struct wb_writeback_work *work)
 {
 	struct writeback_control wbc = {
 		.sync_mode		= work->sync_mode,
@@ -736,22 +725,6 @@ static long generic_writeback_sb_inodes(struct super_block *sb,
 		}
 	}
 	return wrote;
-}
-
-static long writeback_sb_inodes(struct super_block *sb,
-				struct bdi_writeback *wb,
-				struct wb_writeback_work *work)
-{
-	if (sb->s_op->writeback) {
-		long ret;
-
-		spin_unlock(&wb->list_lock);
-		ret = sb->s_op->writeback(sb, wb, work);
-		spin_lock(&wb->list_lock);
-		return ret;
-	}
-
-	return generic_writeback_sb_inodes(sb, wb, work);
 }
 
 static long __writeback_inodes_wb(struct bdi_writeback *wb,
@@ -1318,35 +1291,6 @@ static void wait_sb_inodes(struct super_block *sb)
 	spin_unlock(&inode_sb_list_lock);
 	iput(old_inode);
 }
-
-/**
- * writeback_queue_work_sb -	schedule writeback work from given super_block
- * @sb: the superblock
- * @work: work item to queue
- *
- * Schedule writeback work on this super_block. This usually used to
- * interact with sb->s_op->writeback callback. The caller must
- * guarantee to @work is not freed while bdi flusher is using (for
- * example, be safe against umount).
- */
-void writeback_queue_work_sb(struct super_block *sb,
-			     struct wb_writeback_work *work)
-{
-	if (sb->s_bdi == &noop_backing_dev_info)
-		return;
-
-	/* Allow only following fields to use. */
-	*work = (struct wb_writeback_work){
-		.sb			= sb,
-		.sync_mode		= work->sync_mode,
-		.tagged_writepages	= work->tagged_writepages,
-		.done			= work->done,
-		.nr_pages		= work->nr_pages,
-		.reason			= work->reason,
-	};
-	bdi_queue_work(sb->s_bdi, work);
-}
-EXPORT_SYMBOL(writeback_queue_work_sb);
 
 /**
  * writeback_inodes_sb_nr -	writeback dirty inodes from given super_block

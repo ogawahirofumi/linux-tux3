@@ -1980,27 +1980,29 @@ static inline void cow_user_page(struct page *dst, struct page *src, unsigned lo
  *
  * We do this without the lock held, so that it can sleep if it needs to.
  */
-static int do_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf,
-			   unsigned long address)
+static int do_page_mkwrite(struct vm_area_struct *vma, struct page *page,
+	       unsigned long address)
 {
+	struct vm_fault vmf;
 	int ret;
 
-	vmf->virtual_address = (void __user *)(address & PAGE_MASK);
-	vmf->pgoff = vmf->page->index;
-	vmf->flags = FAULT_FLAG_WRITE|FAULT_FLAG_MKWRITE;
+	vmf.virtual_address = (void __user *)(address & PAGE_MASK);
+	vmf.pgoff = page->index;
+	vmf.flags = FAULT_FLAG_WRITE|FAULT_FLAG_MKWRITE;
+	vmf.page = page;
 
-	ret = vma->vm_ops->page_mkwrite(vma, vmf);
+	ret = vma->vm_ops->page_mkwrite(vma, &vmf);
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))
 		return ret;
 	if (unlikely(!(ret & VM_FAULT_LOCKED))) {
-		lock_page(vmf->page);
-		if (!vmf->page->mapping) {
-			unlock_page(vmf->page);
+		lock_page(page);
+		if (!page->mapping) {
+			unlock_page(page);
 			return 0; /* retry */
 		}
 		ret |= VM_FAULT_LOCKED;
 	} else
-		VM_BUG_ON_PAGE(!PageLocked(vmf->page), vmf->page);
+		VM_BUG_ON_PAGE(!PageLocked(page), page);
 	return ret;
 }
 
@@ -2027,7 +2029,7 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		spinlock_t *ptl, pte_t orig_pte)
 	__releases(ptl)
 {
-	struct page *old_page, *new_page = NULL, *forked_page = NULL;
+	struct page *old_page, *new_page = NULL;
 	pte_t entry;
 	int ret = 0;
 	int page_mkwrite = 0;
@@ -2088,30 +2090,15 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		 * get_user_pages(.write=1, .force=1).
 		 */
 		if (vma->vm_ops && vma->vm_ops->page_mkwrite) {
-			struct vm_fault vmf;
 			int tmp;
-
 			page_cache_get(old_page);
 			pte_unmap_unlock(page_table, ptl);
-
-			vmf.page = old_page;
-			tmp = do_page_mkwrite(vma, &vmf, address);
+			tmp = do_page_mkwrite(vma, old_page, address);
 			if (unlikely(!tmp || (tmp &
 					(VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
 				page_cache_release(old_page);
 				return tmp;
 			}
-
-			/*
-			 * FIXME: old_page is unlocked if page-forked.
-			 * Do we need to lock to replace PTE?
-			 */
-			/* Replace PTE with new vmf.page. */
-			if (old_page != vmf.page) {
-				forked_page = old_page;
-				old_page = vmf.page;
-			}
-
 			/*
 			 * Since we dropped the lock we need to revalidate
 			 * the PTE as someone else may have changed it.  If
@@ -2122,8 +2109,6 @@ static int do_wp_page(struct mm_struct *mm, struct vm_area_struct *vma,
 							 &ptl);
 			if (!pte_same(*page_table, orig_pte)) {
 				unlock_page(old_page);
-				if (forked_page)
-					page_cache_release(forked_page);
 				goto unlock;
 			}
 
@@ -2142,26 +2127,10 @@ reuse:
 			page_cpupid_xchg_last(old_page, (1 << LAST_CPUPID_SHIFT) - 1);
 
 		flush_cache_page(vma, address, pte_pfn(orig_pte));
-		if (!forked_page) {
-			entry = pte_mkyoung(orig_pte);
-			entry = maybe_mkwrite(pte_mkdirty(entry), vma);
-			if (ptep_set_access_flags(vma, address, page_table,
-						  entry, 1))
-				update_mmu_cache(vma, address, page_table);
-		} else {
-			/* Similar to do_set_pte(), but no account. */
-			entry = mk_pte(dirty_page, vma->vm_page_prot);
-			entry = pte_mkyoung(entry);
-			entry = maybe_mkwrite(pte_mkdirty(entry), vma);
-			page_cache_get(dirty_page);	/* Add for PTE */
-			page_add_file_rmap(dirty_page);
-			set_pte_at(vma->vm_mm, address, page_table, entry);
+		entry = pte_mkyoung(orig_pte);
+		entry = maybe_mkwrite(pte_mkdirty(entry), vma);
+		if (ptep_set_access_flags(vma, address, page_table, entry,1))
 			update_mmu_cache(vma, address, page_table);
-
-			page_remove_rmap(forked_page);
-			page_cache_release(forked_page);/* Remove for PTE */
-			page_cache_release(forked_page);
-		}
 		pte_unmap_unlock(page_table, ptl);
 		ret |= VM_FAULT_WRITE;
 
@@ -3013,20 +2982,12 @@ static int do_shared_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * about to become writable
 	 */
 	if (vma->vm_ops->page_mkwrite) {
-		struct vm_fault vmf;
-
 		unlock_page(fault_page);
-
-		vmf.page = fault_page;
-		tmp = do_page_mkwrite(vma, &vmf, address);
+		tmp = do_page_mkwrite(vma, fault_page, address);
 		if (unlikely(!tmp ||
 				(tmp & (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))) {
 			page_cache_release(fault_page);
 			return tmp;
-		}
-		if (fault_page != vmf.page) {
-			page_cache_release(fault_page);
-			fault_page = vmf.page;
 		}
 	}
 
