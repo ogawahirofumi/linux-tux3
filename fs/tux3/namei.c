@@ -269,7 +269,7 @@ static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
 		}
 
 		/*
-		 * The directory is protected by i_mutex.
+		 * The directory is protected by inode_lock.
 		 * blockdirty() should never return -EAGAIN.
 		 */
 		olddata = bufdata(new_buffer);
@@ -340,7 +340,7 @@ error:
 const struct file_operations tux_dir_fops = {
 	.llseek		= generic_file_llseek,
 	.read		= generic_read_dir,
-	.iterate	= tux_readdir,
+	.iterate_shared	= tux_readdir,
 	.fsync		= tux3_sync_file,
 };
 

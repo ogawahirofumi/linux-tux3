@@ -323,7 +323,7 @@ static int tux3_write_end(struct file *file, struct address_space *mapping,
 
 	/*
 	 * No need to use i_size_read() here, the i_size
-	 * cannot change under us because we hold i_mutex.
+	 * cannot change under us because we hold inode_lock.
 	 *
 	 * But it's important to update i_size while still holding page lock:
 	 * page writeout could otherwise come in and zero beyond i_size.

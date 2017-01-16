@@ -992,7 +992,7 @@ int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags)
 
 /*
  * Timestamp handler for special file.  This is not called under
- * change_{begin,end}() or ->i_mutex.
+ * change_{begin,end}() or inode_lock.
  *
  * FIXME: special file should also handle timestamp as transaction?
  */
@@ -1007,7 +1007,7 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 	if (!(flags & ~S_ATIME))
 		return 0;
 
-	/* FIXME: no i_mutex, so this is racy */
+	/* FIXME: no inode_lock, so this is racy */
 	if (change_begin(sb, 1))
 		return -ENOSPC;
 	if (flags & S_VERSION)

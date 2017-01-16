@@ -27,7 +27,7 @@ TUX3_DEFINE_STATE_FNS(unsigned, iattr, IATTR_DIRTY,
 		      IFLAGS_IATTR_BITS, IFLAGS_IATTR_SHIFT);
 
 /* FIXME: can we consolidate tuxnode->lock usage with I_DIRTY and xattrdirty? */
-/* FIXME: timestamps is updated without i_mutex, so racy. */
+/* FIXME: timestamps is updated without inode_lock, so racy. */
 
 /* Caller must hold tuxnode->lock. */
 static void idata_copy(struct inode *inode, struct tux3_iattr_data *idata)

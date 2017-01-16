@@ -119,7 +119,7 @@ int tux3_flush_hole(struct inode *inode, unsigned delta)
 /*
  * Add new hole extent.
  *
- * Find holes, and merge if possible (caller must hold ->i_mutex)
+ * Find holes, and merge if possible (caller must hold inode_lock)
  * FIXME: we can use RCU for this?
  * FIXME: list doesn't scale, use better algorithm
  */
@@ -135,7 +135,7 @@ static int tux3_add_hole(struct inode *inode, block_t start, block_t count)
 
 	/*
 	 * Find frontend dirty holes, and merge if possible
-	 * (->dirty_holes is protected by ->i_mutex)
+	 * (->dirty_holes is protected by inode_lock)
 	 */
 	list_for_each_entry_safe(hole, safe, &i_ddc->dirty_holes, dirty_list) {
 		block_t end = start + count;

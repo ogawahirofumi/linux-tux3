@@ -174,7 +174,7 @@ loff_t tux_alloc_entry(struct inode *dir, const char *name, unsigned len,
 
 create:
 	/*
-	 * The directory is protected by i_mutex.
+	 * The directory is protected by inode_lock.
 	 * blockdirty() should never return -EAGAIN.
 	 */
 	olddata = bufdata(buffer);
@@ -224,7 +224,7 @@ struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
 	inum_t inum;
 	int err, err2;
 
-	/* Holding dir->i_mutex, so no i_size_read() */
+	/* Holding inode_lock(dir), so no i_size_read() */
 	i_size = dir->i_size;
 	where = tux_alloc_entry(dir, name, len, &i_size, &buffer);
 	if (where < 0)
@@ -300,7 +300,7 @@ error:
 struct tux3_dirent *tux_find_dirent(struct inode *dir, const struct qstr *qstr,
 				    struct buffer_head **result)
 {
-	/* Holding dir->i_mutex, so no i_size_read() */
+	/* Holding inode_lock(_shared)(dir), so no i_size_read() */
 	return tux_find_entry(dir, (const char *)qstr->name, qstr->len,
 			      result, dir->i_size);
 }
@@ -441,7 +441,7 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 		offset = 0;
 
 		if (ctx->pos < dir->i_size) {
-			if (!dir_relax(dir))
+			if (!dir_relax_shared(dir))
 				return 0;
 		}
 	}
@@ -467,7 +467,7 @@ int tux_delete_entry(struct inode *dir, struct buffer_head *buffer,
 	}
 
 	/*
-	 * The directory is protected by i_mutex.
+	 * The directory is protected by inode_lock.
 	 * blockdirty() should never return -EAGAIN.
 	 */
 	olddata = bufdata(buffer);

@@ -113,7 +113,7 @@ static loff_t unatom_dict_write(struct inode *atable, atom_t atom, loff_t where)
 		return -EIO;
 
 	/*
-	 * The atable is protected by i_mutex for now.
+	 * The atable is protected by inode_lock for now.
 	 * blockdirty() should never return -EAGAIN.
 	 * FIXME: need finer granularity locking
 	 */
@@ -273,7 +273,7 @@ static int update_refcount(struct sb *sb, struct buffer_head *buffer,
 	__be16 *refcount;
 
 	/*
-	 * The atable is protected by i_mutex for now.
+	 * The atable is protected by inode_lock for now.
 	 * blockdirty() should never return -EAGAIN.
 	 * FIXME: need finer granularity locking
 	 */
@@ -696,7 +696,7 @@ int get_xattr(struct inode *inode, const char *name, unsigned len, void *data,
 	atom_t atom;
 	int ret;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock_shared(atable);
 	ret = find_atom(atable, name, len, &atom);
 	if (ret)
 		goto out;
@@ -713,7 +713,7 @@ int get_xattr(struct inode *inode, const char *name, unsigned len, void *data,
 	else if (size)
 		ret = -ERANGE;
 out:
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock_shared(atable);
 	return ret;
 }
 
@@ -723,7 +723,7 @@ int set_xattr(struct inode *inode, const char *name, unsigned len,
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct inode *atable = sb->atable;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock(atable);
 	/* FIXME: cost */
 	change_begin(sb, 0);
 
@@ -737,7 +737,7 @@ int set_xattr(struct inode *inode, const char *name, unsigned len,
 	}
 
 	change_end(sb);
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock(atable);
 
 	return err;
 }
@@ -748,7 +748,7 @@ int del_xattr(struct inode *inode, const char *name, unsigned len)
 	struct inode *atable = sb->atable;
 	int err;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock(atable);
 	/* FIXME: cost */
 	change_begin(sb, 0);
 
@@ -774,7 +774,7 @@ int del_xattr(struct inode *inode, const char *name, unsigned len)
 	}
 out:
 	change_end(sb);
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock(atable);
 
 	return err;
 }
@@ -784,7 +784,7 @@ int list_xattr(struct inode *inode, char *text, size_t size)
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct inode *atable = sb->atable;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock_shared(atable);
 
 	struct xcache *xcache = tux_inode(inode)->xcache;
 	if (!xcache)
@@ -829,12 +829,12 @@ int list_xattr(struct inode *inode, char *text, size_t size)
 		}
 	}
 	assert(xattr == xlimit);
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock_shared(atable);
 
 	return text - base;
 
 error:
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock_shared(atable);
 	return err;
 }
 

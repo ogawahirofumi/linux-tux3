@@ -18,20 +18,20 @@
  * down_write(inode: btree->lock) (btree_chop, filemap for write)
  * down_read(inode: btree->lock) (filemap for read)
  *
- * inode->i_mutex
+ * inode_lock
  *     mapping->private_lock (front uses to protect dirty buffer list)
  *     tuxnode->hole_extents_lock (for inode->hole_extents,
- *				   i_ddc->dirty_holes is protected by ->i_mutex)
+ *				   i_ddc->dirty_holes is protected by inode_lock)
  *
  *     inode->i_lock
  *         tuxnode->lock (to protect tuxnode data)
  *             tuxnode->dirty_inodes_lock (for i_ddc->dirty_inodes,
  *					   Note: timestamp can be updated
- *					   outside inode->i_mutex)
+ *					   outside inode_lock(inode))
  *
  * sb->forked_buffers (for sb->forked_buffers)
  *
- * This lock may be first lock except vfs locks (lock_super, i_mutex).
+ * This lock may be first lock except vfs locks (lock_super, inode_lock).
  * sb->delta_lock (change_begin, change_end) [only for TUX3_FLUSHER_SYNC]
  *
  * memory allocation: (blockread, blockget, kmalloc, etc.)
@@ -422,7 +422,7 @@ static int filemap(struct inode *inode, block_t start, unsigned count,
 	int segs;
 
 	/*
-	 * NOTE: hole extents are not protected by i_mutex on MAP_READ
+	 * NOTE: hole extents are not protected by inode_lock on MAP_READ
 	 * path. So, we shouldn't assume it is stable.
 	 */
 
@@ -942,9 +942,9 @@ static sector_t tux3_bmap(struct address_space *mapping, sector_t iblock)
 {
 	sector_t blocknr;
 
-	mutex_lock(&mapping->host->i_mutex);
+	inode_lock_shared(mapping->host);
 	blocknr = generic_block_bmap(mapping, iblock, tux3_get_block);
-	mutex_unlock(&mapping->host->i_mutex);
+	inode_unlock_shared(mapping->host);
 
 	return blocknr;
 }
