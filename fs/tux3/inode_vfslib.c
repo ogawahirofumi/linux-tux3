@@ -25,19 +25,16 @@ static ssize_t tux3_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		inode_unlock(inode);
 		return -ENOSPC;
 	}
-
-	/* FIXME: file_update_time() in this can be race with mmap */
-	ret = __generic_file_write_iter(iocb, from);
+	ret = generic_write_checks(iocb, from);
+	if (ret > 0) {
+		/* FIXME: file_update_time() in this can be race with mmap */
+		ret = __generic_file_write_iter(iocb, from);
+	}
 	if (change_active())
 		change_end(sb);
 	inode_unlock(inode);
 
-	if (ret > 0) {
-		ssize_t err;
-
-		err = generic_write_sync(file, iocb->ki_pos - ret, ret);
-		if (err < 0)
-			ret = err;
-	}
+	if (ret > 0)
+		ret = generic_write_sync(iocb, ret);
 	return ret;
 }
