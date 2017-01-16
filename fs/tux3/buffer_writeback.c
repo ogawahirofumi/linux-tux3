@@ -595,7 +595,7 @@ static void bufvec_cancel_and_unlock_page(struct page *page,
 	if (page->index < outside_index)
 		tux3_try_cancel_dirty_page(page);
 	else
-		cancel_dirty_page(page, PAGE_SIZE);
+		cancel_dirty_page(page);
 
 	unlock_page(page);
 }

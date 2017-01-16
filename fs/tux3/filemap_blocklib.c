@@ -377,7 +377,7 @@ void tux3_try_cancel_dirty_page(struct page *page)
 		tmp = tmp->b_this_page;
 	} while (tmp != head);
 
-	cancel_dirty_page(page, PAGE_SIZE);
+	cancel_dirty_page(page);
 }
 
 /*
@@ -432,7 +432,7 @@ static void tux3_invalidatepage(struct page *page, unsigned int offset,
 	} while (bh != head);
 
 	if (!has_dirty)
-		cancel_dirty_page(page, length);
+		cancel_dirty_page(page);
 
 	/*
 	 * We release buffers only if the entire page is being invalidated.
