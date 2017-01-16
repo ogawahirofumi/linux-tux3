@@ -635,7 +635,7 @@ int tux3_truncate_partial_block(struct inode *inode, loff_t newsize)
 
 /* Handler for ->truncatepage() */
 static void tux3_truncatepage(struct address_space *mapping, struct page *page,
-			      unsigned start, unsigned len, int wait)
+			      unsigned start, unsigned len, bool wait)
 {
 	/*
 	 * Partial truncate. This is handled by tux3_truncate_partial_block().
