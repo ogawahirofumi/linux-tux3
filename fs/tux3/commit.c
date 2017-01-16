@@ -579,13 +579,13 @@ static int commit_delta(struct sb *sb)
 	 * free must be done after commit block was hit to media.
 	 *
 	 * We can optimize by delaying deferred free until after next
-	 * REQ_FLUSH in next delta. Therefore, if make it async, we
+	 * REQ_PREFLUSH in next delta. Therefore, if make it async, we
 	 * can start next delta more early.
 	 *
 	 * (But if data integrity path (sync, fsync, umount, etc.), we
 	 * have to make sure last commit was done. So if those paths,
 	 * we would need REQ_FUA here (or __sync_current_delta() such
-	 * issues REQ_FLUSH instead?).
+	 * issues REQ_PREFLUSH instead?).
 	 */
 	if (barrier) {
 		/*
@@ -593,7 +593,7 @@ static int commit_delta(struct sb *sb)
 		 * CFQ-queue with previous, and to avoid CFQ's
 		 * idle_slice_timer between CFQ-queues.
 		 */
-		req_flag |= REQ_NOIDLE | REQ_FLUSH | REQ_FUA;
+		req_flag |= REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA;
 	}
 
 	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
