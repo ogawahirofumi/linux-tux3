@@ -16,7 +16,7 @@ static int vecio(enum req_op req_op, unsigned int req_flags,
 {
 	struct bio *bio;
 
-	BUG_ON(vecs > bio_get_nr_vecs(dev));
+	BUG_ON(vecs > BIO_MAX_PAGES);
 
 	bio = bio_alloc(GFP_NOIO, vecs);
 	if (!bio)
