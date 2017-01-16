@@ -669,18 +669,24 @@ int xcache_remove_all(struct inode *inode)
 	if (xcache) {
 		struct xcache_entry *xattr = xcache->xattrs;
 		struct xcache_entry *xlimit = xcache_limit(xcache);
+		int err = 0;
+
+		inode_lock(sb->atable);
 		while (xattr < xlimit) {
 			/*
 			 * FIXME: Inode is going to purse, what to do
 			 * if error ?
 			 */
 			atom_t atom = get_unaligned(&xattr->atom);
-			int err = atomref(sb->atable, atom, -1);
+			err = atomref(sb->atable, atom, -1);
 			if (err)
-				return err;
+				break;
 
 			xattr = xcache_next(xattr);
 		}
+		inode_unlock(sb->atable);
+		if (err)
+			return err;
 		assert(xattr == xlimit);
 	}
 
