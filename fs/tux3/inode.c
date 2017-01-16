@@ -1026,8 +1026,6 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 
 static const struct file_operations tux_file_fops = {
 	.llseek		= generic_file_llseek,
-	.read		= new_sync_read,
-	.write		= new_sync_write,
 	.read_iter	= generic_file_read_iter,
 	.write_iter	= tux3_file_write_iter,
 //	.unlocked_ioctl	= fat_generic_ioctl,
