@@ -238,25 +238,26 @@ static void prepare_and_unlock_page(struct page *page)
 }
 
 /* Completion of page for I/O */
-static void bufvec_page_end_io(struct page *page, int uptodate, int quiet)
+static void bufvec_page_end_io(struct bio *bio, struct page *page)
 {
 	end_page_writeback(page);
 }
 
-/* Completion of buffer for I/O */
-static void bufvec_buffer_end_io(struct buffer_head *buffer, int uptodate,
-				 int quiet)
+static void buffer_io_error(struct buffer_head *bh, const char *msg)
 {
-	char b[BDEVNAME_SIZE];
+	printk_ratelimited(KERN_ERR
+			"Buffer I/O error on dev %pg, logical block %llu%s\n",
+			bh->b_bdev, (unsigned long long)bh->b_blocknr, msg);
+}
 
-	if (uptodate)
+/* Completion of buffer for I/O */
+static void bufvec_buffer_end_io(struct bio *bio, struct buffer_head *buffer)
+{
+	if (!bio->bi_error)
 		set_buffer_uptodate(buffer);
 	else {
-		if (!quiet) {
-			printk(KERN_WARNING "lost page write due to "
-			       "I/O error on %s\n",
-			       bdevname(buffer->b_bdev, b));
-		}
+		if (!bio_flagged(bio, BIO_QUIET))
+			buffer_io_error(buffer, ", lost page write");
 		set_buffer_write_io_error(buffer);
 		clear_buffer_uptodate(buffer);
 	}
@@ -285,16 +286,14 @@ static int bufvec_is_multiple_ranges(struct bufvec *bufvec)
  * page, and those are submitted BIO for each range. So, completion of
  * the page is only if all BIOs are done.
  */
-static void bufvec_end_io_multiple(struct bio *bio, int err)
+static void bufvec_end_io_multiple(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct address_space *mapping;
 	struct page *page;
 	struct buffer_head *buffer, *first, *tmp;
 	unsigned long flags;
 
-	trace("bio %p, err %d", bio, err);
+	trace("bio %p, err %d", bio, bio->bi_error);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -305,11 +304,10 @@ static void bufvec_end_io_multiple(struct bio *bio, int err)
 
 	trace("buffer %p", buffer);
 	tux3_clear_buffer_dirty_for_io_hack(buffer);
-	bufvec_buffer_end_io(buffer, uptodate, quiet);
+	bufvec_buffer_end_io(bio, buffer);
 	put_bh(buffer);
 
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
-	bio_put(bio);
 
 	/* Check buffers on the page. If all was done, clear writeback */
 	local_irq_save(flags);
@@ -325,12 +323,14 @@ static void bufvec_end_io_multiple(struct bio *bio, int err)
 	bit_spin_unlock(BH_Uptodate_Lock, &first->b_state);
 	local_irq_restore(flags);
 
-	bufvec_page_end_io(page, uptodate, quiet);
+	bufvec_page_end_io(bio, page);
+	bio_put(bio);
 	return;
 
 still_busy:
 	bit_spin_unlock(BH_Uptodate_Lock, &first->b_state);
 	local_irq_restore(flags);
+	bio_put(bio);
 }
 
 /*
@@ -398,14 +398,12 @@ static void bufvec_bio_add_multiple(struct bufvec *bufvec)
 /*
  * bio completion for bufvec based I/O
  */
-static void bufvec_end_io(struct bio *bio, int err)
+static void bufvec_end_io(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct address_space *mapping;
 	struct page *page, *last_page;
 
-	trace("bio %p, err %d", bio, err);
+	trace("bio %p, err %d", bio, bio->bi_error);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -424,7 +422,7 @@ static void bufvec_end_io(struct bio *bio, int err)
 		put_bh(buffer);
 
 		if (page != last_page) {
-			bufvec_page_end_io(page, uptodate, quiet);
+			bufvec_page_end_io(bio, page);
 			last_page = page;
 		}
 	}
@@ -833,10 +831,8 @@ int __tux3_volmap_io(struct bufvec *bufvec, block_t physical, unsigned count)
  * buffers/pages pages clean.
  */
 
-static void vol_early_end_io(struct bio *bio, int err)
+static void vol_early_end_io(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct buffer_head *buffer = bio->bi_private;
 	struct address_space *mapping;
 
@@ -844,7 +840,7 @@ static void vol_early_end_io(struct bio *bio, int err)
 	mapping = bufvec_bio_mapping(bio);
 
 	/* Keep buffer dirty. State will be updated at 2st phase. */
-	bufvec_buffer_end_io(buffer, uptodate, quiet);
+	bufvec_buffer_end_io(bio, buffer);
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 }
@@ -870,13 +866,11 @@ int vol_early_io(enum req_op req_op, unsigned int req_flags,
 	return err;
 }
 
-static void bufvec_end_io_early(struct bio *bio, int err)
+static void bufvec_end_io_early(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct address_space *mapping;
 
-	trace("bio %p, err %d", bio, err);
+	trace("bio %p, err %d", bio, bio->bi_error);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -887,7 +881,7 @@ static void bufvec_end_io_early(struct bio *bio, int err)
 		if (!buffer)
 			break;
 
-		bufvec_buffer_end_io(buffer, uptodate, quiet);
+		bufvec_buffer_end_io(bio, buffer);
 	}
 
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);

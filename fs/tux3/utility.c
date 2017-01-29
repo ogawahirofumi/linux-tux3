@@ -42,12 +42,12 @@ struct biosync {
 	int err;
 };
 
-static void syncio_end_io(struct bio *bio, int err)
+static void syncio_end_io(struct bio *bio)
 {
 	struct biosync *sync = bio->bi_private;
-	bio_put(bio);
-	sync->err = err;
+	sync->err = bio->bi_error;
 	complete(&sync->done);
+	bio_put(bio);
 }
 
 static int syncio(enum req_op req_op, unsigned int req_flags,
