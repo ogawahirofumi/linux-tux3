@@ -773,9 +773,9 @@ static inline void tux_setup_inode_common(struct inode *inode)
 	case S_IFBLK:
 	case S_IFCHR:
 	case S_IFREG:
-	case S_IFLNK:
 		/* Use default gfp type */
 		break;
+	case S_IFLNK:
 	case S_IFDIR:
 		inode_nohighmem(inode);
 		break;
@@ -1069,8 +1069,7 @@ static const struct inode_operations tux_special_iops = {
 
 const struct inode_operations tux_symlink_iops = {
 	.readlink	= generic_readlink,
-	.follow_link	= page_follow_link_light,
-	.put_link	= page_put_link,
+	.get_link	= page_get_link,
 	.setattr	= tux3_setattr,
 	.getattr	= tux3_getattr,
 #if 0
