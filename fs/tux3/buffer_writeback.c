@@ -209,7 +209,7 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	 * NOTE: This is assuming to be called after clearing dirty
 	 * (See comment of tux3_clear_page_dirty_for_io()).
 	 */
-	__tux3_test_set_page_writeback(page, old_writeback);
+	tux3_test_set_page_writeback(page, old_writeback);
 
 	/*
 	 * Zero fill the page for mmap outside i_size after clear dirty.
