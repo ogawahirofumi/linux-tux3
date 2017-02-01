@@ -854,7 +854,7 @@ static inline void tux_setup_inode_common(struct inode *inode)
 
 int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err, need_truncate = 0, need_lock = 0;
 
@@ -896,7 +896,7 @@ unlock:
 #ifdef __KERNEL__
 int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 
 	generic_fillattr(inode, stat);

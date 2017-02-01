@@ -88,7 +88,7 @@ static int tux3_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 static int tux3_link(struct dentry *old_dentry, struct inode *dir,
 		     struct dentry *dentry)
 {
-	struct inode *inode = old_dentry->d_inode;
+	struct inode *inode = d_inode(old_dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err;
 
@@ -179,7 +179,7 @@ static int tux3_symlink(struct inode *dir, struct dentry *dentry,
 
 static int tux3_unlink(struct inode *dir, struct dentry *dentry)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 	bool orphaned = inode->i_nlink == 1;
 	int err;
@@ -201,7 +201,7 @@ static int tux3_unlink(struct inode *dir, struct dentry *dentry)
 static int tux3_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct sb *sb = tux_sb(dir->i_sb);
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	int err;
 
 	err = tux_dir_is_empty(inode);
@@ -228,8 +228,8 @@ static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
 		       struct inode *new_dir, struct dentry *new_dentry,
 		       unsigned int flags)
 {
-	struct inode *old_inode = old_dentry->d_inode;
-	struct inode *new_inode = new_dentry->d_inode;
+	struct inode *old_inode = d_inode(old_dentry);
+	struct inode *new_inode = d_inode(new_dentry);
 	struct sb *sb = tux_sb(old_inode->i_sb);
 	struct buffer_head *old_buffer, *new_buffer, *clone;
 	struct tux3_dirent *old_entry, *new_entry;
