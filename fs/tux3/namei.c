@@ -40,10 +40,6 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 	struct sb *sb = tux_sb(dir->i_sb);
 	int err;
 
-	if (!huge_valid_dev(iattr->rdev) &&
-	    (S_ISBLK(iattr->mode) || S_ISCHR(iattr->mode)))
-		return -EINVAL;
-
 	if (change_begin(sb, 5))
 		return -ENOSPC;
 
