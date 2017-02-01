@@ -171,7 +171,6 @@ static void tux3_dequeue_wb_work(struct sb *sb, struct bdi_writeback *wb)
 	if (!list_empty(&wb_work->work.list)) {
 		spin_lock_bh(&wb->work_lock);
 		list_del_init(&wb_work->work.list);
-		wb_work->dummy_done.done = 1;	/* For debugging */
 		spin_unlock_bh(&wb->work_lock);
 	}
 
@@ -189,25 +188,19 @@ static void tux3_queue_wb_work(struct sb *sb, struct delta_ref *delta_ref)
 {
 	struct tux3_wb_work *wb_work = tux3_to_wb_work(sb, delta_ref->delta);
 
-	/* Must be enable to reuse this */
-	assert(wb_work->dummy_done.done == 1);
+	/* Must be empty to reuse this */
+	assert(list_empty(&wb_work->work.list));
 
 	/* If flusher is already waiting for this delta, don't need to tell. */
-	if (wb_work->flusher_is_waiting) {
-		/* Initialize for tux3_wb_dequeue_work() */
-		INIT_LIST_HEAD(&wb_work->work.list);
+	if (wb_work->flusher_is_waiting)
 		return;
-	}
 
 	wb_work->delta = delta_ref->delta;
-	reinit_completion(&wb_work->dummy_done);
 
 	wb_work->work = (struct wb_writeback_work){
 		.nr_pages	= LONG_MAX,
 		.sync_mode	= WB_SYNC_ALL,
 		.reason		= WB_REASON_TUX3_PENDING,
-		/* This is just to avoid that bdi flusher kfree this. */
-		.done		= &wb_work->dummy_done,
 	};
 	writeback_queue_work_sb(vfs_sb(sb), &wb_work->work);
 }

@@ -916,10 +916,8 @@ void tux3_delta_init(struct sb *sb)
 	init_rwsem(&sb->delta_lock);
 #else
 	for (i = 0; i < ARRAY_SIZE(sb->wb_work); i++) {
+		INIT_LIST_HEAD(&sb->wb_work[i].work.list);
 		sb->wb_work[i].flusher_is_waiting = 0;
-		init_completion(&sb->wb_work[i].dummy_done);
-		/* just for debug assert in schedule_flush_delta() */
-		complete(&sb->wb_work[i].dummy_done);
 	}
 #endif
 	init_waitqueue_head(&sb->delta_transition_wq);

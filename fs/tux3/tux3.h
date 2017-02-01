@@ -308,7 +308,6 @@ struct orphan_head {
 /* Work item for writeback flusher */
 struct tux3_wb_work {
 	struct wb_writeback_work work;
-	struct completion dummy_done;
 	int flusher_is_waiting;
 	unsigned delta;
 };
