@@ -76,7 +76,7 @@ static int guess_readahead(struct bufvec *bufvec, struct inode *inode,
 	block_t limit;
 	int ret;
 
-	bufvec_init(bufvec, inode->map, NULL, NULL);
+	bufvec_init(bufvec, REQ_OP_READ, 0, inode->map, NULL, NULL);
 
 	limit = (inode->i_size + sb->blockmask) >> sb->blockbits;
 	if (limit > index + READAHEAD_BLOCKS)
@@ -147,7 +147,7 @@ static void filemap_clean_endio(struct buffer_head *buffer, int err)
 	blockput(buffer);
 }
 
-static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
+static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 {
 	struct inode *inode = bufvec_inode(bufvec);
 	block_t block, index = bufvec_contig_index(bufvec);
@@ -161,7 +161,7 @@ static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
 
 	struct bufvec *bufvec_io, bufvec_ahead;
 	unsigned count;
-	if (!(rw & WRITE)) {
+	if (!op_is_write(bufvec->req_op)) {
 		/* In the case of read, use new bufvec for readahead */
 		err = guess_readahead(&bufvec_ahead, inode, index);
 		if (err)
@@ -186,16 +186,16 @@ static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
 		trace("extent 0x%Lx/%x => %Lx", index, count, block);
 
 		if (seg[i].state != BLOCK_SEG_HOLE) {
-			if (!(rw & WRITE))
+			if (!op_is_write(bufvec->req_op))
 				bufvec_io->end_io = filemap_read_endio;
 			else
 				bufvec_io->end_io = clear_buffer_dirty_for_endio;
 
-			err = blockio_vec(rw, bufvec_io, block, count);
+			err = blockio_vec(bufvec_io, block, count);
 			if (err)
 				break;
 		} else {
-			assert(!(rw & WRITE));
+			assert(!op_is_write(bufvec->req_op));
 			bufvec_io->end_io = filemap_hole_endio;
 			bufvec_complete_without_io(bufvec_io, count);
 		}
@@ -208,7 +208,7 @@ static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
 	 * be handle buffers was not mapped (and is not written out)
 	 * this time.
 	 */
-	if (!(rw & WRITE)) {
+	if (!op_is_write(bufvec->req_op)) {
 		/* Clean buffers was not mapped in this time */
 		count = bufvec_contig_count(bufvec_io);
 		if (count) {

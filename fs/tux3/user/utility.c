@@ -11,77 +11,81 @@
 
 #include "../utility.c"
 
-static int preflush(int rw, struct dev *dev)
+static int preflush(unsigned int req_flags, struct dev *dev)
 {
-	if (rw & REQ_PREFLUSH) {
+	if (req_flags & REQ_PREFLUSH) {
 		if (fdatasync(dev->fd) < 0)
 			return -errno;
 	}
 	return 0;
 }
 
-static int postflush(int rw, struct dev *dev)
+static int postflush(unsigned int req_flags, struct dev *dev)
 {
-	if (rw & REQ_FUA) {
+	if (req_flags & REQ_FUA) {
 		if (fdatasync(dev->fd) < 0)
 			return -errno;
 	}
 	return 0;
 }
 
-int devio_vec(int rw, struct dev *dev, loff_t offset, struct iovec *iov,
-	      unsigned iovcnt)
+int devio_vec(enum req_op req_op, unsigned int req_flags, struct dev *dev,
+	      loff_t offset, struct iovec *iov, unsigned iovcnt)
 {
 	int err;
 
-	if (rw & WRITE)
+	if (op_is_write(req_op))
 		fault_return("io:write:", -EIO);
 	else
 		fault_return("io:read:", -EIO);
 
-	err = preflush(rw, dev);
+	err = preflush(req_flags, dev);
 	if (err)
 		return err;
 
-	err = iovabs(dev->fd, iov, iovcnt, rw, offset);
+	err = iovabs(dev->fd, iov, iovcnt, op_is_write(req_op), offset);
 	if (err)
 		return err;
 
-	return postflush(rw, dev);
+	return postflush(req_flags, dev);
 }
 
-int devio_sync(int rw, struct dev *dev, loff_t offset, void *data, unsigned len)
+int devio_sync(enum req_op req_op, unsigned int req_flags,
+	       struct dev *dev, loff_t offset, void *data,
+	       unsigned len)
 {
 	struct iovec iov = {
 		.iov_base	= data,
 		.iov_len	= len,
 	};
-	return devio_vec(rw, dev, offset, &iov, 1);
+	return devio_vec(req_op, req_flags, dev, offset, &iov, 1);
 }
 
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
+int blockio(enum req_op req_op, unsigned int req_flags,
+	    struct sb *sb, struct buffer_head *buffer, block_t block,
 	    void *endio, void *info)
 {
 	trace("%s: buffer %p, block %Lx",
-	      (rw & WRITE) ? "write" : "read", buffer, block);
-	return devio_sync(rw, sb_dev(sb), block << sb->blockbits,
+	      op_is_write(req_op) ? "write" : "read", buffer, block);
+	return devio_sync(req_op, req_flags, sb_dev(sb), block << sb->blockbits,
 			  bufdata(buffer), sb->blocksize);
 }
 
-int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
-		 block_t block)
+int blockio_sync(enum req_op req_op, unsigned int req_flags, struct sb *sb,
+		 struct buffer_head *buffer, block_t block)
 {
 	trace("%s: buffer %p, block %Lx",
-	      (rw & WRITE) ? "write" : "read", buffer, block);
-	return devio_sync(rw, sb_dev(sb), block << sb->blockbits,
+	      op_is_write(req_op) ? "write" : "read", buffer, block);
+	return devio_sync(req_op, req_flags, sb_dev(sb), block << sb->blockbits,
 			  bufdata(buffer), sb->blocksize);
 }
 
-int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count)
+int blockio_vec(struct bufvec *bufvec, block_t block, unsigned count)
 {
 	trace("%s: bufvec %p, count %u, block %Lx",
-	      (rw & WRITE) ? "write" : "read", bufvec, count, block);
-	return bufvec_io(rw, bufvec, block, count);
+	      op_is_write(bufvec->req_op) ? "write" : "read",
+	      bufvec, count, block);
+	return bufvec_io(bufvec, block, count);
 }
 
 /*

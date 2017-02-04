@@ -484,12 +484,12 @@ struct buffer_head *blockread(map_t *map, block_t block)
 		struct bufvec bufvec;
 		int ret;
 
-		bufvec_init(&bufvec, map, NULL, NULL);
+		bufvec_init(&bufvec, REQ_OP_READ, 0, map, NULL, NULL);
 		ret = bufvec_contig_add(&bufvec, buffer);
 		assert(ret == 1);
 
 		buftrace("read buffer [%Lx], state %i", buffer->index, buffer->state);
-		int err = buffer->map->io(READ, &bufvec);
+		int err = buffer->map->io(&bufvec);
 		if (err || !buffer_clean(buffer)) {
 			blockput(buffer);
 			return NULL; // ERR_PTR me!!!
@@ -734,26 +734,25 @@ void init_buffer_params(unsigned poolsize, int debug)
 #endif
 }
 
-int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t block,
-		     unsigned count)
+int __tux3_volmap_io(struct bufvec *bufvec, block_t block, unsigned count)
 {
 	assert(bufvec_contig_buf(bufvec)->map->dev->bits >= 6 &&
 	       bufvec_contig_buf(bufvec)->map->dev->fd);
 
 	bufvec->end_io = __clear_buffer_dirty_for_endio;
 
-	return blockio_vec(rw, bufvec, block, count);
+	return blockio_vec(bufvec, block, count);
 }
 
-static int dev_blockio(int rw, struct bufvec *bufvec)
+static int dev_blockio(struct bufvec *bufvec)
 {
 	block_t block = bufvec_contig_index(bufvec);
 	unsigned count = bufvec_contig_count(bufvec);
 
-	return __tux3_volmap_io(rw, bufvec, block, count);
+	return __tux3_volmap_io(bufvec, block, count);
 }
 
-int dev_errio(int rw, struct bufvec *bufvec)
+int dev_errio(struct bufvec *bufvec)
 {
 	assert(0);
 	return -EIO;

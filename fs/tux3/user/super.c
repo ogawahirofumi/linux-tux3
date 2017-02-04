@@ -122,7 +122,7 @@ static int clear_other_magic(struct sb *sb)
 	memset(data, 0, maxlen);
 
 	for (int i = 0; i < ARRAY_SIZE(area); i++) {
-		err = devio_sync(WRITE, sb_dev(sb), area[i].loc, data,
+		err = devio_sync(REQ_OP_WRITE, 0, sb_dev(sb), area[i].loc, data,
 				 area[i].len);
 		if (err)
 			break;

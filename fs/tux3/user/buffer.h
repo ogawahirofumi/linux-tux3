@@ -22,6 +22,7 @@ static inline unsigned tux3_delta(unsigned delta);
 
 #include "../tux3_fork.h"
 #include "libklib/list.h"
+#include "libklib/blk_types.h"
 #include <sys/uio.h>
 
 enum {
@@ -54,7 +55,7 @@ struct dev { unsigned fd, bits; };
 struct buffer_head;
 struct bufvec;
 
-typedef int (blockio_t)(int rw, struct bufvec *bufvec);
+typedef int (blockio_t)(struct bufvec *bufvec);
 
 struct map {
 #ifdef TUX3_BUILD
@@ -164,9 +165,8 @@ void truncate_buffers_range(map_t *map, loff_t lstart, loff_t lend);
 void invalidate_buffers(map_t *map);
 int set_blocksize(unsigned bufsize);
 void init_buffer_params(unsigned poolsize, int debug);
-int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t block,
-		     unsigned count);
-int dev_errio(int rw, struct bufvec *bufvec);
+int __tux3_volmap_io(struct bufvec *bufvec, block_t block, unsigned count);
+int dev_errio(struct bufvec *bufvec);
 map_t *new_map(struct dev *dev, blockio_t *io);
 void free_map(map_t *map);
 
@@ -185,6 +185,8 @@ struct bufvec {
 
 	struct list_head for_io;	/* The buffers in iovec */
 
+	enum req_op req_op;
+	unsigned int req_flags;
 	bufvec_end_io_t end_io;
 };
 
@@ -224,15 +226,17 @@ struct blk_plug {
 
 void blk_start_plug(struct blk_plug *plug);
 void blk_finish_plug(struct blk_plug *plug);
-void bufvec_init(struct bufvec *bufvec, map_t *map,
+void bufvec_init(struct bufvec *bufvec, enum req_op req_op,
+		 unsigned int req_flags, map_t *map,
 		 struct list_head *head, struct tux3_iattr_data *idata);
 void bufvec_free(struct bufvec *bufvec);
-int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count);
+int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count);
 void bufvec_complete_without_io(struct bufvec *bufvec, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	struct list_head *head, int req_flag);
-int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer);
+	       struct list_head *head, unsigned int req_flags);
+int vol_early_io(enum req_op req_op, unsigned int req_flags,
+		 struct sb *sb, struct buffer_head *buffer);
 int tux3_volmap_clean_io(struct inode *inode);
 
 /* block_fork.c */

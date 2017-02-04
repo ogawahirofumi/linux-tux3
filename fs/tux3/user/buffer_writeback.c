@@ -23,11 +23,14 @@ static inline struct buffer_head *buffers_entry(struct list_head *x)
 #define MAX_BUFVEC_COUNT	UINT_MAX
 
 /* Initialize bufvec */
-void bufvec_init(struct bufvec *bufvec, map_t *map,
+void bufvec_init(struct bufvec *bufvec, enum req_op req_op,
+		 unsigned int req_flags, map_t *map,
 		 struct list_head *head, struct tux3_iattr_data *idata)
 {
 	INIT_LIST_HEAD(&bufvec->contig);
 	INIT_LIST_HEAD(&bufvec->for_io);
+	bufvec->req_op		= req_op;
+	bufvec->req_flags	= req_flags;
 	bufvec->buffers		= head;
 	bufvec->contig_count	= 0;
 	bufvec->idata		= idata;
@@ -89,7 +92,7 @@ static struct buffer_head *bufvec_next_buffer(struct bufvec *bufvec)
  * < 0 - error
  *   0 - success
  */
-int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
+int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count)
 {
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
 	struct iovec *iov;
@@ -117,8 +120,8 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 	}
 	assert(i > 0);
 
-	err = devio_vec(rw, sb_dev(sb), physical << sb->blockbits,
-			iov, iov_count);
+	err = devio_vec(bufvec->req_op, bufvec->req_flags, sb_dev(sb),
+			physical << sb->blockbits, iov, iov_count);
 	bufvec_io_done(bufvec, err);
 
 	free(iov);
@@ -271,7 +274,7 @@ static int buffer_index_cmp(void *priv, struct list_head *a,
  * Flush buffers in head
  */
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	       struct list_head *head, int req_flag)
+	       struct list_head *head, unsigned int req_flags)
 {
 	struct bufvec bufvec;
 	int err = 0;
@@ -281,7 +284,8 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	if (list_empty(head))
 		return 0;
 
-	bufvec_init(&bufvec, mapping(inode), head, idata);
+	bufvec_init(&bufvec, REQ_OP_WRITE, req_flags,
+		    mapping(inode), head, idata);
 
 	/* Sort by bufindex() */
 	list_sort(NULL, head, buffer_index_cmp);
@@ -291,7 +295,7 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 		if (bufvec_contig_collect(&bufvec)) {
 			policy_extents(&bufvec);
 
-			err = mapping(inode)->io(WRITE | req_flag, &bufvec);
+			err = mapping(inode)->io(&bufvec);
 			if (err)
 				break;
 		}
@@ -304,11 +308,12 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 }
 
 /* 1st phase I/O for volmap by random order */
-int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
+int vol_early_io(enum req_op req_op, unsigned int req_flags,
+		 struct sb *sb, struct buffer_head *buffer)
 {
 	int err;
 	assert(buffer_dirty(buffer));
-	err = blockio_sync(rw, sb, buffer, bufindex(buffer));
+	err = blockio_sync(req_op, req_flags, sb, buffer, bufindex(buffer));
 	buffer_io_done(buffer, err, __clear_buffer_dirty_for_endio);
 	return err;
 }
