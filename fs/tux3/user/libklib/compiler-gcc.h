@@ -250,7 +250,7 @@
  * sparse (__CHECKER__) pretends to be gcc, but can't do constant
  * folding in __builtin_bswap*() (yet), so don't set these for it.
  */
-#if defined(CONFIG_ARCH_USE_BUILTIN_BSWAP) && !defined(__CHECKER__)
+#if !defined(CONFIG_ARCH_DONT_USE_BUILTIN_BSWAP) && !defined(__CHECKER__)
 #if GCC_VERSION >= 40400
 #define __HAVE_BUILTIN_BSWAP32__
 #define __HAVE_BUILTIN_BSWAP64__
