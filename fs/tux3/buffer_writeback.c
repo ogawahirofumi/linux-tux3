@@ -20,10 +20,13 @@ static inline struct buffer_head *buffers_entry(struct list_head *x)
 #define MAX_BUFVEC_COUNT	UINT_MAX
 
 /* Initialize bufvec */
-static void bufvec_init(struct bufvec *bufvec, struct address_space *mapping,
+static void bufvec_init(struct bufvec *bufvec, enum req_op req_op,
+			unsigned int req_flags, struct address_space *mapping,
 			struct list_head *head, struct tux3_iattr_data *idata)
 {
 	INIT_LIST_HEAD(&bufvec->contig);
+	bufvec->req_op		= req_op;
+	bufvec->req_flags	= req_flags;
 	bufvec->buffers		= head;
 	bufvec->contig_count	= 0;
 	bufvec->idata		= idata;
@@ -115,10 +118,12 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 	return bio;
 }
 
-static void bufvec_submit_bio(int rw, struct bufvec *bufvec)
+static void bufvec_submit_bio(struct bufvec *bufvec)
 {
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
 	struct bio *bio = bufvec->bio;
+	unsigned int req_flags =
+		bufvec->req_flags | tux3_io_req_flags(sb->ioinfo);
 
 	bufvec->bio = NULL;
 	bufvec->bio_lastbuf = NULL;
@@ -128,7 +133,8 @@ static void bufvec_submit_bio(int rw, struct bufvec *bufvec)
 	      bio_bi_size(bio) >> sb->blockbits);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	submit_bio(rw | tux3_io_req_flag(sb->ioinfo), bio);
+	bio_set_op_attrs(bio, bufvec->req_op, req_flags);
+	submit_bio(bio);
 }
 
 /*
@@ -337,7 +343,7 @@ still_busy:
  * FIXME: Some buffers on the page can be contiguous, we can submit
  * those as one bio if contiguous.
  */
-static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
+static void bufvec_bio_add_multiple(struct bufvec *bufvec)
 {
 	/* FIXME: inode is still guaranteed to be available? */
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
@@ -347,7 +353,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 
 	/* If there is bio, submit it */
 	if (bufvec->bio)
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 
 	page = bufvec->on_page[0].buffer->b_page;
 
@@ -382,7 +388,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 
 		bufvec_bio_add_buffer(bufvec, buffer);
 
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 	}
 	prepare_and_unlock_page(page);
 
@@ -434,7 +440,7 @@ static void bufvec_end_io(struct bio *bio, int err)
  * FIXME: We can free buffers early, and avoid to use buffers in I/O
  * completion, after prepared the page (like __mpage_writepage).
  */
-static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
+static void bufvec_bio_add_page(struct bufvec *bufvec)
 {
 	/* FIXME: inode is still guaranteed to be available? */
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
@@ -456,7 +462,7 @@ static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
 	if (!bufvec->bio || !bio_add_page(bufvec->bio, page, length, offset)) {
 		/* Couldn't add. So submit old bio and allocate new bio */
 		if (bufvec->bio)
-			bufvec_submit_bio(rw, bufvec);
+			bufvec_submit_bio(bufvec);
 
 		bufvec->bio =
 			bufvec_bio_alloc(sb, bufvec_contig_count(bufvec) + 1,
@@ -522,7 +528,7 @@ static struct page *bufvec_next_buffer_page(struct bufvec *bufvec)
  * < 0 - error
  *   0 - success
  */
-int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
+int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count)
 {
 	unsigned int i;
 	int need_check = 0;
@@ -531,7 +537,8 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 	      bufvec_contig_index(bufvec), bufvec_contig_count(bufvec),
 	      physical, count);
 
-	assert(rw & WRITE);	/* FIXME: now only support WRITE */
+	/* FIXME: now only support WRITE */
+	assert(op_is_write(bufvec->req_op));
 	assert(bufvec_contig_count(bufvec) >= count);
 
 	if (bufvec->on_page_idx) {
@@ -545,7 +552,7 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 		 * If new range is not contiguous with the pending bio,
 		 * submit the pending bio.
 		 */
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 	}
 
 	/* Add buffers to bio for each page */
@@ -570,15 +577,15 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 			}
 
 			if (multiple)
-				bufvec_bio_add_multiple(rw, bufvec);
+				bufvec_bio_add_multiple(bufvec);
 			else
-				bufvec_bio_add_page(rw, bufvec);
+				bufvec_bio_add_page(bufvec);
 		}
 	}
 
 	/* If no more buffer, submit the pending bio */
 	if (bufvec->bio && !bufvec_next_buffer_page(bufvec))
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 
 	return 0;
 }
@@ -755,7 +762,7 @@ static int buffer_index_cmp(void *priv, struct list_head *a,
  * Flush buffers in head
  */
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	       struct list_head *head, int req_flag)
+	       struct list_head *head, unsigned int req_flags)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	struct bufvec bufvec;
@@ -766,7 +773,8 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	if (list_empty(head))
 		return 0;
 
-	bufvec_init(&bufvec, mapping(inode), head, idata);
+	bufvec_init(&bufvec, REQ_OP_WRITE, req_flags,
+		    mapping(inode), head, idata);
 
 	/* Sort by bufindex() */
 	list_sort(NULL, head, buffer_index_cmp);
@@ -776,7 +784,7 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 		if (bufvec_contig_collect(&bufvec)) {
 			policy_extents(&bufvec);
 
-			err = tuxnode->io(WRITE | req_flag, &bufvec);
+			err = tuxnode->io(&bufvec);
 			if (err)
 				break;
 		}
@@ -791,10 +799,9 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 /*
  * I/O helper for physical index buffers (e.g. buffers on volmap)
  */
-int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t physical,
-		     unsigned count)
+int __tux3_volmap_io(struct bufvec *bufvec, block_t physical, unsigned count)
 {
-	return blockio_vec(rw, bufvec, physical, count);
+	return blockio_vec(bufvec, physical, count);
 }
 
 /*
@@ -843,19 +850,20 @@ static void vol_early_end_io(struct bio *bio, int err)
 }
 
 /* 1st phase I/O for volmap by random order */
-int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
+int vol_early_io(enum req_op req_op, unsigned int req_flags,
+		 struct sb *sb, struct buffer_head *buffer)
 {
 	int err;
 
 	assert(buffer_dirty(buffer));
 	/* FIXME: For now, this is only for write */
-	assert(rw & WRITE);
+	assert(op_is_write(req_op));
 
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	err = blockio(rw | tux3_io_req_flag(sb->ioinfo), sb, buffer,
-		      bufindex(buffer), vol_early_end_io, buffer);
+	err = blockio(req_op, req_flags | tux3_io_req_flags(sb->ioinfo),
+		      sb, buffer, bufindex(buffer), vol_early_end_io, buffer);
 	if (err)
 		tux3_io_inflight_dec(sb->ioinfo);
 
@@ -886,7 +894,7 @@ static void bufvec_end_io_early(struct bio *bio, int err)
 	bio_put(bio);
 }
 
-static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
+static void bufvec_bio_add_early(struct bufvec *bufvec,
 				 struct buffer_head *buffer, block_t physical)
 {
 	/* FIXME: inode is still guaranteed to be available? */
@@ -898,7 +906,7 @@ static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
 		if (bio_add_page(bufvec->bio, buffer->b_page, length, offset))
 			return;
 		/* Couldn't add buffer, submit current bio */
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 	}
 
 	bufvec->bio = bufvec_bio_alloc(sb, bufvec_contig_count(bufvec) + 1,
@@ -910,7 +918,7 @@ static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
 }
 
 /* 1st phase I/O for volmap by sequential order */
-int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
+int tux3_volmap_early_io(struct bufvec *bufvec)
 {
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
 	block_t physical = bufvec_contig_index(bufvec);
@@ -918,7 +926,7 @@ int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 	int err = 0;
 
 	/* FIXME: For now, this is only for write */
-	assert(rw & WRITE);
+	assert(op_is_write(bufvec->req_op));
 
 	/* Add buffers to bio for each page */
 	for (i = 0; i < count; i++) {
@@ -929,11 +937,11 @@ int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 		/* FIXME: this can be replaced by list_splice() */
 		list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
-		bufvec_bio_add_early(rw, bufvec, buffer, physical + i);
+		bufvec_bio_add_early(bufvec, buffer, physical + i);
 	}
 	/* Submit the pending bio */
 	if (bufvec->bio)
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 
 	return err;
 }

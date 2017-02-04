@@ -9,7 +9,8 @@
 #include "tux3.h"
 #include "kcompat.h"
 
-static int vecio(int rw, struct block_device *dev, loff_t offset,
+static int vecio(enum req_op req_op, unsigned int req_flags,
+		 struct block_device *dev, loff_t offset,
 		 unsigned vecs, struct bio_vec *vec,
 		 bio_end_io_t endio, void *bio_private)
 {
@@ -30,7 +31,8 @@ static int vecio(int rw, struct block_device *dev, loff_t offset,
 	while (vecs--)
 		bio_bi_size(bio) += bio->bi_io_vec[vecs].bv_len;
 
-	submit_bio(rw, bio);
+	bio_set_op_attrs(bio, req_op, req_flags);
+	submit_bio(bio);
 
 	return 0;
 }
@@ -48,19 +50,22 @@ static void syncio_end_io(struct bio *bio, int err)
 	complete(&sync->done);
 }
 
-static int syncio(int rw, struct block_device *dev, loff_t offset,
+static int syncio(enum req_op req_op, unsigned int req_flags,
+		  struct block_device *dev, loff_t offset,
 		  unsigned vecs, struct bio_vec *vec)
 {
 	struct biosync sync = {
 		.done = COMPLETION_INITIALIZER_ONSTACK(sync.done)
 	};
-	sync.err = vecio(rw, dev, offset, vecs, vec, syncio_end_io, &sync);
+	sync.err = vecio(req_op, req_flags, dev, offset, vecs, vec,
+			 syncio_end_io, &sync);
 	if (!sync.err)
 		wait_for_completion_io(&sync.done);
 	return sync.err;
 }
 
-int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
+int devio_sync(enum req_op req_op, unsigned int req_flags,
+	       struct block_device *dev, loff_t offset, void *data,
 	       unsigned len)
 {
 	struct bio_vec vec = {
@@ -69,10 +74,11 @@ int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
 		.bv_len		= len,
 	};
 
-	return syncio(rw, dev, offset, 1, &vec);
+	return syncio(req_op, req_flags, dev, offset, 1, &vec);
 }
 
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
+int blockio(enum req_op req_op, unsigned int req_flags,
+	    struct sb *sb, struct buffer_head *buffer, block_t block,
 	    bio_end_io_t endio, void *info)
 {
 	struct bio_vec vec = {
@@ -81,12 +87,12 @@ int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
 		.bv_len		= sb->blocksize,
 	};
 
-	return vecio(rw, sb_dev(sb), block << sb->blockbits, 1,
+	return vecio(req_op, req_flags, sb_dev(sb), block << sb->blockbits, 1,
 		     &vec, endio, info);
 }
 
-int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
-		 block_t block)
+int blockio_sync(enum req_op req_op, unsigned int req_flags, struct sb *sb,
+		 struct buffer_head *buffer, block_t block)
 {
 	struct bio_vec vec = {
 		.bv_page	= buffer->b_page,
@@ -94,7 +100,8 @@ int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
 		.bv_len		= sb->blocksize,
 	};
 
-	return syncio(rw, sb_dev(sb), block << sb->blockbits, 1, &vec);
+	return syncio(req_op, req_flags, sb_dev(sb),
+		      block << sb->blockbits, 1, &vec);
 }
 
 /*
@@ -104,9 +111,9 @@ int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
  * If there was I/O error, it would be handled in ->bi_end_bio()
  * completion.
  */
-int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count)
+int blockio_vec(struct bufvec *bufvec, block_t block, unsigned count)
 {
-	return bufvec_io(rw, bufvec, block, count);
+	return bufvec_io(bufvec, block, count);
 }
 
 void hexdump(void *data, unsigned size)

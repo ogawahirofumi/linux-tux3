@@ -377,7 +377,7 @@ unsigned nospc_one_page_cost(struct inode *inode)
  */
 
 /* FIXME: we are using sb for now, should use metablock instead. */
-static int save_metablock(struct sb *sb, int req_flag)
+static int save_metablock(struct sb *sb, unsigned int req_flags)
 {
 	struct disksuper *super = &sb->super;
 
@@ -393,7 +393,7 @@ static int save_metablock(struct sb *sb, int req_flag)
 	super->atomgen = cpu_to_be32(sb->atomgen);
 	/* logchain and logcount are written to super directly */
 
-	return devio_sync(WRITE | REQ_META | req_flag,
+	return devio_sync(REQ_OP_WRITE, REQ_META | req_flags,
 			  sb_dev(sb), SB_LOC, super, SB_LEN);
 }
 
@@ -568,7 +568,7 @@ static int write_log(struct sb *sb)
 
 static int commit_delta(struct sb *sb)
 {
-	int req_flag = tux3_io_req_flag(sb->ioinfo);
+	unsigned int req_flags = tux3_io_req_flags(sb->ioinfo);
 	int err, barrier = TUX3_TEST_MOPT(sb, BARRIER);
 
 	/* Wait I/O was submitted */
@@ -593,11 +593,11 @@ static int commit_delta(struct sb *sb)
 		 * CFQ-queue with previous, and to avoid CFQ's
 		 * idle_slice_timer between CFQ-queues.
 		 */
-		req_flag |= REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA;
+		req_flags |= REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA;
 	}
 
 	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
-	err = save_metablock(sb, req_flag);
+	err = save_metablock(sb, req_flags);
 	if (err)
 		return err;
 

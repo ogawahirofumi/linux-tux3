@@ -400,8 +400,10 @@ out_unlock:
 void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf)
 {
 	if (leafbuf != sb->last_dleaf) {
-		if (sb->last_dleaf)
-			vol_early_io(WRITE | REQ_META, sb, sb->last_dleaf);
+		if (sb->last_dleaf) {
+			vol_early_io(REQ_OP_WRITE, REQ_META, sb,
+				     sb->last_dleaf);
+		}
 
 		assert(leafbuf == NULL || buffer_dirty(leafbuf));
 		sb->last_dleaf = leafbuf;
@@ -447,24 +449,26 @@ static int filemap(struct inode *inode, block_t start, unsigned count,
 	return segs;
 }
 
-static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec);
-int tux3_filemap_overwrite_io(int rw, struct bufvec *bufvec)
+static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec);
+int tux3_filemap_overwrite_io(struct bufvec *bufvec)
 {
-	enum map_mode mode = (rw & WRITE) ? MAP_WRITE : MAP_READ;
-	return filemap_extent_io(mode, rw, bufvec);
+	enum map_mode mode =
+		op_is_write(bufvec->req_op) ? MAP_WRITE : MAP_READ;
+	return filemap_extent_io(mode, bufvec);
 }
 
-int tux3_filemap_redirect_io(int rw, struct bufvec *bufvec)
+int tux3_filemap_redirect_io(struct bufvec *bufvec)
 {
-	enum map_mode mode = (rw & WRITE) ? MAP_REDIRECT : MAP_READ;
-	return filemap_extent_io(mode, rw, bufvec);
+	enum map_mode mode =
+		op_is_write(bufvec->req_op) ? MAP_REDIRECT : MAP_READ;
+	return filemap_extent_io(mode, bufvec);
 }
 
 #ifdef __KERNEL__
 #include <linux/mpage.h>
 #include <linux/aio.h>		/* for kiocb */
 
-static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
+static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 {
 	struct inode *inode = bufvec_inode(bufvec);
 	block_t block, index = bufvec_contig_index(bufvec);
@@ -486,7 +490,7 @@ static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
 
 		trace("extent 0x%Lx/%x => %Lx", index, count, block);
 
-		err = blockio_vec(rw, bufvec, block, count);
+		err = blockio_vec(bufvec, block, count);
 		if (err)
 			break;
 

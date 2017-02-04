@@ -23,7 +23,7 @@ struct ioinfo {
 	struct completion done;		/* completion for in-flight I/O */
 
 	int flush_flags;		/* Flush type */
-	int req_flag;			/* Additional REQ_ flags */
+	unsigned int req_flags;		/* Additional REQ_ flags */
 };
 
 static inline void tux3_io_inflight_inc(struct ioinfo *ioinfo)
@@ -40,7 +40,7 @@ static inline void tux3_io_inflight_dec(struct ioinfo *ioinfo)
 static inline void tux3_io_init(struct ioinfo *ioinfo, int flush_flags)
 {
 	ioinfo->flush_flags = flush_flags;
-	ioinfo->req_flag = (flush_flags & FLUSH_SYNC) ? REQ_SYNC : 0;
+	ioinfo->req_flags = (flush_flags & FLUSH_SYNC) ? REQ_SYNC : 0;
 
 	/*
 	 * Grab 1 to prevent the partial complete until all I/O is
@@ -57,10 +57,10 @@ static inline void tux3_io_wait(struct ioinfo *ioinfo)
 	wait_for_completion_io(&ioinfo->done);
 }
 
-/* This req_flag is added to all I/O request counted in ->ioinfo */
-static inline int tux3_io_req_flag(struct ioinfo *ioinfo)
+/* This req_flags is added to all I/O request counted in ->ioinfo */
+static inline unsigned int tux3_io_req_flags(struct ioinfo *ioinfo)
 {
-	return ioinfo->req_flag;
+	return ioinfo->req_flags;
 }
 
 /* Flags for flush type */

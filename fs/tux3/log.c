@@ -172,13 +172,13 @@ static void log_end(struct sb *sb, void *pos)
  * Add log blocks to ->logchain list and adjust ->logcount. Then
  * flush log blocks at once.
  */
-int tux3_logmap_io(int rw, struct bufvec *bufvec)
+int tux3_logmap_io(struct bufvec *bufvec)
 {
 	struct inode *logmap = bufvec_inode(bufvec);
 	struct sb *sb = tux_sb(logmap->i_sb);
 	unsigned count = bufvec_contig_count(bufvec);
 
-	assert(rw & WRITE);
+	assert(op_is_write(bufvec->req_op));
 	assert(bufvec_contig_index(bufvec) == 0);
 
 	while (count > 0) {
@@ -218,7 +218,7 @@ int tux3_logmap_io(int rw, struct bufvec *bufvec)
 					break;
 			}
 
-			err = __tux3_volmap_io(rw, bufvec, p->block, p->count);
+			err = __tux3_volmap_io(bufvec, p->block, p->count);
 			if (err) {
 				tux3_err(sb, "logblock write error (%d)", err);
 				return err;	/* FIXME: error handling */

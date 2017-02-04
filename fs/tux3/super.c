@@ -476,7 +476,7 @@ static int load_sb(struct sb *sb)
 	if (err)
 		return err;
 
-	err = devio_sync(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
+	err = devio_sync(REQ_OP_READ, 0, sb_dev(sb), SB_LOC, super, SB_LEN);
 	if (err)
 		return err;
 	if (memcmp(super->magic, TUX3_MAGIC_STR, sizeof(super->magic)))
