@@ -13,7 +13,7 @@
 
 static int preflush(int rw, struct dev *dev)
 {
-	if (rw & REQ_FLUSH) {
+	if (rw & REQ_PREFLUSH) {
 		if (fdatasync(dev->fd) < 0)
 			return -errno;
 	}
