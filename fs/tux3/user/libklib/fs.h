@@ -7,6 +7,10 @@
 #include <libklib/uidgid.h>
 #include <libklib/blk_types.h>
 
+#define RENAME_NOREPLACE	(1 << 0)	/* Don't overwrite target */
+#define RENAME_EXCHANGE		(1 << 1)	/* Exchange source and dest */
+#define RENAME_WHITEOUT		(1 << 2)	/* Whiteout source */
+
 /* These sb flags are internal to the kernel */
 #define MS_ACTIVE	(1<<30)
 
@@ -82,7 +86,8 @@ struct iattr {
 #endif
 };
 
-int inode_change_ok(const struct inode *inode, struct iattr *attr);
+struct dentry;
+int setattr_prepare(struct dentry *dentry, struct iattr *attr);
 int inode_newsize_ok(const struct inode *inode, loff_t offset);
 void setattr_copy(struct inode *inode, const struct iattr *attr);
 
@@ -90,7 +95,7 @@ void setattr_copy(struct inode *inode, const struct iattr *attr);
 struct inode {
 	struct super_block	*i_sb;
 
-	struct mutex		i_mutex;
+	struct rw_semaphore	i_rwsem;
 	unsigned long		i_state;
 	atomic_t		i_count;
 
@@ -112,6 +117,46 @@ struct inode {
 		struct rcu_head		i_rcu;
 	};
 };
+
+static inline void inode_lock(struct inode *inode)
+{
+	down_write(&inode->i_rwsem);
+}
+
+static inline void inode_unlock(struct inode *inode)
+{
+	up_write(&inode->i_rwsem);
+}
+
+static inline void inode_lock_shared(struct inode *inode)
+{
+	down_read(&inode->i_rwsem);
+}
+
+static inline void inode_unlock_shared(struct inode *inode)
+{
+	up_read(&inode->i_rwsem);
+}
+
+static inline int inode_trylock(struct inode *inode)
+{
+	return down_write_trylock(&inode->i_rwsem);
+}
+
+static inline int inode_trylock_shared(struct inode *inode)
+{
+	return down_read_trylock(&inode->i_rwsem);
+}
+
+static inline int inode_is_locked(struct inode *inode)
+{
+	return rwsem_is_locked(&inode->i_rwsem);
+}
+
+static inline void inode_lock_nested(struct inode *inode, unsigned subclass)
+{
+	down_write_nested(&inode->i_rwsem, subclass);
+}
 
 /*
  * Helper functions so that in most cases filesystems will
@@ -154,6 +199,11 @@ struct dentry {
 	struct inode *d_inode;
 	struct super_block *d_sb;
 };
+
+static inline struct inode *d_inode(const struct dentry *dentry)
+{
+	return dentry->d_inode;
+}
 
 void d_instantiate(struct dentry *dentry, struct inode *inode);
 struct dentry *d_splice_alias(struct inode *inode, struct dentry *dentry);
@@ -223,6 +273,11 @@ static inline bool dir_relax(struct inode *inode)
 	return true;
 }
 
+static inline bool dir_relax_shared(struct inode *inode)
+{
+	return true;
+}
+
 static inline void inode_dio_wait(struct inode *inode)
 {
 }
@@ -244,6 +299,8 @@ static inline void inode_dec_link_count(struct inode *inode)
 	drop_nlink(inode);
 	mark_inode_dirty(inode);
 }
+
+extern void inode_nohighmem(struct inode *inode);
 
 static inline void inode_writeback_touch(struct inode *inode)
 {

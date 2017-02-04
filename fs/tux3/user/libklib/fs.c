@@ -6,8 +6,9 @@
  * Attribute stuff
  */
 
-int inode_change_ok(const struct inode *inode, struct iattr *attr)
+int setattr_prepare(struct dentry *dentry, struct iattr *attr)
 {
+	struct inode *inode = d_inode(dentry);
 	unsigned int ia_valid = attr->ia_valid;
 
 	/*
@@ -22,7 +23,8 @@ int inode_change_ok(const struct inode *inode, struct iattr *attr)
 
 	/* If force is set do it anyway. */
 	if (ia_valid & ATTR_FORCE)
-		return 0;
+		goto kill_priv;
+
 #ifdef __KERNEL__
 	/* Make sure a caller can chown. */
 	if ((ia_valid & ATTR_UID) &&
@@ -55,6 +57,19 @@ int inode_change_ok(const struct inode *inode, struct iattr *attr)
 			return -EPERM;
 	}
 #endif /* __KERNEL__ */
+
+kill_priv:
+	/* User has permission for the change */
+	if (ia_valid & ATTR_KILL_PRIV) {
+#ifdef __KERNEL__
+		int error;
+
+		error = security_inode_killpriv(dentry);
+		if (error)
+			return error;
+#endif
+	}
+
 	return 0;
 }
 
@@ -138,6 +153,11 @@ void set_nlink(struct inode *inode, unsigned int nlink)
 		clear_nlink(inode);
 	else
 		inode->i_nlink = nlink;
+}
+
+void inode_nohighmem(struct inode *inode)
+{
+	mapping_set_gfp_mask(mapping(inode), GFP_USER);
 }
 
 /*
