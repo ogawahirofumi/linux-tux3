@@ -121,7 +121,7 @@ static int __init tux3_init_inodecache(void)
 {
 	tux_inode_cachep = kmem_cache_create("tux3_inode_cache",
 			sizeof(struct tux3_inode), 0,
-			(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD),
+			(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 			tux3_inode_init_once);
 	if (tux_inode_cachep == NULL)
 		return -ENOMEM;
