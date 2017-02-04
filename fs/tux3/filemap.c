@@ -43,6 +43,7 @@
 
 #include "tux3.h"
 #include "dleaf.h"
+#include "ioinfo.h"
 
 #ifndef trace
 #define trace trace_on
@@ -401,8 +402,9 @@ void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf)
 {
 	if (leafbuf != sb->last_dleaf) {
 		if (sb->last_dleaf) {
-			vol_early_io(REQ_OP_WRITE, REQ_META, sb,
-				     sb->last_dleaf);
+			vol_early_io(REQ_OP_WRITE,
+				     REQ_META | tux3_io_req_flags(sb->ioinfo),
+				     sb, sb->last_dleaf);
 		}
 
 		assert(leafbuf == NULL || buffer_dirty(leafbuf));

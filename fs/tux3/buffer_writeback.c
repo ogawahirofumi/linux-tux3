@@ -122,8 +122,6 @@ static void bufvec_submit_bio(struct bufvec *bufvec)
 {
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
 	struct bio *bio = bufvec->bio;
-	unsigned int req_flags =
-		bufvec->req_flags | tux3_io_req_flags(sb->ioinfo);
 
 	bufvec->bio = NULL;
 	bufvec->bio_lastbuf = NULL;
@@ -133,7 +131,7 @@ static void bufvec_submit_bio(struct bufvec *bufvec)
 	      bio_bi_size(bio) >> sb->blockbits);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	bio_set_op_attrs(bio, bufvec->req_op, req_flags);
+	bio_set_op_attrs(bio, bufvec->req_op, bufvec->req_flags);
 	submit_bio(bio);
 }
 
@@ -763,6 +761,7 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	       struct list_head *head, unsigned int req_flags)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
+	struct sb *sb = tux_sb(inode->i_sb);
 	struct bufvec bufvec;
 	int err = 0;
 
@@ -771,7 +770,8 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	if (list_empty(head))
 		return 0;
 
-	bufvec_init(&bufvec, REQ_OP_WRITE, req_flags,
+	bufvec_init(&bufvec, REQ_OP_WRITE,
+		    req_flags | tux3_io_req_flags(sb->ioinfo),
 		    mapping(inode), head, idata);
 
 	/* Sort by bufindex() */
@@ -789,7 +789,7 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	}
 
 	bufvec_free(&bufvec);
-	remember_dleaf(tux_sb(inode->i_sb), NULL);
+	remember_dleaf(sb, NULL);
 
 	return err;
 }
@@ -858,8 +858,8 @@ int vol_early_io(enum req_op req_op, unsigned int req_flags,
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	err = blockio(req_op, req_flags | tux3_io_req_flags(sb->ioinfo),
-		      sb, buffer, bufindex(buffer), vol_early_end_io, buffer);
+	err = blockio(req_op, req_flags, sb, buffer, bufindex(buffer),
+		      vol_early_end_io, buffer);
 	if (err)
 		tux3_io_inflight_dec(sb->ioinfo);
 
