@@ -332,7 +332,7 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 		}
 	}
 
-	err = tux3_rename(old_dir, &old, new_dir, &new);
+	err = tux3_rename(old_dir, &old, new_dir, &new, 0);
 out:
 	if (d_inode(&new))
 		iput(d_inode(&new));
