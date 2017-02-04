@@ -80,9 +80,6 @@ static void destroy_inode(struct inode *inode)
 void inode_init_once(struct inode *inode)
 {
 	memset(inode, 0, sizeof(*inode));
-
-	spin_lock_init(&inode->i_lock);
-	mutex_init(&inode->i_mutex);
 	INIT_HLIST_NODE(&inode->i_hash);
 }
 
@@ -92,6 +89,8 @@ static void inode_init_always(struct super_block *sb, struct inode *inode)
 	inode->i_nlink	= 1;
 	atomic_set(&inode->i_count, 1);
 
+	spin_lock_init(&inode->i_lock);
+	init_rwsem(&inode->i_rwsem);
 	mapping(inode)->inode = inode;
 	mapping_set_gfp_mask(mapping(inode), GFP_HIGHUSER_MOVABLE);
 }
