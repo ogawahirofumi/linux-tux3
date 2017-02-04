@@ -15,7 +15,7 @@
  * users don't need to reboot ASAP and can mostly shut down cleanly.
  */
 #define BUG() do {						\
-	fprintf(stderr, "BUG: failure at %s:%d/%s()!\n",	\
+	fprintf(stderr, "BUG: failure at %s:%d: %s()!\n",	\
 		__FILE__, __LINE__, __func__);			\
 	{ int *__p = NULL; *__p = 1; }				\
 } while (0)
@@ -29,7 +29,7 @@
  * to provide better diagnostics.
  */
 #define __WARN()		do {				\
-	fprintf(stderr, "WARNING: at %s:%d/%s()\n",		\
+	fprintf(stderr, "WARNING: at %s:%d: %s()\n",		\
 		__FILE__, __LINE__, __func__);			\
 } while (0)
 #define __WARN_printf(arg...)	do { __WARN(); fprintf(stderr, arg); } while (0)
