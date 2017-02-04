@@ -131,7 +131,7 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	struct list_head *head, unsigned int req_flags);
+	       struct list_head *head, unsigned int req_flags);
 int __tux3_volmap_io(struct bufvec *bufvec, block_t physical, unsigned count);
 int vol_early_io(enum req_op req_op, unsigned req_flags, struct sb *sb,
 		 struct buffer_head *buffer);
