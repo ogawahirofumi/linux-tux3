@@ -858,7 +858,7 @@ int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err, need_truncate = 0, need_lock = 0;
 
-	err = inode_change_ok(inode, iattr);
+	err = setattr_prepare(dentry, iattr);
 	if (err)
 		return err;
 
