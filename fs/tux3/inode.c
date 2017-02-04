@@ -777,7 +777,7 @@ static inline void tux_setup_inode_common(struct inode *inode)
 		/* Use default gfp type */
 		break;
 	case S_IFDIR:
-		mapping_set_gfp_mask(mapping(inode), GFP_USER);
+		inode_nohighmem(inode);
 		break;
 	case 0: /* internal inode */
 	{
