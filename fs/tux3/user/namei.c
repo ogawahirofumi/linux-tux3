@@ -22,7 +22,7 @@ static int tuxlookup(struct inode *dir, struct dentry *dentry)
 		return PTR_ERR(result);
 	assert(result == NULL);
 
-	if (!dentry->d_inode)
+	if (!d_inode(dentry))
 		return -ENOENT;
 
 	return 0;
@@ -40,7 +40,7 @@ struct inode *tuxopen(struct inode *dir, const char *name, unsigned len)
 	if (err)
 		return ERR_PTR(err);
 
-	return dentry.d_inode;
+	return d_inode(&dentry);
 }
 
 static int tux_check_exist(struct inode *dir, struct qstr *qstr)
@@ -75,7 +75,7 @@ struct inode *__tuxmknod(struct inode *dir, const char *name, unsigned len,
 	if (err)
 		return ERR_PTR(err);
 
-	return dentry.d_inode;
+	return d_inode(&dentry);
 }
 
 struct inode *tuxmknod(struct inode *dir, const char *name, unsigned len,
@@ -123,8 +123,8 @@ struct inode *__tuxlink(struct inode *src_inode, struct inode *dir,
 	err = tux3_link(&src, dir, &dst);
 	if (err)
 		return ERR_PTR(err);
-	assert(dst.d_inode == src_inode);
-	return dst.d_inode;
+	assert(d_inode(&dst) == src_inode);
+	return d_inode(&dst);
 }
 
 int tuxlink(struct inode *dir, const char *srcname, unsigned srclen,
@@ -201,7 +201,7 @@ struct inode *__tuxsymlink(struct inode *dir, const char *name, unsigned len,
 	err = __tux3_symlink(dir, &dentry, iattr, symname);
 	if (err)
 		return ERR_PTR(err);
-	return dentry.d_inode;
+	return d_inode(&dentry);
 }
 
 int tuxsymlink(struct inode *dir, const char *name, unsigned len,
@@ -255,7 +255,7 @@ int tuxunlink(struct inode *dir, const char *name, unsigned len)
 	err = tux3_unlink(dir, &dentry);
 
 	/* This iput() will schedule deletion if i_nlink == 0 && i_count == 1 */
-	iput(dentry.d_inode);
+	iput(d_inode(&dentry));
 
 	return err;
 }
@@ -278,11 +278,11 @@ int tuxrmdir(struct inode *dir, const char *name, unsigned len)
 		return err;
 
 	err = -ENOTDIR;
-	if (S_ISDIR(dentry.d_inode->i_mode))
+	if (S_ISDIR(d_inode(&dentry)->i_mode))
 		err = tux3_rmdir(dir, &dentry);
 
 	/* This iput() will schedule deletion if i_nlink == 0 && i_count == 1 */
-	iput(dentry.d_inode);
+	iput(d_inode(&dentry));
 
 	return err;
 }
@@ -315,11 +315,11 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 
 	/* FIXME: check is not enough */
 	err = 0;
-	if (old.d_inode == new.d_inode)
+	if (d_inode(&old) == d_inode(&new))
 		goto out;
-	is_dir = S_ISDIR(old.d_inode->i_mode);
-	new_is_dir = new.d_inode && S_ISDIR(new.d_inode->i_mode);
-	if (new.d_inode) {
+	is_dir = S_ISDIR(d_inode(&old)->i_mode);
+	new_is_dir = d_inode(&new) && S_ISDIR(d_inode(&new)->i_mode);
+	if (d_inode(&new)) {
 		if (is_dir != new_is_dir) {
 			err = is_dir ? -ENOTDIR : -EISDIR;
 			goto out;
@@ -334,10 +334,10 @@ int tuxrename(struct inode *old_dir, const char *old_name, unsigned old_len,
 
 	err = tux3_rename(old_dir, &old, new_dir, &new);
 out:
-	if (new.d_inode)
-		iput(new.d_inode);
+	if (d_inode(&new))
+		iput(d_inode(&new));
 error_old:
-	iput(old.d_inode);
+	iput(d_inode(&old));
 
 	return err;
 }
