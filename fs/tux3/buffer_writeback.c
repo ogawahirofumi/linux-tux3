@@ -238,7 +238,7 @@ static void prepare_and_unlock_page(struct page *page)
 /* Completion of page for I/O */
 static void bufvec_page_end_io(struct bio *bio, struct page *page)
 {
-	end_page_writeback(page);
+	page_endio(page, op_is_write(bio_op(bio)), bio->bi_error);
 }
 
 static void buffer_io_error(struct buffer_head *bh, const char *msg)
@@ -251,13 +251,19 @@ static void buffer_io_error(struct buffer_head *bh, const char *msg)
 /* Completion of buffer for I/O */
 static void bufvec_buffer_end_io(struct bio *bio, struct buffer_head *buffer)
 {
-	if (!bio->bi_error)
+	int err = bio->bi_error;
+
+	if (!err)
 		set_buffer_uptodate(buffer);
 	else {
 		if (!bio_flagged(bio, BIO_QUIET))
 			buffer_io_error(buffer, ", lost page write");
 		set_buffer_write_io_error(buffer);
 		clear_buffer_uptodate(buffer);
+
+		SetPageError(buffer->b_page);
+		if (buffer->b_page->mapping)
+			mapping_set_error(buffer->b_page->mapping, err);
 	}
 }
 
