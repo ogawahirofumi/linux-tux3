@@ -5,6 +5,7 @@
 
 #include <libklib/lockdebug.h>
 #include <libklib/uidgid.h>
+#include <libklib/blk_types.h>
 
 /* These sb flags are internal to the kernel */
 #define MS_ACTIVE	(1<<30)
@@ -161,30 +162,17 @@ struct dentry *d_splice_alias(struct inode *inode, struct dentry *dentry);
  * fs stuff
  */
 
-#define REQ_WRITE	1
-#define REQ_SYNC	(1 << 4)
-#define REQ_META	(1 << 5)
-#define REQ_PRIO	(1 << 6)
-#define REQ_NOIDLE	(1 << 10)
+#define READ_SYNC	REQ_SYNC
+#define WRITE_SYNC	(REQ_SYNC | REQ_NOIDLE)
+#define WRITE_ODIRECT	(REQ_SYNC)
+#define WRITE_FLUSH	(REQ_SYNC | REQ_NOIDLE | REQ_PREFLUSH)
+#define WRITE_FUA	(REQ_SYNC | REQ_NOIDLE | REQ_FUA)
+#define WRITE_FLUSH_FUA	(REQ_SYNC | REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA)
 
-#define REQ_RAHEAD	(1 << 13)
-
-#define REQ_FUA		(1 << 11)
-#define REQ_FLUSH	(1 << 12)
-
-#define RW_MASK		REQ_WRITE
-#define RWA_MASK	REQ_RAHEAD
-
-#define READ		0
-#define WRITE		RW_MASK
-#define READA		RWA_MASK
-
-#define READ_SYNC	(READ | REQ_SYNC)
-#define WRITE_SYNC	(WRITE | REQ_SYNC | REQ_NOIDLE)
-#define WRITE_ODIRECT	(WRITE | REQ_SYNC)
-#define WRITE_FLUSH	(WRITE | REQ_SYNC | REQ_NOIDLE | REQ_FLUSH)
-#define WRITE_FUA	(WRITE | REQ_SYNC | REQ_NOIDLE | REQ_FUA)
-#define WRITE_FLUSH_FUA	(WRITE | REQ_SYNC | REQ_NOIDLE | REQ_FLUSH | REQ_FUA)
+static inline bool op_is_write(unsigned int op)
+{
+	return op == REQ_OP_READ ? false : true;
+}
 
 /* File handle */
 struct file {
