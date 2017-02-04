@@ -21,22 +21,46 @@ typedef struct {
 #define DEFINE_SPINLOCK(x) spinlock_t x = __SPIN_LOCK_UNLOCKED
 #define spin_lock_init(lock) do { *(lock) = __SPIN_LOCK_UNLOCKED; } while (0)
 
-static inline void spin_lock(spinlock_t *lock)
+static inline void spin_lock(spinlock_t *lock) __acquires(lock)
 {
+	__acquire(lock);
 #ifdef LOCK_DEBUG
 	assert(lock->magic == SPINLOCK_MAGIC);
 	assert(lock->lock == 0);
 	lock->lock++;
 #endif
 }
-static inline void spin_unlock(spinlock_t *lock)
+static inline void spin_unlock(spinlock_t *lock) __releases(lock)
 {
 #ifdef LOCK_DEBUG
 	assert(lock->magic == SPINLOCK_MAGIC);
 	assert(lock->lock == 1);
 	lock->lock--;
 #endif
+	__release(lock);
 }
+static inline int _spin_trylock(spinlock_t *lock)
+{
+	spin_lock(lock);
+	return 1;
+}
+static inline int spin_trylock(spinlock_t *lock)
+{
+	return __cond_lock(lock, _spin_trylock(lock));
+}
+static inline int spin_is_locked(spinlock_t *lock)
+{
+#ifdef LOCK_DEBUG
+	return lock->lock != 0;
+#else
+	return 0;
+#endif
+}
+#ifdef LOCK_DEBUG
+#define assert_spin_locked(lock)	BUG_ON(!spin_is_locked(lock))
+#else
+#define assert_spin_locked(lock)	do {} while (0)
+#endif
 
 /**
  * atomic_dec_and_lock - lock on reaching reference count zero
@@ -81,6 +105,11 @@ static inline void down_read(struct rw_semaphore *lock)
 #endif
 }
 #define down_read_nested(lock, sub) down_read(lock)
+static inline int down_read_trylock(struct rw_semaphore *lock)
+{
+	down_read(lock);
+	return 1;
+}
 static inline void down_write(struct rw_semaphore *lock)
 {
 #ifdef LOCK_DEBUG
@@ -90,6 +119,12 @@ static inline void down_write(struct rw_semaphore *lock)
 #endif
 }
 #define down_write_nested(lock, sub) down_write(lock)
+#define down_write_killable(lock, sub) down_write(lock)
+static inline int down_write_trylock(struct rw_semaphore *lock)
+{
+	down_write(lock);
+	return 1;
+}
 static inline void up_read(struct rw_semaphore *lock)
 {
 #ifdef LOCK_DEBUG
@@ -104,6 +139,14 @@ static inline void up_write(struct rw_semaphore *lock)
 	assert(lock->magic == SPINLOCK_MAGIC);
 	assert(lock->count == -1);
 	lock->count++;
+#endif
+}
+static inline int rwsem_is_locked(struct rw_semaphore *lock)
+{
+#ifdef LOCK_DEBUG
+	return lock->count != 0;
+#else
+	return 0;
 #endif
 }
 
@@ -125,15 +168,23 @@ struct mutex {
 
 static inline void mutex_lock(struct mutex *lock)
 {
-#ifdef LOCK_DEBUG
 	down_write(&lock->sem);
-#endif
 }
 #define mutex_lock_nested(lock, sub) mutex_lock(lock)
+#define mutex_lock_interruptible(lock) mutex_lock(lock)
+#define mutex_lock_killable(lock) mutex_lock(lock)
+static inline int mutex_trylock(struct mutex *lock)
+{
+	mutex_lock(lock);
+	return 1;
+}
 static inline void mutex_unlock(struct mutex *lock)
 {
-#ifdef LOCK_DEBUG
 	up_write(&lock->sem);
-#endif
 }
+static inline int mutex_is_locked(struct mutex *lock)
+{
+	return rwsem_is_locked(&lock->sem);
+}
+
 #endif /* !LIBKLIB_LOCKDEBUG_H */
