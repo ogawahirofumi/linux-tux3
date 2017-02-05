@@ -29,14 +29,20 @@ static inline unsigned long find_first_zero_bit_le(const void *addr,
 
 #define BITOP_LE_SWIZZLE	((BITS_PER_LONG-1) & ~0x7)
 
+#ifndef find_next_zero_bit_le
 extern unsigned long find_next_zero_bit_le(const void *addr,
 		unsigned long size, unsigned long offset);
+#endif
 
+#ifndef find_next_bit_le
 extern unsigned long find_next_bit_le(const void *addr,
 		unsigned long size, unsigned long offset);
+#endif
 
+#ifndef find_first_zero_bit_le
 #define find_first_zero_bit_le(addr, size) \
 	find_next_zero_bit_le((addr), (size), 0)
+#endif
 
 #else
 #error "Unknown byte order"
@@ -45,6 +51,16 @@ extern unsigned long find_next_bit_le(const void *addr,
 static inline int test_bit_le(int nr, const void *addr)
 {
 	return test_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+}
+
+static inline void set_bit_le(int nr, void *addr)
+{
+	set_bit(nr ^ BITOP_LE_SWIZZLE, addr);
+}
+
+static inline void clear_bit_le(int nr, void *addr)
+{
+	clear_bit(nr ^ BITOP_LE_SWIZZLE, addr);
 }
 
 static inline void __set_bit_le(int nr, void *addr)

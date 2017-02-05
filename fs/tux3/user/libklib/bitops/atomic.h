@@ -1,21 +1,7 @@
 #ifndef LIBKLIB_BITOPS_ATOMIC_H
 #define LIBKLIB_BITOPS_ATOMIC_H
 
-#ifndef _atomic_spin_lock_irqsave
-/* Atomicity is not supported by default */
-#define _atomic_spin_lock(l)
-#define _atomic_spin_unlock(l)
-#endif
-
-/*
- * NMI events can occur at any time, including when interrupts have been
- * disabled by *_irqsave().  So you can get NMI events occurring while a
- * *_bit function is holding a spin lock.  If the NMI handler also wants
- * to do bit manipulation (and they do) then you can get a deadlock
- * between the original caller of *_bit() and the NMI handler.
- *
- * by Keith Owens
- */
+#include <libklib/atomic-gcc.h>
 
 /**
  * set_bit - Atomically set a bit in memory
@@ -37,9 +23,7 @@ static inline void set_bit(int nr, volatile unsigned long *addr)
 	unsigned long mask = BIT_MASK(nr);
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
 
-	_atomic_spin_lock(p);
-	*p  |= mask;
-	_atomic_spin_unlock(p);
+	klib_atomic_fetch_or(p, mask, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -57,9 +41,7 @@ static inline void clear_bit(int nr, volatile unsigned long *addr)
 	unsigned long mask = BIT_MASK(nr);
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
 
-	_atomic_spin_lock(p);
-	*p &= ~mask;
-	_atomic_spin_unlock(p);
+	klib_atomic_fetch_and(p, ~mask, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -77,9 +59,7 @@ static inline void change_bit(int nr, volatile unsigned long *addr)
 	unsigned long mask = BIT_MASK(nr);
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
 
-	_atomic_spin_lock(p);
-	*p ^= mask;
-	_atomic_spin_unlock(p);
+	klib_atomic_fetch_xor(p, mask, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -97,11 +77,7 @@ static inline int test_and_set_bit(int nr, volatile unsigned long *addr)
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
 	unsigned long old;
 
-	_atomic_spin_lock(p);
-	old = *p;
-	*p = old | mask;
-	_atomic_spin_unlock(p);
-
+	old = klib_atomic_fetch_or(p, mask, __ATOMIC_SEQ_CST);
 	return (old & mask) != 0;
 }
 
@@ -120,11 +96,7 @@ static inline int test_and_clear_bit(int nr, volatile unsigned long *addr)
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
 	unsigned long old;
 
-	_atomic_spin_lock(p);
-	old = *p;
-	*p = old & ~mask;
-	_atomic_spin_unlock(p);
-
+	old = klib_atomic_fetch_and(p, ~mask, __ATOMIC_SEQ_CST);
 	return (old & mask) != 0;
 }
 
@@ -142,11 +114,7 @@ static inline int test_and_change_bit(int nr, volatile unsigned long *addr)
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
 	unsigned long old;
 
-	_atomic_spin_lock(p);
-	old = *p;
-	*p = old ^ mask;
-	_atomic_spin_unlock(p);
-
+	old = klib_atomic_fetch_xor(p, mask, __ATOMIC_SEQ_CST);
 	return (old & mask) != 0;
 }
 

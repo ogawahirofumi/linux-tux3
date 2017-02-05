@@ -33,6 +33,8 @@
 #include <libklib/bitops/fls64.h>
 #include <libklib/bitops/find.h>
 
+#include <libklib/bitops/lock.h>
+
 #include <libklib/bitops/atomic.h>
 #include <libklib/bitops/non-atomic.h>
 #include <libklib/bitops/le.h>
