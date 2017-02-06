@@ -89,8 +89,6 @@ static inline void __free_pages(struct page *page, unsigned order)
  * pagemap stuff
  */
 
-#define PAGE_CACHE_SIZE	PAGE_SIZE
-
 static inline gfp_t mapping_gfp_mask(map_t * mapping)
 {
 	return (__force gfp_t)mapping->flags & __GFP_BITS_MASK;
