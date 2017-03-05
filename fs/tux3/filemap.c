@@ -925,19 +925,18 @@ static int tux3_disable_writepages(struct address_space *mapping,
  * Direct I/O is unsupport for now. Since this is for
  * non-atomic-commit mode, so this allocates blocks from frontend.
  */
-static ssize_t tux3_direct_IO(int rw, struct kiocb *iocb,
-			      const struct iovec *iov,
-			      loff_t offset, unsigned long nr_segs)
+static ssize_t tux3_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
+	size_t count = iov_iter_count(iter);
+	loff_t offset = iocb->ki_pos;
 	ssize_t ret;
 
-	ret = blockdev_direct_IO(rw, iocb, inode, iov, offset, nr_segs,
-				 tux3_get_block);
-	if (ret < 0 && (rw & WRITE))
-		tux3_write_failed(mapping, offset + iov_length(iov, nr_segs));
+	ret = blockdev_direct_IO(iocb, inode, iter, tux3_get_block);
+	if (ret < 0 && iov_iter_rw(iter) == REQ_OP_WRITE)
+		tux3_write_failed(mapping, offset + count);
 	return ret;
 }
 #endif
