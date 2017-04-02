@@ -1068,7 +1068,6 @@ static const struct inode_operations tux_special_iops = {
 };
 
 const struct inode_operations tux_symlink_iops = {
-	.readlink	= generic_readlink,
 	.get_link	= page_get_link,
 	.setattr	= tux3_setattr,
 	.getattr	= tux3_getattr,
