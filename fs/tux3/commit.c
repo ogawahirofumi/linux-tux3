@@ -593,7 +593,7 @@ static int commit_delta(struct sb *sb)
 		 * CFQ-queue with previous, and to avoid CFQ's
 		 * idle_slice_timer between CFQ-queues.
 		 */
-		req_flags |= REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA;
+		req_flags |= REQ_PREFLUSH | REQ_FUA;
 	}
 
 	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
