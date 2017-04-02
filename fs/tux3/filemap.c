@@ -455,14 +455,14 @@ static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec);
 int tux3_filemap_overwrite_io(struct bufvec *bufvec)
 {
 	enum map_mode mode =
-		op_is_write(bufvec->req_op) ? MAP_WRITE : MAP_READ;
+		op_is_write(bufvec->req_opf) ? MAP_WRITE : MAP_READ;
 	return filemap_extent_io(mode, bufvec);
 }
 
 int tux3_filemap_redirect_io(struct bufvec *bufvec)
 {
 	enum map_mode mode =
-		op_is_write(bufvec->req_op) ? MAP_REDIRECT : MAP_READ;
+		op_is_write(bufvec->req_opf) ? MAP_REDIRECT : MAP_READ;
 	return filemap_extent_io(mode, bufvec);
 }
 

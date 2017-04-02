@@ -91,7 +91,7 @@ struct bufvec {
 	} on_page[BUFS_PER_PAGE];
 	unsigned on_page_idx;
 
-	enum req_op req_op;
+	enum req_opf req_opf;
 	unsigned int req_flags;
 	struct bio *bio;
 	struct buffer_head *bio_lastbuf;
@@ -133,7 +133,7 @@ int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	       struct list_head *head, unsigned int req_flags);
 int __tux3_volmap_io(struct bufvec *bufvec, block_t physical, unsigned count);
-int vol_early_io(enum req_op req_op, unsigned req_flags, struct sb *sb,
+int vol_early_io(enum req_opf req_opf, unsigned req_flags, struct sb *sb,
 		 struct buffer_head *buffer);
 int tux3_volmap_early_io(struct bufvec *bufvec);
 int tux3_volmap_clean_io(struct inode *inode);

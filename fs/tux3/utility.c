@@ -9,7 +9,7 @@
 #include "tux3.h"
 #include "kcompat.h"
 
-static int vecio(enum req_op req_op, unsigned int req_flags,
+static int vecio(enum req_opf req_opf, unsigned int req_flags,
 		 struct block_device *dev, loff_t offset,
 		 unsigned vecs, struct bio_vec *vec,
 		 bio_end_io_t endio, void *bio_private)
@@ -31,7 +31,7 @@ static int vecio(enum req_op req_op, unsigned int req_flags,
 	while (vecs--)
 		bio_bi_size(bio) += bio->bi_io_vec[vecs].bv_len;
 
-	bio_set_op_attrs(bio, req_op, req_flags);
+	bio_set_op_attrs(bio, req_opf, req_flags);
 	submit_bio(bio);
 
 	return 0;
@@ -50,21 +50,21 @@ static void syncio_end_io(struct bio *bio)
 	bio_put(bio);
 }
 
-static int syncio(enum req_op req_op, unsigned int req_flags,
+static int syncio(enum req_opf req_opf, unsigned int req_flags,
 		  struct block_device *dev, loff_t offset,
 		  unsigned vecs, struct bio_vec *vec)
 {
 	struct biosync sync = {
 		.done = COMPLETION_INITIALIZER_ONSTACK(sync.done)
 	};
-	sync.err = vecio(req_op, req_flags, dev, offset, vecs, vec,
+	sync.err = vecio(req_opf, req_flags, dev, offset, vecs, vec,
 			 syncio_end_io, &sync);
 	if (!sync.err)
 		wait_for_completion_io(&sync.done);
 	return sync.err;
 }
 
-int devio_sync(enum req_op req_op, unsigned int req_flags,
+int devio_sync(enum req_opf req_opf, unsigned int req_flags,
 	       struct block_device *dev, loff_t offset, void *data,
 	       unsigned len)
 {
@@ -74,10 +74,10 @@ int devio_sync(enum req_op req_op, unsigned int req_flags,
 		.bv_len		= len,
 	};
 
-	return syncio(req_op, req_flags, dev, offset, 1, &vec);
+	return syncio(req_opf, req_flags, dev, offset, 1, &vec);
 }
 
-int blockio(enum req_op req_op, unsigned int req_flags,
+int blockio(enum req_opf req_opf, unsigned int req_flags,
 	    struct sb *sb, struct buffer_head *buffer, block_t block,
 	    bio_end_io_t endio, void *info)
 {
@@ -87,11 +87,11 @@ int blockio(enum req_op req_op, unsigned int req_flags,
 		.bv_len		= sb->blocksize,
 	};
 
-	return vecio(req_op, req_flags, sb_dev(sb), block << sb->blockbits, 1,
+	return vecio(req_opf, req_flags, sb_dev(sb), block << sb->blockbits, 1,
 		     &vec, endio, info);
 }
 
-int blockio_sync(enum req_op req_op, unsigned int req_flags, struct sb *sb,
+int blockio_sync(enum req_opf req_opf, unsigned int req_flags, struct sb *sb,
 		 struct buffer_head *buffer, block_t block)
 {
 	struct bio_vec vec = {
@@ -100,7 +100,7 @@ int blockio_sync(enum req_op req_op, unsigned int req_flags, struct sb *sb,
 		.bv_len		= sb->blocksize,
 	};
 
-	return syncio(req_op, req_flags, sb_dev(sb),
+	return syncio(req_opf, req_flags, sb_dev(sb),
 		      block << sb->blockbits, 1, &vec);
 }
 

@@ -20,12 +20,12 @@ static inline struct buffer_head *buffers_entry(struct list_head *x)
 #define MAX_BUFVEC_COUNT	UINT_MAX
 
 /* Initialize bufvec */
-static void bufvec_init(struct bufvec *bufvec, enum req_op req_op,
+static void bufvec_init(struct bufvec *bufvec, enum req_opf req_opf,
 			unsigned int req_flags, struct address_space *mapping,
 			struct list_head *head, struct tux3_iattr_data *idata)
 {
 	INIT_LIST_HEAD(&bufvec->contig);
-	bufvec->req_op		= req_op;
+	bufvec->req_opf		= req_opf;
 	bufvec->req_flags	= req_flags;
 	bufvec->buffers		= head;
 	bufvec->contig_count	= 0;
@@ -131,7 +131,7 @@ static void bufvec_submit_bio(struct bufvec *bufvec)
 	      bio_bi_size(bio) >> sb->blockbits);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	bio_set_op_attrs(bio, bufvec->req_op, bufvec->req_flags);
+	bio_set_op_attrs(bio, bufvec->req_opf, bufvec->req_flags);
 	submit_bio(bio);
 }
 
@@ -540,7 +540,7 @@ int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count)
 	      physical, count);
 
 	/* FIXME: now only support WRITE */
-	assert(op_is_write(bufvec->req_op));
+	assert(op_is_write(bufvec->req_opf));
 	assert(bufvec_contig_count(bufvec) >= count);
 
 	if (bufvec->on_page_idx) {
@@ -737,19 +737,19 @@ static void vol_early_end_io(struct bio *bio)
 }
 
 /* 1st phase I/O for volmap by random order */
-int vol_early_io(enum req_op req_op, unsigned int req_flags,
+int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
 		 struct sb *sb, struct buffer_head *buffer)
 {
 	int err;
 
 	assert(buffer_dirty(buffer));
 	/* FIXME: For now, this is only for write */
-	assert(op_is_write(req_op));
+	assert(op_is_write(req_opf));
 
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	err = blockio(req_op, req_flags, sb, buffer, bufindex(buffer),
+	err = blockio(req_opf, req_flags, sb, buffer, bufindex(buffer),
 		      vol_early_end_io, buffer);
 	if (err)
 		tux3_io_inflight_dec(sb->ioinfo);
@@ -811,7 +811,7 @@ int tux3_volmap_early_io(struct bufvec *bufvec)
 	int err = 0;
 
 	/* FIXME: For now, this is only for write */
-	assert(op_is_write(bufvec->req_op));
+	assert(op_is_write(bufvec->req_opf));
 
 	/* Add buffers to bio for each page */
 	for (i = 0; i < count; i++) {

@@ -178,7 +178,7 @@ int tux3_logmap_io(struct bufvec *bufvec)
 	struct sb *sb = tux_sb(logmap->i_sb);
 	unsigned count = bufvec_contig_count(bufvec);
 
-	assert(op_is_write(bufvec->req_op));
+	assert(op_is_write(bufvec->req_opf));
 	assert(bufvec_contig_index(bufvec) == 0);
 
 	while (count > 0) {

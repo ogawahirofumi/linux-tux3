@@ -790,13 +790,13 @@ int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags);
 extern const struct inode_operations tux_symlink_iops;
 
 /* utility.c */
-int devio_sync(enum req_op req_op, unsigned int req_flags,
+int devio_sync(enum req_opf req_opf, unsigned int req_flags,
 	       struct block_device *dev, loff_t offset, void *data,
 	       unsigned len);
-int blockio(enum req_op req_op, unsigned int req_flags,
+int blockio(enum req_opf req_opf, unsigned int req_flags,
 	    struct sb *sb, struct buffer_head *buffer, block_t block,
 	    bio_end_io_t endio, void *info);
-int blockio_sync(enum req_op req_op, unsigned int req_flags, struct sb *sb,
+int blockio_sync(enum req_opf req_opf, unsigned int req_flags, struct sb *sb,
 		 struct buffer_head *buffer, block_t block);
 int blockio_vec(struct bufvec *bufvec, block_t block, unsigned count);
 
