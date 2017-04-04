@@ -224,6 +224,9 @@ retry:
 	tux3_set_page_dirty(clone);
 
 	change_end(sb);
+	/* If page was forked, remember oldpage */
+	if (vmf->page != clone)
+		vmf->forked_oldpage = vmf->page;
 	vmf->page = clone;
 	ret = VM_FAULT_LOCKED;
 
