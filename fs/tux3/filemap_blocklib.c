@@ -55,7 +55,7 @@ static void tux3_page_zero_new_buffers(struct page *page, unsigned from,
 
 /*
  * Copy of __block_write_begin() (changed to call __tux3_mark_buffer_dirty(),
- * and to remove unmap_underlying_metadata())
+ * and to remove clean_bdev_bh_alias())
  */
 static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 			      get_block_t *get_block)
@@ -109,8 +109,7 @@ static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 				break;
 			if (buffer_new(bh)) {
 #if 0
-				unmap_underlying_metadata(bh->b_bdev,
-							bh->b_blocknr);
+				clean_bdev_bh_alias(bh);
 #endif
 				if (PageUptodate(page)) {
 					/* FIXME: do we have to mark this dirty?

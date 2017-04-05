@@ -522,7 +522,7 @@ static void seg_to_buffer(struct sb *sb, struct buffer_head *buffer,
 //			clear_buffer_delay(buffer);
 			buffer->b_blocknr = seg->block;
 			/*
-			 * FIXME: do we need to unmap_underlying_metadata()
+			 * FIXME: do we need to clean_bdev_bh_alias()
 			 * for sb->volmap? (at least, check buffer state?)
 			 * And if needed, is it enough?
 			 */
