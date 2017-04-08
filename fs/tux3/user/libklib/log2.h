@@ -9,7 +9,8 @@
 /*
  * deal with unrepresentable constant logarithms
  */
-extern int ____ilog2_NaN(void);
+extern __attribute__((const, noreturn))
+int ____ilog2_NaN(void);
 
 /*
  * non-constant log of base 2 calculators
@@ -193,6 +194,18 @@ unsigned long __rounddown_pow_of_two(unsigned long n)
  *  ... and so on.
  */
 
-#define order_base_2(n) ilog2(roundup_pow_of_two(n))
+static inline __attribute_const__
+int __order_base_2(unsigned long n)
+{
+	return n > 1 ? ilog2(n - 1) + 1 : 0;
+}
+
+#define order_base_2(n)				\
+(						\
+	__builtin_constant_p(n) ? (		\
+		((n) == 0 || (n) == 1) ? 0 :	\
+		ilog2((n) - 1) + 1) :		\
+	__order_base_2(n)			\
+)
 
 #endif /* !LIBKLIB_LOG2_H */
