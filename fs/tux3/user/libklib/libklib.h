@@ -61,6 +61,10 @@ extern int __build_bug_on_failed;
 #define ALIGN(x, a)		__ALIGN_MASK(x, (typeof(x))(a) - 1)
 #define __ALIGN_MASK(x, mask)	(((x) + (mask)) & ~(mask))
 
+/* generic data direction definitions */
+#define READ			0
+#define WRITE			1
+
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
 
 #define abs64(x)	llabs(x)

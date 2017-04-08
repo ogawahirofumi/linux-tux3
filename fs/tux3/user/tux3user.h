@@ -184,12 +184,12 @@ void tux3_exit_mem(void);
 
 /* utility.c */
 void stacktrace(void);
-int devio_vec(enum req_op req_op, unsigned int req_flags, struct dev *dev,
+int devio_vec(enum req_opf req_opf, unsigned int req_flags, struct dev *dev,
 	      loff_t offset, struct iovec *iov, unsigned iovcnt);
-int devio_sync(enum req_op req_op, unsigned int req_flags,
+int devio_sync(enum req_opf req_opf, unsigned int req_flags,
 	       struct dev *dev, loff_t offset, void *data,
 	       unsigned len);
-int blockio_sync(enum req_op req_op, unsigned int req_flags, struct sb *sb,
+int blockio_sync(enum req_opf req_opf, unsigned int req_flags, struct sb *sb,
 		 struct buffer_head *buffer, block_t block);
 int blockio_vec(struct bufvec *bufvec, block_t block, unsigned count);
 

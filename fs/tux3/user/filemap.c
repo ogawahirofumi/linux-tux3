@@ -161,7 +161,7 @@ static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 
 	struct bufvec *bufvec_io, bufvec_ahead;
 	unsigned count;
-	if (!op_is_write(bufvec->req_op)) {
+	if (!op_is_write(bufvec->req_opf)) {
 		/* In the case of read, use new bufvec for readahead */
 		err = guess_readahead(&bufvec_ahead, inode, index);
 		if (err)
@@ -186,7 +186,7 @@ static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 		trace("extent 0x%Lx/%x => %Lx", index, count, block);
 
 		if (seg[i].state != BLOCK_SEG_HOLE) {
-			if (!op_is_write(bufvec->req_op))
+			if (!op_is_write(bufvec->req_opf))
 				bufvec_io->end_io = filemap_read_endio;
 			else
 				bufvec_io->end_io = clear_buffer_dirty_for_endio;
@@ -195,7 +195,7 @@ static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 			if (err)
 				break;
 		} else {
-			assert(!op_is_write(bufvec->req_op));
+			assert(!op_is_write(bufvec->req_opf));
 			bufvec_io->end_io = filemap_hole_endio;
 			bufvec_complete_without_io(bufvec_io, count);
 		}
@@ -208,7 +208,7 @@ static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 	 * be handle buffers was not mapped (and is not written out)
 	 * this time.
 	 */
-	if (!op_is_write(bufvec->req_op)) {
+	if (!op_is_write(bufvec->req_opf)) {
 		/* Clean buffers was not mapped in this time */
 		count = bufvec_contig_count(bufvec_io);
 		if (count) {

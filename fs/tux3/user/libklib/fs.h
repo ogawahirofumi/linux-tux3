@@ -219,11 +219,6 @@ struct dentry *d_splice_alias(struct inode *inode, struct dentry *dentry);
 #define WRITE_FUA	(REQ_SYNC | REQ_NOIDLE | REQ_FUA)
 #define WRITE_FLUSH_FUA	(REQ_SYNC | REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA)
 
-static inline bool op_is_write(unsigned int op)
-{
-	return op == REQ_OP_READ ? false : true;
-}
-
 /* File handle */
 struct file {
 	struct inode	*f_inode;

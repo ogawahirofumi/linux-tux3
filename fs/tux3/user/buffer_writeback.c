@@ -23,13 +23,13 @@ static inline struct buffer_head *buffers_entry(struct list_head *x)
 #define MAX_BUFVEC_COUNT	UINT_MAX
 
 /* Initialize bufvec */
-void bufvec_init(struct bufvec *bufvec, enum req_op req_op,
+void bufvec_init(struct bufvec *bufvec, enum req_opf req_opf,
 		 unsigned int req_flags, map_t *map,
 		 struct list_head *head, struct tux3_iattr_data *idata)
 {
 	INIT_LIST_HEAD(&bufvec->contig);
 	INIT_LIST_HEAD(&bufvec->for_io);
-	bufvec->req_op		= req_op;
+	bufvec->req_opf		= req_opf;
 	bufvec->req_flags	= req_flags;
 	bufvec->buffers		= head;
 	bufvec->contig_count	= 0;
@@ -120,7 +120,7 @@ int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count)
 	}
 	assert(i > 0);
 
-	err = devio_vec(bufvec->req_op, bufvec->req_flags, sb_dev(sb),
+	err = devio_vec(bufvec->req_opf, bufvec->req_flags, sb_dev(sb),
 			physical << sb->blockbits, iov, iov_count);
 	bufvec_io_done(bufvec, err);
 
@@ -308,12 +308,12 @@ int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 }
 
 /* 1st phase I/O for volmap by random order */
-int vol_early_io(enum req_op req_op, unsigned int req_flags,
+int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
 		 struct sb *sb, struct buffer_head *buffer)
 {
 	int err;
 	assert(buffer_dirty(buffer));
-	err = blockio_sync(req_op, req_flags, sb, buffer, bufindex(buffer));
+	err = blockio_sync(req_opf, req_flags, sb, buffer, bufindex(buffer));
 	buffer_io_done(buffer, err, __clear_buffer_dirty_for_endio);
 	return err;
 }
