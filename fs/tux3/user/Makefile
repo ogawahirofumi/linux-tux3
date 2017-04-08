@@ -67,7 +67,7 @@ CHECKFLAGS = -gcc-base-dir $(shell $(CC) -print-file-name=)
 # Add multiarch include if need (workaround for debian's multiarch)
 CHECKFLAGS += $(shell if gcc -print-multiarch > /dev/null 2>&1; then \
 		echo "-isystem /usr/include/`gcc -print-multiarch`"; fi)
-CHECKFLAGS += -D__CHECKER__ -D__CHECK_ENDIAN__
+CHECKFLAGS += -D__CHECKER__
 CHECKFLAGS += -Wsparse-all -Wno-transparent-union
 CHECKFLAGS += -Wno-declaration-after-statement
 CHECKFLAGS += -Wno-decl
