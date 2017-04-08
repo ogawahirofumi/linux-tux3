@@ -34,6 +34,24 @@ static inline void INIT_LIST_HEAD(struct list_head *list)
 	list->prev = list;
 }
 
+#ifdef CONFIG_DEBUG_LIST
+extern bool __list_add_valid(struct list_head *new,
+			      struct list_head *prev,
+			      struct list_head *next);
+extern bool __list_del_entry_valid(struct list_head *entry);
+#else
+static inline bool __list_add_valid(struct list_head *new,
+				struct list_head *prev,
+				struct list_head *next)
+{
+	return true;
+}
+static inline bool __list_del_entry_valid(struct list_head *entry)
+{
+	return true;
+}
+#endif
+
 /*
  * Insert a new entry between two known consecutive entries.
  *
@@ -44,6 +62,9 @@ static inline void __list_add(struct list_head *new,
 			      struct list_head *prev,
 			      struct list_head *next)
 {
+	if (!__list_add_valid(new, prev, next))
+		return;
+
 	next->prev = new;
 	new->next = next;
 	new->prev = prev;
@@ -98,12 +119,15 @@ static inline void __list_del(struct list_head * prev, struct list_head * next)
  */
 static inline void __list_del_entry(struct list_head *entry)
 {
+	if (!__list_del_entry_valid(entry))
+		return;
+
 	__list_del(entry->prev, entry->next);
 }
 
 static inline void list_del(struct list_head *entry)
 {
-	__list_del(entry->prev, entry->next);
+	__list_del_entry(entry);
 	entry->next = LIST_POISON1;
 	entry->prev = LIST_POISON2;
 }
