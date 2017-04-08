@@ -8,6 +8,31 @@
 #define MINOR(dev)	((unsigned int) ((dev) & MINORMASK))
 #define MKDEV(ma,mi)	(((ma) << MINORBITS) | (mi))
 
+#define print_dev_t(buffer, dev)					\
+	sprintf((buffer), "%u:%u\n", MAJOR(dev), MINOR(dev))
+
+#define format_dev_t(buffer, dev)					\
+	({								\
+		sprintf(buffer, "%u:%u", MAJOR(dev), MINOR(dev));	\
+		buffer;							\
+	})
+
+/* acceptable for old filesystems */
+static inline bool old_valid_dev(dev_t dev)
+{
+	return MAJOR(dev) < 256 && MINOR(dev) < 256;
+}
+
+static inline u16 old_encode_dev(dev_t dev)
+{
+	return (MAJOR(dev) << 8) | MINOR(dev);
+}
+
+static inline dev_t old_decode_dev(u16 val)
+{
+	return MKDEV((val >> 8) & 255, val & 255);
+}
+
 static inline u32 new_encode_dev(dev_t dev)
 {
 	unsigned major = MAJOR(dev);
@@ -20,11 +45,6 @@ static inline dev_t new_decode_dev(u32 dev)
 	unsigned major = (dev & 0xfff00) >> 8;
 	unsigned minor = (dev & 0xff) | ((dev >> 12) & 0xfff00);
 	return MKDEV(major, minor);
-}
-
-static inline int huge_valid_dev(dev_t dev)
-{
-	return 1;
 }
 
 static inline u64 huge_encode_dev(dev_t dev)
