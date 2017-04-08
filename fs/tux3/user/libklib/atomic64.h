@@ -1,7 +1,7 @@
 #ifndef LIBKLIB_ASM_ATOMIC64_H
 #define LIBKLIB_ASM_ATOMIC64_H
 
-/* based on arch/x86/include/asm/atomic64_32.h */
+/* based on arch/x86/include/asm/atomic64_64.h */
 
 /* The 64-bit atomic type */
 
