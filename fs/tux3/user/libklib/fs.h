@@ -212,13 +212,6 @@ struct dentry *d_splice_alias(struct inode *inode, struct dentry *dentry);
  * fs stuff
  */
 
-#define READ_SYNC	REQ_SYNC
-#define WRITE_SYNC	(REQ_SYNC | REQ_NOIDLE)
-#define WRITE_ODIRECT	(REQ_SYNC)
-#define WRITE_FLUSH	(REQ_SYNC | REQ_NOIDLE | REQ_PREFLUSH)
-#define WRITE_FUA	(REQ_SYNC | REQ_NOIDLE | REQ_FUA)
-#define WRITE_FLUSH_FUA	(REQ_SYNC | REQ_NOIDLE | REQ_PREFLUSH | REQ_FUA)
-
 /* File handle */
 struct file {
 	struct inode	*f_inode;
