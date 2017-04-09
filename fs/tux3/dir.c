@@ -42,7 +42,7 @@
 static inline unsigned tux_rec_len_from_disk(__be16 dlen)
 {
 	unsigned len = be16_to_cpu(dlen);
-#if (PAGE_CACHE_SIZE >= 65536)
+#if (PAGE_SIZE >= 65536)
 	if (len == TUX_MAX_REC_LEN)
 		return 1 << 16;
 #endif
@@ -51,7 +51,7 @@ static inline unsigned tux_rec_len_from_disk(__be16 dlen)
 
 static inline __be16 tux_rec_len_to_disk(unsigned len)
 {
-#if (PAGE_CACHE_SIZE >= 65536)
+#if (PAGE_SIZE >= 65536)
 	if (len == (1 << 16))
 		return cpu_to_be16(TUX_MAX_REC_LEN);
 	else

@@ -424,7 +424,7 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	sb->blocksize = 1 << sb->blockbits;
 	sb->blockmask = (1 << sb->blockbits) - 1;
 #ifdef __KERNEL__
-	sb->blocks_per_page_bits = PAGE_CACHE_SHIFT - sb->blockbits;
+	sb->blocks_per_page_bits = PAGE_SHIFT - sb->blockbits;
 #else
 	sb->blocks_per_page_bits = 0;
 #endif

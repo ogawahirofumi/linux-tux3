@@ -197,7 +197,7 @@ retry:
 
 			/* Don't touch refcount if old page */
 			if (page != vmf->page)
-				page_cache_release(page);
+				put_page(page);
 
 			/* Someone did page fork */
 			page = find_get_page(inode->i_mapping, index);
@@ -236,7 +236,7 @@ out:
 error:
 	/* Don't touch refcount if orig_page */
 	if (page != vmf->page)
-		page_cache_release(page);
+		put_page(page);
 	goto out;
 }
 

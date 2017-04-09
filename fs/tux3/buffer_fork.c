@@ -64,10 +64,10 @@ static void free_forked_page(struct page *page)
 	unlock_page(page);
 
 	/* Drop the radix-tree reference */
-	page_cache_release(page);
+	put_page(page);
 	/* Drop the final reference */
 	trace_on("page %p, count %u", page, page_count(page));
-	page_cache_release(page);
+	put_page(page);
 }
 
 /* Use same bit with bufdelta though, this buffer never be dirty */
@@ -416,7 +416,7 @@ tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
 	 * for radix-tree.
 	 */
 	if (keep_refcnt)
-		page_cache_get(oldpage);
+		get_page(oldpage);
 
 	/* Replace oldpage on radix-tree with newpage */
 	err = pagefork_replace_page_cache(oldpage, newpage); /* FIXME: error */
@@ -434,7 +434,7 @@ tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
 	 */
 	trace("oldpage count %u", page_count(oldpage));
 	assert(page_count(oldpage) >= 2);
-	page_cache_get(oldpage);
+	get_page(oldpage);
 	oldpage_try_remove_from_lru(oldpage);
 
 	/*
@@ -511,7 +511,7 @@ struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta)
 	newbuf = __get_buffer(newpage, bh_offset(buffer) >> sb->blockbits);
 	/* Grab buffer to pin page, then release refcount of newpage */
 	get_bh(newbuf);
-	page_cache_release(newpage);
+	put_page(newpage);
 
 	/* Release buffer (so unpin oldpage too). */
 	brelse(buffer);
@@ -615,7 +615,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 	}
 
 	/* We keep page->mapping as is, so get refcount for radix-tree. */
-	page_cache_get(page);
+	get_page(page);
 
 	/* FIXME: need this? */
 	ClearPageMappedToDisk(page);
@@ -633,7 +633,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 	 */
 	trace("page count %u", page_count(page));
 	assert(page_count(page) >= 2);
-	page_cache_get(page);
+	get_page(page);
 	oldpage_try_remove_from_lru(page);
 
 	/*

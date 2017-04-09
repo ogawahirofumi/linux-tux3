@@ -194,8 +194,8 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	if (!is_volmap || !keep_page_dirty(page, on_page_idx)) {
 		/* FIXME: remove outside hack */
 		int outside;
-		offset = i_size & (PAGE_CACHE_SIZE - 1);
-		last_index = i_size >> PAGE_CACHE_SHIFT;
+		offset = i_size & (PAGE_SIZE - 1);
+		last_index = i_size >> PAGE_SHIFT;
 		outside = offset && last_index == page->index;
 
 		old_flag = tux3_clear_page_dirty_for_io(page, outside);
@@ -220,10 +220,10 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	 * the  page size, the remaining memory is zeroed when mapped, and
 	 * writes to that region are not written out to the file."
 	 */
-	offset = i_size & (PAGE_CACHE_SIZE - 1);
-	last_index = i_size >> PAGE_CACHE_SHIFT;
+	offset = i_size & (PAGE_SIZE - 1);
+	last_index = i_size >> PAGE_SHIFT;
 	if (offset && last_index == page->index)
-		zero_user_segment(page, offset, PAGE_CACHE_SIZE);
+		zero_user_segment(page, offset, PAGE_SIZE);
 }
 
 static void prepare_and_unlock_page(struct page *page)
@@ -595,7 +595,7 @@ static void bufvec_cancel_and_unlock_page(struct page *page,
 	if (page->index < outside_index)
 		tux3_try_cancel_dirty_page(page);
 	else
-		cancel_dirty_page(page, PAGE_CACHE_SIZE);
+		cancel_dirty_page(page, PAGE_SIZE);
 
 	unlock_page(page);
 }
@@ -609,7 +609,7 @@ static void bufvec_cancel_dirty_outside(struct bufvec *bufvec)
 	struct buffer_head *buffer;
 	pgoff_t outside_index;
 
-	outside_index = (idata->i_size+(PAGE_CACHE_SIZE-1)) >> PAGE_CACHE_SHIFT;
+	outside_index = (idata->i_size + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
 	buffer = buffers_entry(bufvec->buffers->next);
 	page = prev_page = buffer->b_page;
@@ -972,7 +972,7 @@ int tux3_volmap_clean_io(struct inode *inode)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct list_head *head = &sb->phase2_buffers;
-	struct buffer_head *on_page[BUFS_PER_PAGE_CACHE];
+	struct buffer_head *on_page[BUFS_PER_PAGE];
 	int done, on_page_idx;
 
 	if (list_empty(head))

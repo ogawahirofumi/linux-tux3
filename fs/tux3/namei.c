@@ -135,7 +135,7 @@ static int __tux3_symlink(struct inode *dir, struct dentry *dentry,
 	int err, err2;
 
 	/* FIXME: We want more length? */
-	if (len > PAGE_CACHE_SIZE)
+	if (len > PAGE_SIZE)
 		return -ENAMETOOLONG;
 
 	if (change_begin(sb, 6))

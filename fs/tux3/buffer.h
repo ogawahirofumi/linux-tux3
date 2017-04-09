@@ -77,7 +77,7 @@ void tux3_invalidate_buffer(struct buffer_head *buffer);
 /* buffer_writeback.c */
 
 /* Helper for buffer vector I/O */
-#define BUFS_PER_PAGE_CACHE	(PAGE_CACHE_SIZE / 512)
+#define BUFS_PER_PAGE	(PAGE_SIZE / 512)
 struct bufvec {
 	struct list_head *buffers;	/* The dirty buffers for this delta */
 	struct list_head contig;	/* One logical contiguous range */
@@ -88,7 +88,7 @@ struct bufvec {
 	struct {
 		struct buffer_head *buffer;
 		block_t block;
-	} on_page[BUFS_PER_PAGE_CACHE];
+	} on_page[BUFS_PER_PAGE];
 	unsigned on_page_idx;
 
 	struct bio *bio;

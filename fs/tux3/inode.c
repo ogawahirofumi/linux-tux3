@@ -557,7 +557,7 @@ static int tux3_truncate(struct inode *inode, loff_t newsize)
 {
 	/* FIXME: expanding size is not tested */
 #ifdef __KERNEL__
-	const unsigned boundary = PAGE_CACHE_SIZE;
+	const unsigned boundary = PAGE_SIZE;
 #else
 	const unsigned boundary = tux_sb(inode->i_sb)->blocksize;
 #endif

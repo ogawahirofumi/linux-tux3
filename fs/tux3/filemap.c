@@ -654,7 +654,7 @@ static struct buffer_head *__find_get_buffer(struct address_space *mapping,
 			}
 			spin_unlock(&mapping->private_lock);
 		}
-		page_cache_release(page);
+		put_page(page);
 	}
 	return bh;
 }
@@ -671,8 +671,8 @@ struct buffer_head *peekblk(struct address_space *mapping, block_t iblock)
 	pgoff_t index;
 	int offset;
 
-	index = iblock >> (PAGE_CACHE_SHIFT - inode->i_blkbits);
-	offset = iblock & ((1 << (PAGE_CACHE_SHIFT - inode->i_blkbits)) - 1);
+	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
+	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
 
 	return __find_get_buffer(mapping, index, offset, 0);
 }
@@ -686,8 +686,8 @@ struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 	struct buffer_head *bh;
 	int err, offset;
 
-	index = iblock >> (PAGE_CACHE_SHIFT - inode->i_blkbits);
-	offset = iblock & ((1 << (PAGE_CACHE_SHIFT - inode->i_blkbits)) - 1);
+	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
+	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
 
 	bh = find_get_buffer(mapping, index, offset);
 	if (bh)
@@ -715,7 +715,7 @@ struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 			goto error_readpage;
 		}
 	}
-	page_cache_release(page);
+	put_page(page);
 	assert(buffer_uptodate(bh));
 
 out:
@@ -723,7 +723,7 @@ out:
 
 error_readpage:
 	put_bh(bh);
-	page_cache_release(page);
+	put_page(page);
 error:
 	return NULL;
 }
@@ -738,8 +738,8 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 	int err, offset;
 	unsigned aop_flags = AOP_FLAG_UNINTERRUPTIBLE;
 
-	index = iblock >> (PAGE_CACHE_SHIFT - inode->i_blkbits);
-	offset = iblock & ((1 << (PAGE_CACHE_SHIFT - inode->i_blkbits)) - 1);
+	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
+	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
 
 	/* Prevent reentering into our fs recursively by memory allocation. */
 	if (!(mapping_gfp_mask(mapping) & __GFP_FS))
@@ -790,7 +790,7 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 	set_buffer_uptodate(bh);
 
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 
 	return bh;
 }
