@@ -277,7 +277,7 @@ static struct page *tux3_clone_page(struct page *oldpage, unsigned blocksize)
 	/* oldpage should be forked page */
 	BUG_ON(PageForked(oldpage));
 
-	newpage = cow_clone_page(oldpage);
+	newpage = pagefork_clone_page(oldpage);
 	if (!IS_ERR(newpage)) {
 		create_empty_buffers(newpage, blocksize, 0);
 		clone_buffers(oldpage, newpage);
@@ -419,7 +419,7 @@ tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
 		page_cache_get(oldpage);
 
 	/* Replace oldpage on radix-tree with newpage */
-	err = cow_replace_page_cache(oldpage, newpage);	/* FIXME: error */
+	err = pagefork_replace_page_cache(oldpage, newpage); /* FIXME: error */
 
 	newpage_add_lru(newpage);
 
@@ -444,7 +444,7 @@ tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
 	SetPageForked(oldpage);
 	if (need_unmap) {
 		/* Update PTEs for forked page. */
-		page_cow_file(vma, oldpage, newpage);
+		page_pagefork_file(vma, oldpage, newpage);
 	}
 	unlock_page(oldpage);
 
@@ -620,7 +620,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 	/* FIXME: need this? */
 	ClearPageMappedToDisk(page);
 	/* Delete page from radix-tree */
-	cow_delete_from_page_cache(page);
+	pagefork_delete_from_page_cache(page);
 
 	/*
 	 * Referencer are dummy radix-tree + ->private (plus other
