@@ -28,7 +28,6 @@
  */
 
 #include "tux3.h"
-#include "kcompat.h"
 
 #ifndef trace
 #define trace trace_off

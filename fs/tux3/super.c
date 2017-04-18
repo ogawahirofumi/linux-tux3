@@ -12,7 +12,6 @@
 #include <linux/statfs.h>
 #include <linux/parser.h>
 #include <linux/seq_file.h>
-#include "kcompat.h"
 #define trace trace_on
 
 /* FIXME: this should be mount option? */

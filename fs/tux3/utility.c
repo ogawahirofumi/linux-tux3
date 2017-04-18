@@ -7,7 +7,6 @@
 
 #ifdef __KERNEL__
 #include "tux3.h"
-#include "kcompat.h"
 
 static int vecio(enum req_opf req_opf, unsigned int req_flags,
 		 struct block_device *dev, loff_t offset,
@@ -23,13 +22,13 @@ static int vecio(enum req_opf req_opf, unsigned int req_flags,
 		return -ENOMEM;
 
 	bio->bi_bdev = dev;
-	bio_bi_sector(bio) = offset >> 9;
+	bio->bi_iter.bi_sector = offset >> 9;
 	bio->bi_end_io = endio;
 	bio->bi_private = bio_private;
 	bio->bi_vcnt = vecs;
 	memcpy(bio->bi_io_vec, vec, sizeof(*vec) * vecs);
 	while (vecs--)
-		bio_bi_size(bio) += bio->bi_io_vec[vecs].bv_len;
+		bio->bi_iter.bi_size += bio->bi_io_vec[vecs].bv_len;
 
 	bio_set_op_attrs(bio, req_opf, req_flags);
 	submit_bio(bio);

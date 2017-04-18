@@ -6,7 +6,6 @@
 
 #include "buffer_writebacklib.c"
 #include "ioinfo.h"
-#include "kcompat.h"
 
 /*
  * Helper for buffer vector I/O.
@@ -112,7 +111,7 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 	assert(bio);	/* GFP_NOFS shouldn't fail to allocate */
 
 	bio->bi_bdev = vfs_sb(sb)->s_bdev;
-	bio_bi_sector(bio) = physical << (sb->blockbits - 9);
+	bio->bi_iter.bi_sector = physical << (sb->blockbits - 9);
 	bio->bi_end_io = end_io;
 
 	return bio;
@@ -127,8 +126,8 @@ static void bufvec_submit_bio(struct bufvec *bufvec)
 	bufvec->bio_lastbuf = NULL;
 
 	trace("bio %p, physical %Lu, count %u", bio,
-	      (block_t)bio_bi_sector(bio) >> (sb->blockbits - 9),
-	      bio_bi_size(bio) >> sb->blockbits);
+	      (block_t)bio->bi_iter.bi_sector >> (sb->blockbits - 9),
+	      bio->bi_iter.bi_size >> sb->blockbits);
 
 	tux3_io_inflight_inc(sb->ioinfo);
 	bio_set_op_attrs(bio, bufvec->req_opf, bufvec->req_flags);
@@ -495,7 +494,7 @@ static int bufvec_bio_is_contiguous(struct bufvec *bufvec, block_t physical)
 	struct bio *bio = bufvec->bio;
 	block_t next;
 
-	next = (block_t)bio_bi_sector(bio) + (bio_bi_size(bio) >> 9);
+	next = (block_t)bio->bi_iter.bi_sector + (bio->bi_iter.bi_size >> 9);
 	return next == (physical << (sb->blockbits - 9));
 }
 
