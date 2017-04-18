@@ -197,8 +197,6 @@ void free_forked_buffers(struct sb *sb, struct inode *inode, int force)
  * Block fork core
  */
 
-#include "mmap_builtin_hack.h"
-
 /*
  * Clear writable to protect oldpage from following mmap write race.
  *
