@@ -22,7 +22,7 @@ static struct hlist_head inode_hashtable[HASH_SIZE] = {
 	[0 ... (HASH_SIZE - 1)] = HLIST_HEAD_INIT,
 };
 
-static unsigned long hash(inum_t inum)
+static unsigned int hash(inum_t inum)
 {
 	return hash_64(inum, HASH_SHIFT);
 }
