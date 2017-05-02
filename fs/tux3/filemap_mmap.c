@@ -141,8 +141,9 @@ static int tux3_set_page_dirty_bug(struct page *page)
  * NOTE: This keeps refcount of original vmf->page, refcount is
  * released by caller.
  */
-static int tux3_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
+static int tux3_page_mkwrite(struct vm_fault *vmf)
 {
+	struct vm_area_struct *vma = vmf->vma;
 	struct inode *inode = file_inode(vma->vm_file);
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct page *clone, *page = vmf->page;
