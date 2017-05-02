@@ -753,7 +753,7 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 
 	err = mapping->a_ops->write_begin(NULL, mapping,
 					  iblock << inode->i_blkbits,
-					  1 << inode->i_blkbits,
+					  i_blocksize(inode),
 					  aop_flags, &page, &fsdata);
 	if (err)
 		return NULL;
