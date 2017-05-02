@@ -113,7 +113,10 @@ static void test01(struct sb *sb, block_t blocks)
 
 	/* Corner case */
 #if 1
-	unsigned char *bitmap = malloc(8); /* bitmap must be array of ulong */
+	/* find_bit is assuming array of ulong */
+	unsigned char *bitmap = malloc(8);
+	/* shut up valgrind */
+	memset(bitmap, 0, 8);
 #else
 	unsigned char *bitmap = malloc(7);
 #endif
