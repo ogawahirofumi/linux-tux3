@@ -894,9 +894,10 @@ unlock:
 }
 
 #ifdef __KERNEL__
-int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
+int tux3_getattr(const struct path *path, struct kstat *stat,
+		 u32 request_mask, unsigned int flags)
 {
-	struct inode *inode = d_inode(dentry);
+	struct inode *inode = d_inode(path->dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 
 	generic_fillattr(inode, stat);
