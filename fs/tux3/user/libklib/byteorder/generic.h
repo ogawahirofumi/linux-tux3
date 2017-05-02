@@ -1,12 +1,14 @@
 #ifndef LIBKLIB_BYTEORDER_GENERIC_H
 #define LIBKLIB_BYTEORDER_GENERIC_H
 
+/* include/linux/byteorder/generic.h */
+
 /*
- * linux/byteorder_generic.h
+ * linux/byteorder/generic.h
  * Generic Byte-reordering support
  *
  * The "... p" macros, like le64_to_cpup, can be used with pointers
- * to unaligned data, but there will be a performance penalty on
+ * to unaligned data, but there will be a performance penalty on 
  * some architectures.  Use get_unaligned for unaligned data.
  *
  * Francois-Rene Rideau <fare@tunes.org> 19970707

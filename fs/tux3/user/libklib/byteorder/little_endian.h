@@ -1,6 +1,8 @@
 #ifndef LIBKLIB_BYTEORDER_LITTLE_ENDIAN_H
 #define LIBKLIB_BYTEORDER_LITTLE_ENDIAN_H
 
+/* include/uapi/linux/byteorder/little_endian.h */
+
 #include <libklib/types.h>
 #include <libklib/swab.h>
 

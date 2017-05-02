@@ -1,5 +1,8 @@
 #ifndef LIBKLIB_GENERIC_ATOMIC_LONG_H
 #define LIBKLIB_GENERIC_ATOMIC_LONG_H
+
+/* based on include/asm-generic/atomic-long.h */
+
 /*
  * Copyright (C) 2005 Silicon Graphics, Inc.
  *	Christoph Lameter

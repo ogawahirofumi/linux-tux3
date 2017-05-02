@@ -2,6 +2,8 @@
 #ifndef LIBKLIB_ATOMIC_H
 #define LIBKLIB_ATOMIC_H
 
+/* based on include/linux/atomic.h */
+
 #include <libklib/atomic32.h>
 #include <libklib/barrier.h>
 

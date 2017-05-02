@@ -1,9 +1,10 @@
 #ifndef LIBKLIB_ERR_H
 #define LIBKLIB_ERR_H
 
-#include <libklib/compiler.h>
-
+/* based on include/linux/err.h */
 /* Ripped from Linux Kernel by D.Phillips, GPL v2 */
+
+#include <libklib/compiler.h>
 
 #define MAX_ERRNO       4095
 #define IS_ERR_VALUE(x) unlikely((unsigned long)(void *)(x) >= (unsigned long)-MAX_ERRNO)
