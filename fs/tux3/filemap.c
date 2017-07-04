@@ -742,7 +742,7 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 	struct buffer_head *bh;
 	void *fsdata;
 	int err, offset;
-	unsigned aop_flags = AOP_FLAG_UNINTERRUPTIBLE;
+	unsigned aop_flags = 0;
 
 	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
 	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
