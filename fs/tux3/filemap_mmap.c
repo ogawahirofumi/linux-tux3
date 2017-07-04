@@ -110,7 +110,8 @@ static int tux3_set_page_dirty(struct page *page)
 	 * it will confuse readahead and make it restart the size rampup
 	 * process. But it's a trivial problem.
 	 */
-	ClearPageReclaim(page);
+	if (PageReclaim(page))
+		ClearPageReclaim(page);
 
 	return tux3_set_page_dirty_buffers(page);
 }
@@ -120,7 +121,8 @@ static int tux3_set_page_dirty_assert(struct page *page)
 	struct buffer_head *head, *buffer;
 
 	/* See comment of tux3_set_page_dirty() */
-	ClearPageReclaim(page);
+	if (PageReclaim(page))
+		ClearPageReclaim(page);
 
 	/* Is there any cases to be called for old page of forked page? */
 	WARN_ON(PageForked(page));
@@ -141,7 +143,8 @@ static int tux3_set_page_dirty_assert(struct page *page)
 static int tux3_set_page_dirty_bug(struct page *page)
 {
 	/* See comment of tux3_set_page_dirty() */
-	ClearPageReclaim(page);
+	if (PageReclaim(page))
+		ClearPageReclaim(page);
 
 	assert(0);
 	/* This page should not be mmapped */
