@@ -4,12 +4,9 @@
  * Copyright (c) 2008-2014 OGAWA Hirofumi
  */
 
-/*
- * Copy of __set_page_dirty() without __mark_inode_dirty(). Caller
- * decides whether mark inode dirty or not.
- */
-void __tux3_set_page_dirty_account(struct page *page,
-				   struct address_space *mapping, int warn)
+/* Copy of __set_page_dirty(). */
+void __tux3_set_page_dirty(struct page *page,
+			   struct address_space *mapping, int warn)
 {
 	unsigned long flags;
 
@@ -23,18 +20,14 @@ void __tux3_set_page_dirty_account(struct page *page,
 	spin_unlock_irqrestore(&mapping->tree_lock, flags);
 }
 
-static void __tux3_set_page_dirty(struct page *page,
-				  struct address_space *mapping, int warn)
-{
-	__tux3_set_page_dirty_account(page, mapping, warn);
-	__tux3_mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
-}
-
 static int tux3_set_page_dirty_buffers(struct page *page)
 {
 #if 0
-	struct address_space *mapping = page->mapping;
 	int newly_dirty;
+	struct address_space *mapping = page_mapping(page);
+
+	if (unlikely(!mapping))
+		return !TestSetPageDirty(page);
 
 	spin_lock(&mapping->private_lock);
 	if (page_has_buffers(page)) {
@@ -46,18 +39,28 @@ static int tux3_set_page_dirty_buffers(struct page *page)
 			bh = bh->b_this_page;
 		} while (bh != head);
 	}
+	/*
+	 * Lock out page->mem_cgroup migration to keep PageDirty
+	 * synchronized with per-memcg dirty page counters.
+	 */
+	lock_page_memcg(page);
 	newly_dirty = !TestSetPageDirty(page);
 	spin_unlock(&mapping->private_lock);
 
 	if (newly_dirty)
 		__set_page_dirty(page, mapping, 1);
 
+	unlock_page_memcg(page);
+
+	if (newly_dirty)
+		__mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
+
 	return newly_dirty;
 #else
-	struct address_space *mapping = page->mapping;
+	int newly_dirty;
+	struct address_space *mapping = page_mapping(page);
 	unsigned delta = tux3_get_current_delta();
 	struct buffer_head *head, *buffer;
-	int newly_dirty;
 
 	/* This should be tux3 page and locked */
 	assert(mapping);
@@ -69,16 +72,27 @@ static int tux3_set_page_dirty_buffers(struct page *page)
 	 * FIXME: we dirty all buffers on this page, so we optimize this
 	 * by avoiding to check page-dirty/inode-dirty multiple times.
 	 */
+
+	/*
+	 * Lock out page->mem_cgroup migration to keep PageDirty
+	 * synchronized with per-memcg dirty page counters.
+	 */
+	lock_page_memcg(page);
 	newly_dirty = 0;
 	if (!TestSetPageDirty(page)) {
 		__tux3_set_page_dirty(page, mapping, 1);
 		newly_dirty = 1;
 	}
+	unlock_page_memcg(page);
+
 	buffer = head = page_buffers(page);
 	do {
 		__tux3_mark_buffer_dirty(buffer, delta);
 		buffer = buffer->b_this_page;
 	} while (buffer != head);
+
+	if (newly_dirty)
+		__tux3_mark_inode_dirty(mapping->host, I_DIRTY_PAGES);
 #endif
 	return newly_dirty;
 }
