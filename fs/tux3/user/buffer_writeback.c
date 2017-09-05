@@ -71,7 +71,7 @@ static void bufvec_io_done(struct bufvec *bufvec, int err)
 }
 
 /* Get the next candidate buffer. */
-static struct buffer_head *bufvec_next_buffer(struct bufvec *bufvec)
+static struct buffer_head *bufvec_next_buffer_page(struct bufvec *bufvec)
 {
 	if (!list_empty(&bufvec->contig))
 		return bufvec_contig_buf(bufvec);
@@ -151,35 +151,6 @@ void bufvec_complete_without_io(struct bufvec *bufvec, unsigned count)
 	bufvec_io_done(bufvec, 0);
 }
 
-/*
- * Try to add buffer to bufvec as contiguous range.
- *
- * return value:
- * 1 - success
- * 0 - fail to add
- */
-int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer)
-{
-	unsigned contig_count = bufvec_contig_count(bufvec);
-
-	if (contig_count) {
-		block_t last;
-
-		/* Check contig_count limit */
-		if (bufvec_contig_count(bufvec) == MAX_BUFVEC_COUNT)
-			return 0;
-
-		/* Check if buffer is logically contiguous */
-		last = bufvec_contig_last_index(bufvec);
-		if (last != bufindex(buffer) - 1)
-			return 0;
-	}
-
-	bufvec_buffer_move_to_contig(bufvec, buffer);
-
-	return 1;
-}
-
 static void cancel_buffer_dirty(struct bufvec *bufvec,
 				struct buffer_head *buffer)
 {
@@ -205,58 +176,6 @@ static void bufvec_cancel_dirty_outside(struct bufvec *bufvec)
 	}
 }
 
-/*
- * Try to collect logically contiguous dirty range from bufvec->buffers.
- *
- * return value:
- * 1 - there is buffers for I/O
- * 0 - no buffers for I/O
- */
-static int bufvec_contig_collect(struct bufvec *bufvec)
-{
-	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
-	struct tux3_iattr_data *idata = bufvec->idata;
-	struct buffer_head *buffer;
-	block_t last_index, next_index, outside_block;
-
-	/* If there is in-progress contiguous range, leave as is */
-	if (bufvec_contig_count(bufvec))
-		return 1;
-	assert(!list_empty(bufvec->buffers));
-
-	outside_block = (idata->i_size + sb->blockmask) >> sb->blockbits;
-
-	buffer = buffers_entry(bufvec->buffers->next);
-	next_index = bufindex(buffer);
-	/* If next buffer is fully outside i_size, clear dirty */
-	if (next_index >= outside_block) {
-		bufvec_cancel_dirty_outside(bufvec);
-		return 0;
-	}
-
-	do {
-		/* Check contig_count limit */
-		if (bufvec_contig_count(bufvec) == MAX_BUFVEC_COUNT)
-			break;
-		bufvec_buffer_move_to_contig(bufvec, buffer);
-
-		if (list_empty(bufvec->buffers))
-			break;
-
-		buffer = buffers_entry(bufvec->buffers->next);
-		last_index = next_index;
-		next_index = bufindex(buffer);
-
-		/* If next buffer is fully outside i_size, clear dirty */
-		if (next_index >= outside_block) {
-			bufvec_cancel_dirty_outside(bufvec);
-			break;
-		}
-	} while (last_index == next_index - 1);
-
-	return !!bufvec_contig_count(bufvec);
-}
-
 static int buffer_index_cmp(void *priv, struct list_head *a,
 			    struct list_head *b)
 {
@@ -270,42 +189,12 @@ static int buffer_index_cmp(void *priv, struct list_head *a,
 	return 0;
 }
 
-/*
- * Flush buffers in head
- */
-int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	       struct list_head *head, unsigned int req_flags)
+static inline int tux3_call_io(struct inode *inode, struct bufvec *bufvec)
 {
-	struct bufvec bufvec;
-	int err = 0;
-
-	/* FIXME: on error path, we have to do something for buffer state */
-
-	if (list_empty(head))
-		return 0;
-
-	bufvec_init(&bufvec, REQ_OP_WRITE, req_flags,
-		    mapping(inode), head, idata);
-
-	/* Sort by bufindex() */
-	list_sort(NULL, head, buffer_index_cmp);
-
-	while (bufvec_next_buffer(&bufvec)) {
-		/* Collect contiguous buffer range */
-		if (bufvec_contig_collect(&bufvec)) {
-			policy_extents(&bufvec);
-
-			err = mapping(inode)->io(&bufvec);
-			if (err)
-				break;
-		}
-	}
-
-	bufvec_free(&bufvec);
-	remember_dleaf(tux_sb(inode->i_sb), NULL);
-
-	return err;
+	return mapping(inode)->io(bufvec);
 }
+
+#include "../buffer_writeback_common.c"
 
 /* 1st phase I/O for volmap by random order */
 int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
