@@ -124,7 +124,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 
 skip_tag_set:
 			if (bdi_cap_account_writeback(bdi))
-				__inc_wb_stat(inode_to_wb(inode), WB_WRITEBACK);
+				inc_wb_stat(inode_to_wb(inode), WB_WRITEBACK);
 		}
 		/* If PageForked(), don't touch tag */
 		if (!PageDirty(page) && !PageForked(page))
