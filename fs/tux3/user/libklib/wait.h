@@ -9,18 +9,18 @@
  * Provide wait queue stabs
  */
 
-struct __wait_queue {
+struct wait_queue_entry {
 };
-typedef struct __wait_queue wait_queue_t;
+typedef struct wait_queue_entry wait_queue_entry_t;
 
-struct __wait_queue_head {
+struct wait_queue_head {
 };
-typedef struct __wait_queue_head wait_queue_head_t;
+typedef struct wait_queue_head wait_queue_head_t;
 
 #define __WAITQUEUE_INITIALIZER(name, tsk)	{}
 
 #define DECLARE_WAITQUEUE(name, tsk)					\
-	wait_queue_t name = __WAITQUEUE_INITIALIZER(name, tsk)
+	wait_queue_entry_t name = __WAITQUEUE_INITIALIZER(name, tsk)
 
 #define __WAIT_QUEUE_HEAD_INITIALIZER(name)	{}
 
@@ -57,59 +57,59 @@ do {							\
 #define wake_up_interruptible_all(x)	__wake_up(x, TASK_INTERRUPTIBLE, 0, NULL)
 #define wake_up_interruptible_sync(x)	__wake_up_sync((x), TASK_INTERRUPTIBLE, 1)
 
-#define __wait_event(wq, condition) 					\
+#define __wait_event(wq_head, condition)				\
 do {									\
-	typecheck(wait_queue_head_t, wq);				\
+	typecheck(wait_queue_head_t, wq_head);				\
 	for (;;) {							\
 		if (condition)						\
 			break;						\
 	}								\
 } while (0)
 
-#define wait_event(wq, condition) 					\
+#define wait_event(wq_head, condition) 					\
 do {									\
 	if (condition)	 						\
 		break;							\
-	__wait_event(wq, condition);					\
+	__wait_event(wq_head, condition);				\
 } while (0)
 
-#define wait_event_timeout(wq, condition, timeout)			\
+#define wait_event_timeout(wq_head, condition, timeout)			\
 ({									\
 	long __ret = timeout;						\
 	if (!(condition)) 						\
-		__wait_event(wq, condition);				\
+		__wait_event(wq_head, condition);				\
 	__ret;								\
 })
 
-#define wait_event_interruptible(wq, condition)				\
+#define wait_event_interruptible(wq_head, condition)			\
 ({									\
 	int __ret = 0;							\
 	if (!(condition))						\
-		__wait_event(wq, condition);				\
+		__wait_event(wq_head, condition);			\
 	__ret;								\
 })
 
-#define wait_event_interruptible_timeout(wq, condition, timeout)	\
+#define wait_event_interruptible_timeout(wq_head, condition, timeout)	\
 ({									\
 	long __ret = timeout;						\
 	if (!(condition))						\
-		__wait_event(wq, condition);				\
+		__wait_event(wq_head, condition);			\
 	__ret;								\
 })
 
-#define wait_event_interruptible_exclusive(wq, condition)		\
+#define wait_event_interruptible_exclusive(wq_head, condition)		\
 ({									\
 	int __ret = 0;							\
 	if (!(condition))						\
-		__wait_event(wq, condition);				\
+		__wait_event(wq_head, condition);			\
 	__ret;								\
 })
 
-#define wait_event_killable(wq, condition)				\
+#define wait_event_killable(wq_head, condition)				\
 ({									\
 	int __ret = 0;							\
 	if (!(condition))						\
-		__wait_event(wq, condition);				\
+		__wait_event(wq_head, condition);			\
 	__ret;								\
 })
 
