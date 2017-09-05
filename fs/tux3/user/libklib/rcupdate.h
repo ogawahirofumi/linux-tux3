@@ -14,13 +14,14 @@ static inline void rcu_barrier(void)
 	rcu_barrier_sched();
 }
 
-static inline void call_rcu(struct rcu_head *head,
-			    void (*func)(struct rcu_head *rcu))
+typedef void (*rcu_callback_t)(struct rcu_head *head);
+static inline void call_rcu(struct rcu_head *head, rcu_callback_t func)
 {
 	func(head);
 }
 
-#define rcu_lockdep_assert(c, s) do { } while (0)
+#define RCU_LOCKDEP_WARN(c, s) do { } while (0)
+#define rcu_sleep_check() do { } while (0)
 
 /*
  * Helper functions for rcu_dereference_check(), rcu_dereference_protected()
@@ -40,38 +41,29 @@ static inline void call_rcu(struct rcu_head *head,
 
 #define __rcu_access_pointer(p, space) \
 ({ \
-	typeof(*p) *_________p1 = (typeof(*p) *__force)ACCESS_ONCE(p); \
+	typeof(*p) *_________p1 = (typeof(*p) *__force)READ_ONCE(p); \
 	rcu_dereference_sparse(p, space); \
 	((typeof(*p) __force __kernel *)(_________p1)); \
 })
 #define __rcu_dereference_check(p, c, space) \
 ({ \
-	typeof(*p) *_________p1 = (typeof(*p) *__force)ACCESS_ONCE(p); \
-	rcu_lockdep_assert(c, "suspicious rcu_dereference_check() usage"); \
+	/* Dependency order vs. p above. */ \
+	typeof(*p) *________p1 = (typeof(*p) *__force)lockless_dereference(p); \
+	RCU_LOCKDEP_WARN(!(c), "suspicious rcu_dereference_check() usage"); \
 	rcu_dereference_sparse(p, space); \
-	smp_read_barrier_depends(); /* Dependency order vs. p above. */ \
-	((typeof(*p) __force __kernel *)(_________p1)); \
+	((typeof(*p) __force __kernel *)(________p1)); \
 })
 #define __rcu_dereference_protected(p, c, space) \
 ({ \
-	rcu_lockdep_assert(c, "suspicious rcu_dereference_protected() usage"); \
+	RCU_LOCKDEP_WARN(!(c), "suspicious rcu_dereference_protected() usage"); \
 	rcu_dereference_sparse(p, space); \
 	((typeof(*p) __force __kernel *)(p)); \
 })
-
-#define __rcu_access_index(p, space) \
+#define rcu_dereference_raw(p) \
 ({ \
-	typeof(p) _________p1 = ACCESS_ONCE(p); \
-	rcu_dereference_sparse(p, space); \
-	(_________p1); \
-})
-#define __rcu_dereference_index_check(p, c) \
-({ \
-	typeof(p) _________p1 = ACCESS_ONCE(p); \
-	rcu_lockdep_assert(c, \
-			   "suspicious rcu_dereference_index_check() usage"); \
-	smp_read_barrier_depends(); /* Dependency order vs. p above. */ \
-	(_________p1); \
+	/* Dependency order vs. p above. */ \
+	typeof(p) ________p1 = lockless_dereference(p); \
+	((typeof(*p) __force __kernel *)(________p1)); \
 })
 
 /**
@@ -111,14 +103,23 @@ static inline void call_rcu(struct rcu_head *head,
  * please be careful when making changes to rcu_assign_pointer() and the
  * other macros that it invokes.
  */
-#define rcu_assign_pointer(p, v) smp_store_release(&p, RCU_INITIALIZER(v))
+#define rcu_assign_pointer(p, v)					      \
+({									      \
+	uintptr_t _r_a_p__v = (uintptr_t)(v);				      \
+									      \
+	if (__builtin_constant_p(v) && (_r_a_p__v) == (uintptr_t)NULL)	      \
+		WRITE_ONCE((p), (typeof(p))(_r_a_p__v));		      \
+	else								      \
+		smp_store_release(&p, RCU_INITIALIZER((typeof(p))_r_a_p__v)); \
+	_r_a_p__v;							      \
+})
 
 /**
  * rcu_access_pointer() - fetch RCU pointer with no dereferencing
  * @p: The pointer to read
  *
  * Return the value of the specified RCU-protected pointer, but omit the
- * smp_read_barrier_depends() and keep the ACCESS_ONCE().  This is useful
+ * smp_read_barrier_depends() and keep the READ_ONCE().  This is useful
  * when the value of this pointer is accessed, but the pointer is not
  * dereferenced, for example, when testing an RCU-protected pointer against
  * NULL.  Although rcu_access_pointer() may also be used in cases where
@@ -168,7 +169,7 @@ static inline void call_rcu(struct rcu_head *head,
  * annotated as __rcu.
  */
 #define rcu_dereference_check(p, c) \
-	__rcu_dereference_check((p), rcu_read_lock_held() || (c), __rcu)
+	__rcu_dereference_check((p), (c) || rcu_read_lock_held(), __rcu)
 
 /**
  * rcu_dereference_bh_check() - rcu_dereference_bh with debug checking
@@ -178,7 +179,7 @@ static inline void call_rcu(struct rcu_head *head,
  * This is the RCU-bh counterpart to rcu_dereference_check().
  */
 #define rcu_dereference_bh_check(p, c) \
-	__rcu_dereference_check((p), rcu_read_lock_bh_held() || (c), __rcu)
+	__rcu_dereference_check((p), (c) || rcu_read_lock_bh_held(), __rcu)
 
 /**
  * rcu_dereference_sched_check() - rcu_dereference_sched with debug checking
@@ -188,45 +189,17 @@ static inline void call_rcu(struct rcu_head *head,
  * This is the RCU-sched counterpart to rcu_dereference_check().
  */
 #define rcu_dereference_sched_check(p, c) \
-	__rcu_dereference_check((p), rcu_read_lock_sched_held() || (c), \
+	__rcu_dereference_check((p), (c) || rcu_read_lock_sched_held(), \
 				__rcu)
 
-#define rcu_dereference_raw(p) rcu_dereference_check(p, 1) /*@@@ needed? @@@*/
-
-/**
- * rcu_access_index() - fetch RCU index with no dereferencing
- * @p: The index to read
+/*
+ * The tracing infrastructure traces RCU (we want that), but unfortunately
+ * some of the RCU checks causes tracing to lock up the system.
  *
- * Return the value of the specified RCU-protected index, but omit the
- * smp_read_barrier_depends() and keep the ACCESS_ONCE().  This is useful
- * when the value of this index is accessed, but the index is not
- * dereferenced, for example, when testing an RCU-protected index against
- * -1.  Although rcu_access_index() may also be used in cases where
- * update-side locks prevent the value of the index from changing, you
- * should instead use rcu_dereference_index_protected() for this use case.
+ * The no-tracing version of rcu_dereference_raw() must not call
+ * rcu_read_lock_held().
  */
-#define rcu_access_index(p) __rcu_access_index((p), __rcu)
-
-/**
- * rcu_dereference_index_check() - rcu_dereference for indices with debug checking
- * @p: The pointer to read, prior to dereferencing
- * @c: The conditions under which the dereference will take place
- *
- * Similar to rcu_dereference_check(), but omits the sparse checking.
- * This allows rcu_dereference_index_check() to be used on integers,
- * which can then be used as array indices.  Attempting to use
- * rcu_dereference_check() on an integer will give compiler warnings
- * because the sparse address-space mechanism relies on dereferencing
- * the RCU-protected pointer.  Dereferencing integers is not something
- * that even gcc will put up with.
- *
- * Note that this function does not implicitly check for RCU read-side
- * critical sections.  If this function gains lots of uses, it might
- * make sense to provide versions for each flavor of RCU, but it does
- * not make sense as of early 2010.
- */
-#define rcu_dereference_index_check(p, c) \
-	__rcu_dereference_index_check((p), (c))
+#define rcu_dereference_raw_notrace(p) __rcu_dereference_check((p), 1, __rcu)
 
 /**
  * rcu_dereference_protected() - fetch RCU pointer when updates prevented
@@ -234,7 +207,7 @@ static inline void call_rcu(struct rcu_head *head,
  * @c: The conditions under which the dereference will take place
  *
  * Return the value of the specified RCU-protected pointer, but omit
- * both the smp_read_barrier_depends() and the ACCESS_ONCE().  This
+ * both the smp_read_barrier_depends() and the READ_ONCE().  This
  * is useful in cases where update-side locks prevent the value of the
  * pointer from changing.  Please note that this primitive does -not-
  * prevent the compiler from repeating this reference or combining it
@@ -272,5 +245,54 @@ static inline void call_rcu(struct rcu_head *head,
  * Makes rcu_dereference_check() do the dirty work.
  */
 #define rcu_dereference_sched(p) rcu_dereference_sched_check(p, 0)
+
+/**
+ * RCU_INIT_POINTER() - initialize an RCU protected pointer
+ *
+ * Initialize an RCU-protected pointer in special cases where readers
+ * do not need ordering constraints on the CPU or the compiler.  These
+ * special cases are:
+ *
+ * 1.	This use of RCU_INIT_POINTER() is NULLing out the pointer -or-
+ * 2.	The caller has taken whatever steps are required to prevent
+ *	RCU readers from concurrently accessing this pointer -or-
+ * 3.	The referenced data structure has already been exposed to
+ *	readers either at compile time or via rcu_assign_pointer() -and-
+ *	a.	You have not made -any- reader-visible changes to
+ *		this structure since then -or-
+ *	b.	It is OK for readers accessing this structure from its
+ *		new location to see the old state of the structure.  (For
+ *		example, the changes were to statistical counters or to
+ *		other state where exact synchronization is not required.)
+ *
+ * Failure to follow these rules governing use of RCU_INIT_POINTER() will
+ * result in impossible-to-diagnose memory corruption.  As in the structures
+ * will look OK in crash dumps, but any concurrent RCU readers might
+ * see pre-initialized values of the referenced data structure.  So
+ * please be very careful how you use RCU_INIT_POINTER()!!!
+ *
+ * If you are creating an RCU-protected linked structure that is accessed
+ * by a single external-to-structure RCU-protected pointer, then you may
+ * use RCU_INIT_POINTER() to initialize the internal RCU-protected
+ * pointers, but you must use rcu_assign_pointer() to initialize the
+ * external-to-structure pointer -after- you have completely initialized
+ * the reader-accessible portions of the linked structure.
+ *
+ * Note that unlike rcu_assign_pointer(), RCU_INIT_POINTER() provides no
+ * ordering guarantees for either the CPU or the compiler.
+ */
+#define RCU_INIT_POINTER(p, v) \
+	do { \
+		rcu_dereference_sparse(p, __rcu); \
+		WRITE_ONCE(p, RCU_INITIALIZER(v)); \
+	} while (0)
+
+/**
+ * RCU_POINTER_INITIALIZER() - statically initialize an RCU protected pointer
+ *
+ * GCC-style initialization for an RCU-protected pointer in a structure field.
+ */
+#define RCU_POINTER_INITIALIZER(p, v) \
+		.p = RCU_INITIALIZER(v)
 
 #endif /* !LIBKLIB_RCUPDATE_H */
