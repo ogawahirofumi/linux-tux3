@@ -225,7 +225,8 @@ static int tux3_rmdir(struct inode *dir, struct dentry *dentry)
 }
 
 static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
-		       struct inode *new_dir, struct dentry *new_dentry)
+		       struct inode *new_dir, struct dentry *new_dentry,
+		       unsigned int flags)
 {
 	struct inode *old_inode = old_dentry->d_inode;
 	struct inode *new_inode = new_dentry->d_inode;
@@ -235,6 +236,9 @@ static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
 	void *olddata;
 	int err, new_subdir = 0;
 	unsigned delta;
+
+	if (flags & ~RENAME_NOREPLACE)
+		return -EINVAL;
 
 	old_entry = tux_find_dirent(old_dir, &old_dentry->d_name, &old_buffer);
 	if (IS_ERR(old_entry))
@@ -350,7 +354,6 @@ const struct inode_operations tux_dir_iops = {
 	.rmdir		= tux3_rmdir,
 	.mknod		= tux3_mknod,
 	.rename		= tux3_rename,
-//	.rename2	= tux3_rename2,
 	.setattr	= tux3_setattr,
 	.getattr	= tux3_getattr,
 //	.setxattr	= generic_setxattr,
