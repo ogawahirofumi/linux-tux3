@@ -22,6 +22,7 @@
 #include <libklib/bitops.h>
 #include <libklib/byteorder.h>
 #include <libklib/unaligned.h>
+#include <libklib/build_bug.h>
 #include <libklib/hash.h>
 #include <libklib/kdev_t.h>
 #include <libklib/bug.h>
@@ -33,30 +34,6 @@
 #include <libklib/completion.h>
 #include <libklib/time.h>
 #include <libklib/stringify.h>
-
-#ifdef __CHECKER__
-#define BUILD_BUG_ON(condition)
-#define BUILD_BUG_ON_ZERO(e) (0)
-#define BUILD_BUG_ON_NULL(e) ((void*)0)
-#else /* __CHECKER__ */
-/* Force a compilation error if condition is true, but also produce a
-   result (of value 0 and type size_t), so the expression can be used
-   e.g. in a structure initializer (or where-ever else comma expressions
-   aren't permitted). */
-#define BUILD_BUG_ON_ZERO(e) (sizeof(struct { int:-!!(e); }))
-#define BUILD_BUG_ON_NULL(e) ((void *)sizeof(struct { int:-!!(e); }))
-
-#ifndef __OPTIMIZE__
-#define BUILD_BUG_ON(condition) ((void)sizeof(char[1 - 2*!!(condition)]))
-#else
-extern int __build_bug_on_failed;
-#define BUILD_BUG_ON(condition)					\
-	do {							\
-		((void)sizeof(char[1 - 2*!!(condition)]));	\
-		if (condition) __build_bug_on_failed = 1;	\
-	} while(0)
-#endif
-#endif /* __CHECKER__ */
 
 #define __ALIGN_KERNEL(x, a)		__ALIGN_KERNEL_MASK(x, (typeof(x))(a) - 1)
 #define __ALIGN_KERNEL_MASK(x, mask)	(((x) + (mask)) & ~(mask))
