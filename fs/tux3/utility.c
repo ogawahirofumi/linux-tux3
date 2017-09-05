@@ -44,7 +44,7 @@ struct biosync {
 static void syncio_end_io(struct bio *bio)
 {
 	struct biosync *sync = bio->bi_private;
-	sync->err = bio->bi_error;
+	sync->err = blk_status_to_errno(bio->bi_status);
 	complete(&sync->done);
 	bio_put(bio);
 }

@@ -237,7 +237,8 @@ static void prepare_and_unlock_page(struct page *page)
 /* Completion of page for I/O */
 static void bufvec_page_end_io(struct bio *bio, struct page *page)
 {
-	page_endio(page, op_is_write(bio_op(bio)), bio->bi_error);
+	page_endio(page, op_is_write(bio_op(bio)),
+		   blk_status_to_errno(bio->bi_status));
 }
 
 static void buffer_io_error(struct buffer_head *bh, const char *msg)
@@ -250,19 +251,14 @@ static void buffer_io_error(struct buffer_head *bh, const char *msg)
 /* Completion of buffer for I/O */
 static void bufvec_buffer_end_io(struct bio *bio, struct buffer_head *buffer)
 {
-	int err = bio->bi_error;
-
-	if (!err)
+	if (!bio->bi_status)
 		set_buffer_uptodate(buffer);
 	else {
 		if (!bio_flagged(bio, BIO_QUIET))
 			buffer_io_error(buffer, ", lost page write");
-		set_buffer_write_io_error(buffer);
+		mark_buffer_write_io_error(buffer);
 		clear_buffer_uptodate(buffer);
-
 		SetPageError(buffer->b_page);
-		if (buffer->b_page->mapping)
-			mapping_set_error(buffer->b_page->mapping, err);
 	}
 }
 
@@ -296,7 +292,7 @@ static void bufvec_end_io_multiple(struct bio *bio)
 	struct buffer_head *buffer, *first, *tmp;
 	unsigned long flags;
 
-	trace("bio %p, err %d", bio, bio->bi_error);
+	trace("bio %p, err %d", bio, bio->bi_status);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -406,7 +402,7 @@ static void bufvec_end_io(struct bio *bio)
 	struct address_space *mapping;
 	struct page *page, *last_page;
 
-	trace("bio %p, err %d", bio, bio->bi_error);
+	trace("bio %p, err %d", bio, bio->bi_status);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -760,7 +756,7 @@ static void bufvec_end_io_early(struct bio *bio)
 {
 	struct address_space *mapping;
 
-	trace("bio %p, err %d", bio, bio->bi_error);
+	trace("bio %p, err %d", bio, bio->bi_status);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
