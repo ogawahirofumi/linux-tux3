@@ -30,6 +30,7 @@ static int vecio(enum req_opf req_opf, unsigned int req_flags,
 	while (vecs--)
 		bio->bi_iter.bi_size += bio->bi_io_vec[vecs].bv_len;
 
+	bio->bi_write_hint = WRITE_LIFE_NOT_SET;
 	bio_set_op_attrs(bio, req_opf, req_flags);
 	submit_bio(bio);
 

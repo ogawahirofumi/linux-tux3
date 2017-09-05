@@ -119,7 +119,8 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 
 static void bufvec_submit_bio(struct bufvec *bufvec)
 {
-	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
+	struct inode *inode = bufvec_inode(bufvec);
+	struct sb *sb = tux_sb(inode->i_sb);
 	struct bio *bio = bufvec->bio;
 
 	bufvec->bio = NULL;
@@ -130,6 +131,7 @@ static void bufvec_submit_bio(struct bufvec *bufvec)
 	      bio->bi_iter.bi_size >> sb->blockbits);
 
 	tux3_io_inflight_inc(sb->ioinfo);
+	bio->bi_write_hint = inode->i_write_hint;
 	bio_set_op_attrs(bio, bufvec->req_opf, bufvec->req_flags);
 	submit_bio(bio);
 }
