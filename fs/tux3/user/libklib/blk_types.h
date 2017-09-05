@@ -1,6 +1,30 @@
 #ifndef LIBKLIB_BLK_TYPES_H
 #define LIBKLIB_BLK_TYPES_H
 
+/*
+ * Block error status values.  See block/blk-core:blk_errors for the details.
+ */
+typedef u8 __bitwise blk_status_t;
+#define	BLK_STS_OK 0
+#define BLK_STS_NOTSUPP		((__force blk_status_t)1)
+#define BLK_STS_TIMEOUT		((__force blk_status_t)2)
+#define BLK_STS_NOSPC		((__force blk_status_t)3)
+#define BLK_STS_TRANSPORT	((__force blk_status_t)4)
+#define BLK_STS_TARGET		((__force blk_status_t)5)
+#define BLK_STS_NEXUS		((__force blk_status_t)6)
+#define BLK_STS_MEDIUM		((__force blk_status_t)7)
+#define BLK_STS_PROTECTION	((__force blk_status_t)8)
+#define BLK_STS_RESOURCE	((__force blk_status_t)9)
+#define BLK_STS_IOERR		((__force blk_status_t)10)
+
+/* hack for device mapper, don't use elsewhere: */
+#define BLK_STS_DM_REQUEUE    ((__force blk_status_t)11)
+
+#define BLK_STS_AGAIN		((__force blk_status_t)12)
+
+/*
+ * Operations and flags common to the bio and request structures.
+ */
 #define REQ_OP_BITS	8
 #define REQ_OP_MASK	((1 << REQ_OP_BITS) - 1)
 #define REQ_FLAG_BITS	24
@@ -47,6 +71,7 @@ enum req_flag_bits {
 	/* command specific flags for REQ_OP_WRITE_ZEROES: */
 	__REQ_NOUNMAP,		/* do not free blocks when zeroing */
 
+	__REQ_NOWAIT,           /* Don't wait if request will block */
 	__REQ_NR_BITS,		/* stops here */
 };
 
@@ -65,6 +90,7 @@ enum req_flag_bits {
 #define REQ_BACKGROUND		(1ULL << __REQ_BACKGROUND)
 
 #define REQ_NOUNMAP		(1ULL << __REQ_NOUNMAP)
+#define REQ_NOWAIT		(1ULL << __REQ_NOWAIT)
 
 static inline bool op_is_write(unsigned int op)
 {
