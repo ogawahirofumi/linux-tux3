@@ -2,6 +2,7 @@
 #define LIBKLIB_LOCKDEBUG_H
 
 #include <libklib/atomic.h>
+#include <libklib/bug.h>
 
 #define SPINLOCK_MAGIC		0xdead4ead
 typedef struct {
@@ -25,16 +26,16 @@ static inline void spin_lock(spinlock_t *lock) __acquires(lock)
 {
 	__acquire(lock);
 #ifdef LOCK_DEBUG
-	assert(lock->magic == SPINLOCK_MAGIC);
-	assert(lock->lock == 0);
+	BUG_ON(lock->magic != SPINLOCK_MAGIC);
+	BUG_ON(lock->lock != 0);
 	lock->lock++;
 #endif
 }
 static inline void spin_unlock(spinlock_t *lock) __releases(lock)
 {
 #ifdef LOCK_DEBUG
-	assert(lock->magic == SPINLOCK_MAGIC);
-	assert(lock->lock == 1);
+	BUG_ON(lock->magic != SPINLOCK_MAGIC);
+	BUG_ON(lock->lock != 1);
 	lock->lock--;
 #endif
 	__release(lock);
@@ -99,8 +100,8 @@ struct rw_semaphore {
 static inline void down_read(struct rw_semaphore *lock)
 {
 #ifdef LOCK_DEBUG
-	assert(lock->magic == SPINLOCK_MAGIC);
-	assert(lock->count >= 0);
+	BUG_ON(lock->magic != SPINLOCK_MAGIC);
+	BUG_ON(lock->count < 0);
 	lock->count++;
 #endif
 }
@@ -113,8 +114,8 @@ static inline int down_read_trylock(struct rw_semaphore *lock)
 static inline void down_write(struct rw_semaphore *lock)
 {
 #ifdef LOCK_DEBUG
-	assert(lock->magic == SPINLOCK_MAGIC);
-	assert(lock->count == 0);
+	BUG_ON(lock->magic != SPINLOCK_MAGIC);
+	BUG_ON(lock->count != 0);
 	lock->count--;
 #endif
 }
@@ -128,16 +129,16 @@ static inline int down_write_trylock(struct rw_semaphore *lock)
 static inline void up_read(struct rw_semaphore *lock)
 {
 #ifdef LOCK_DEBUG
-	assert(lock->magic == SPINLOCK_MAGIC);
-	assert(lock->count >= 1);
+	BUG_ON(lock->magic != SPINLOCK_MAGIC);
+	BUG_ON(lock->count < 1);
 	lock->count--;
 #endif
 }
 static inline void up_write(struct rw_semaphore *lock)
 {
 #ifdef LOCK_DEBUG
-	assert(lock->magic == SPINLOCK_MAGIC);
-	assert(lock->count == -1);
+	BUG_ON(lock->magic != SPINLOCK_MAGIC);
+	BUG_ON(lock->count != -1);
 	lock->count++;
 #endif
 }
