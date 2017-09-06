@@ -172,6 +172,12 @@ static inline long long atomic64_cmpxchg(atomic64_t *v, long long old, long long
 	return cmpxchg(&v->counter, old, new);
 }
 
+#define atomic64_try_cmpxchg atomic64_try_cmpxchg
+static __always_inline bool atomic64_try_cmpxchg(atomic64_t *v, long long *old, long long new)
+{
+	return try_cmpxchg(&v->counter, old, new);
+}
+
 static inline long long atomic64_xchg(atomic64_t *v, long long new)
 {
 	return xchg(&v->counter, new);
@@ -188,17 +194,12 @@ static inline long long atomic64_xchg(atomic64_t *v, long long new)
  */
 static inline bool atomic64_add_unless(atomic64_t *v, long long a, long long u)
 {
-	long long c, old;
-	c = atomic64_read(v);
-	for (;;) {
-		if (unlikely(c == (u)))
-			break;
-		old = atomic64_cmpxchg((v), c, c + (a));
-		if (likely(old == c))
-			break;
-		c = old;
-	}
-	return c != (u);
+	long long c = atomic64_read(v);
+	do {
+		if (unlikely(c == u))
+			return false;
+	} while (!atomic64_try_cmpxchg(v, &c, c + a));
+	return true;
 }
 
 #define atomic64_inc_not_zero(v) atomic64_add_unless((v), 1, 0)
@@ -212,17 +213,12 @@ static inline bool atomic64_add_unless(atomic64_t *v, long long a, long long u)
  */
 static inline long long atomic64_dec_if_positive(atomic64_t *v)
 {
-	long long c, old, dec;
-	c = atomic64_read(v);
-	for (;;) {
+	long long dec, c = atomic64_read(v);
+	do {
 		dec = c - 1;
 		if (unlikely(dec < 0))
 			break;
-		old = atomic64_cmpxchg((v), c, dec);
-		if (likely(old == c))
-			break;
-		c = old;
-	}
+	} while (!atomic64_try_cmpxchg(v, &c, dec));
 	return dec;
 }
 

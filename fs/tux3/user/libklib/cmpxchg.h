@@ -14,4 +14,9 @@
 
 #define cmpxchg_local(ptr, old, new)	cmpxchg(ptr, old, new)
 
+#define try_cmpxchg(ptr, pold, new)	({				\
+	klib_atomic_compare_exchange_n(ptr, pold, new, false,		\
+				    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
+})
+
 #endif /* !LIBKLIB_CMPXCHG_H */
