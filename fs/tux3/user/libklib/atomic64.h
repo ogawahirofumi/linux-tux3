@@ -1,101 +1,39 @@
-#ifndef LIBKLIB_ATOMIC64_H
-#define LIBKLIB_ATOMIC64_H
+#ifndef LIBKLIB_ASM_ATOMIC64_H
+#define LIBKLIB_ASM_ATOMIC64_H
 
-#include <libklib/types.h>
-#include <libklib/bug.h>
+/* based on arch/x86/include/asm/atomic64_32.h */
 
 /* The 64-bit atomic type */
 
 typedef struct {
-	long long counter;
+	long long __aligned(8) counter;
 } atomic64_t;
 
 #define ATOMIC64_INIT(i)	{ (i) }
 
 /**
- * atomic64_cmpxchg - cmpxchg atomic64 variable
- * @v: pointer to type atomic64_t
- * @o: expected value
- * @n: new value
+ * atomic64_read - read atomic64 variable
+ * @v: pointer of type atomic64_t
  *
- * Atomically sets @v to @n if it was equal to @o and returns
- * the old value.
+ * Atomically reads the value of @v.
+ * Doesn't imply a read memory barrier.
  */
-
-static inline long long atomic64_cmpxchg(atomic64_t *v, long long o, long long n)
+static inline long long atomic64_read(const atomic64_t *v)
 {
-	long long prev = v->counter;
-	if (prev == o)
-		v->counter = n;
-	return prev;
-}
-
-/**
- * atomic64_xchg - xchg atomic64 variable
- * @v: pointer to type atomic64_t
- * @n: value to assign
- *
- * Atomically xchgs the value of @v to @n and returns
- * the old value.
- */
-static inline long long atomic64_xchg(atomic64_t *v, long long n)
-{
-	long long prev = v->counter;
-	v->counter = n;
-	return prev;
+	return READ_ONCE((v)->counter);
 }
 
 /**
  * atomic64_set - set atomic64 variable
  * @v: pointer to type atomic64_t
- * @i: value to assign
+ * @i: required value
  *
- * Atomically sets the value of @v to @n.
+ * Atomically sets the value of @v to @i.
  */
 static inline void atomic64_set(atomic64_t *v, long long i)
 {
-	v->counter = i;
+	WRITE_ONCE(v->counter, i);
 }
-
-/**
- * atomic64_read - read atomic64 variable
- * @v: pointer to type atomic64_t
- *
- * Atomically reads the value of @v and returns it.
- */
-static inline long long atomic64_read(const atomic64_t *v)
-{
-	return ACCESS_ONCE((v)->counter);
- }
-
-/**
- * atomic64_add_return - add and return
- * @i: integer value to add
- * @v: pointer to type atomic64_t
- *
- * Atomically adds @i to @v and returns @i + *@v
- */
-static inline long long atomic64_add_return(long long i, atomic64_t *v)
-{
-	long long temp;
-
-	temp = v->counter;
-	temp += i;
-	v->counter = temp;
-
-	return temp;
-}
-
-/*
- * Other variants with different arithmetic operators:
- */
-static inline long long atomic64_sub_return(long long i, atomic64_t *v)
-{
-	return atomic64_add_return(-i, v);
-}
-
-#define atomic64_inc_return(v)  (atomic64_add_return(1, (v)))
-#define atomic64_dec_return(v)  (atomic64_sub_return(1, (v)))
 
 /**
  * atomic64_add - add integer to atomic64 variable
@@ -104,9 +42,9 @@ static inline long long atomic64_sub_return(long long i, atomic64_t *v)
  *
  * Atomically adds @i to @v.
  */
-static inline void atomic64_add(long long i, atomic64_t *v)
+static __always_inline void atomic64_add(long long i, atomic64_t *v)
 {
-	atomic64_add_return(i, v);
+	klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -118,7 +56,7 @@ static inline void atomic64_add(long long i, atomic64_t *v)
  */
 static inline void atomic64_sub(long long i, atomic64_t *v)
 {
-	atomic64_sub_return(i, v);
+	klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -130,9 +68,9 @@ static inline void atomic64_sub(long long i, atomic64_t *v)
  * true if the result is zero, or false for all
  * other cases.
  */
-static inline int atomic64_sub_and_test(long long i, atomic64_t *v)
+static inline bool atomic64_sub_and_test(long long i, atomic64_t *v)
 {
-	return atomic64_sub_return(i, v) == 0;
+	return klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST) == 0;
 }
 
 /**
@@ -141,9 +79,9 @@ static inline int atomic64_sub_and_test(long long i, atomic64_t *v)
  *
  * Atomically increments @v by 1.
  */
-static inline void atomic64_inc(atomic64_t *v)
+static __always_inline void atomic64_inc(atomic64_t *v)
 {
-	atomic64_inc_return(v);
+	klib_atomic_add_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -152,9 +90,9 @@ static inline void atomic64_inc(atomic64_t *v)
  *
  * Atomically decrements @v by 1.
  */
-static inline void atomic64_dec(atomic64_t *v)
+static __always_inline void atomic64_dec(atomic64_t *v)
 {
-	atomic64_dec_return(v);
+	klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
 }
 
 /**
@@ -165,10 +103,11 @@ static inline void atomic64_dec(atomic64_t *v)
  * returns true if the result is 0, or false for all other
  * cases.
  */
-static inline int atomic64_dec_and_test(atomic64_t *v)
+static inline bool atomic64_dec_and_test(atomic64_t *v)
 {
-	BUG_ON(atomic64_read(v) <= 0);
-	return atomic64_dec_return(v) == 0;
+	long long tmp = klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
+	BUG_ON(tmp < 0);
+	return tmp == 0;
 }
 
 /**
@@ -179,9 +118,9 @@ static inline int atomic64_dec_and_test(atomic64_t *v)
  * and returns true if the result is zero, or false for all
  * other cases.
  */
-static inline int atomic64_inc_and_test(atomic64_t *v)
+static inline bool atomic64_inc_and_test(atomic64_t *v)
 {
-	return atomic64_inc_return(v) == 0;
+	return klib_atomic_add_fetch(&v->counter, 1, __ATOMIC_SEQ_CST) == 0;
 }
 
 /**
@@ -193,9 +132,49 @@ static inline int atomic64_inc_and_test(atomic64_t *v)
  * if the result is negative, or false when
  * result is greater than or equal to zero.
  */
-static inline int atomic64_add_negative(long long i, atomic64_t *v)
+static inline bool atomic64_add_negative(long long i, atomic64_t *v)
 {
-	return atomic64_add_return(i, v) < 0;
+	return klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST) < 0;
+}
+
+/**
+ * atomic64_add_return - add and return
+ * @i: integer value to add
+ * @v: pointer to type atomic64_t
+ *
+ * Atomically adds @i to @v and returns @i + @v
+ */
+static __always_inline long long atomic64_add_return(long long i, atomic64_t *v)
+{
+	return klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+static inline long long atomic64_sub_return(long long i, atomic64_t *v)
+{
+	return klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+static inline long long atomic64_fetch_add(long long i, atomic64_t *v)
+{
+	return klib_atomic_fetch_add(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+static inline long long atomic64_fetch_sub(long long i, atomic64_t *v)
+{
+	return klib_atomic_fetch_sub(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+#define atomic64_inc_return(v)  (atomic64_add_return(1, (v)))
+#define atomic64_dec_return(v)  (atomic64_sub_return(1, (v)))
+
+static inline long long atomic64_cmpxchg(atomic64_t *v, long long old, long long new)
+{
+	return cmpxchg(&v->counter, old, new);
+}
+
+static inline long long atomic64_xchg(atomic64_t *v, long long new)
+{
+	return xchg(&v->counter, new);
 }
 
 /**
@@ -205,9 +184,9 @@ static inline int atomic64_add_negative(long long i, atomic64_t *v)
  * @u: ...unless v is equal to u.
  *
  * Atomically adds @a to @v, so long as it was not @u.
- * Returns non-zero if the add was done, zero otherwise.
+ * Returns the old value of @v.
  */
-static inline int atomic64_add_unless(atomic64_t *v, long long a, long long u)
+static inline bool atomic64_add_unless(atomic64_t *v, long long a, long long u)
 {
 	long long c, old;
 	c = atomic64_read(v);
@@ -222,8 +201,15 @@ static inline int atomic64_add_unless(atomic64_t *v, long long a, long long u)
 	return c != (u);
 }
 
-#define atomic64_inc_not_zero(v)	atomic64_add_unless((v), 1, 0)
+#define atomic64_inc_not_zero(v) atomic64_add_unless((v), 1, 0)
 
+/*
+ * atomic64_dec_if_positive - decrement by 1 if old value positive
+ * @v: pointer of type atomic_t
+ *
+ * The function returns the old value of *v minus 1, even if
+ * the atomic variable, v, was not decremented.
+ */
 static inline long long atomic64_dec_if_positive(atomic64_t *v)
 {
 	long long c, old, dec;
@@ -240,4 +226,28 @@ static inline long long atomic64_dec_if_positive(atomic64_t *v)
 	return dec;
 }
 
-#endif /* LIBKLIB_ATOMIC64_H */
+#define ATOMIC64_OP(op)							\
+static inline void atomic64_##op(long long i, atomic64_t *v)		\
+{									\
+	klib_atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST);	\
+}
+
+#define ATOMIC64_FETCH_OP(op, c_op)					\
+static inline long long atomic64_fetch_##op(long long i, atomic64_t *v)	\
+{									\
+	return klib_atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \
+}
+
+#define ATOMIC64_OPS(op, c_op)						\
+	ATOMIC64_OP(op)							\
+	ATOMIC64_FETCH_OP(op, c_op)
+
+ATOMIC64_OPS(and, &)
+ATOMIC64_OPS(or, |)
+ATOMIC64_OPS(xor, ^)
+
+#undef ATOMIC64_OPS
+#undef ATOMIC64_FETCH_OP
+#undef ATOMIC64_OP
+
+#endif /* LIBKLIB_ASM_ATOMIC64_H */
