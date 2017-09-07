@@ -74,7 +74,11 @@ struct page {
 	unsigned long private;
 };
 
-#define PAGE_SIZE	(1 << 6)
+#ifdef SMALL_PAGE_SIZE_DEBUG
+#define PAGE_SIZE	(1UL << 6)
+#else
+#define PAGE_SIZE	(1UL << 12)
+#endif
 
 static inline void *page_address(struct page *page)
 {
