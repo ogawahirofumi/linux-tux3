@@ -41,6 +41,8 @@ CFLAGS	+= -DALIGN_CHECK=1 -ldl
 # To use memmove() for unaligned access
 CFLAGS	+= -DCONFIG_MEMMOVE_UNALIGNED_ACCESS=1
 endif
+# use refcount_t debugging
+CFLAGS	+= -DCONFIG_REFCOUNT_FULL=1
 
 # gcc checker (_FORTIFY_SOURCE requires optimize option >= 1)
 # Rethink about this when optimization become default
@@ -129,8 +131,8 @@ TEST_LIB_OBJS	= tests/test.o
 
 # LIBKLIB objects
 LIBKLIB_OBJS	= libklib/find_bit.o libklib/fs.o libklib/list_sort.o \
-	libklib/parser.o libklib/seq_file.o libklib/slab.o libklib/time.o \
-	libklib/uidgid.o
+	libklib/parser.o libklib/refcount.o libklib/seq_file.o libklib/slab.o \
+	libklib/time.o libklib/uidgid.o
 
 # binary objects
 OBJS		= tux3.o
