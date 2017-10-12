@@ -86,12 +86,12 @@ u64 siphash(const u8 *in, unsigned len)
 	}
 
 	switch (left) {
-	case 7: b |= ( ( u64 )in[ 6] )  << 48;
-	case 6: b |= ( ( u64 )in[ 5] )  << 40;
-	case 5: b |= ( ( u64 )in[ 4] )  << 32;
-	case 4: b |= ( ( u64 )in[ 3] )  << 24;
-	case 3: b |= ( ( u64 )in[ 2] )  << 16;
-	case 2: b |= ( ( u64 )in[ 1] )  <<  8;
+	case 7: b |= ( ( u64 )in[ 6] )  << 48; /* FALLTHRU */
+	case 6: b |= ( ( u64 )in[ 5] )  << 40; /* FALLTHRU */
+	case 5: b |= ( ( u64 )in[ 4] )  << 32; /* FALLTHRU */
+	case 4: b |= ( ( u64 )in[ 3] )  << 24; /* FALLTHRU */
+	case 3: b |= ( ( u64 )in[ 2] )  << 16; /* FALLTHRU */
+	case 2: b |= ( ( u64 )in[ 1] )  <<  8; /* FALLTHRU */
 	case 1: b |= ( ( u64 )in[ 0] ); break;
 	case 0: break;
 	}
