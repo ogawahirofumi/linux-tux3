@@ -23,10 +23,15 @@
 static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 {
 	struct address_space *mapping = page->mapping;
+	int ret = 0;
 
 	BUG_ON(!PageLocked(page));
 
 	if (mapping && mapping_cap_account_dirty(mapping)) {
+		struct inode *inode = mapping->host;
+		struct bdi_writeback *wb;
+		bool locked;
+
 		/*
 		 * Yes, Virginia, this is indeed insane.
 		 *
@@ -66,58 +71,82 @@ static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 		 * always locked coming in here, so we get the desired
 		 * exclusion.
 		 */
+		wb = unlocked_inode_to_wb_begin(inode, &locked);
 		if (TestClearPageDirty(page)) {
-			dec_zone_page_state(page, NR_FILE_DIRTY);
-			dec_bdi_stat(mapping->backing_dev_info,
-					BDI_RECLAIMABLE);
-			return 1;
+			dec_lruvec_page_state(page, NR_FILE_DIRTY);
+			dec_zone_page_state(page, NR_ZONE_WRITE_PENDING);
+			dec_wb_stat(wb, WB_RECLAIMABLE);
+			ret = 1;
 		}
-		return 0;
+		unlocked_inode_to_wb_end(inode, locked);
+		return ret;
 	}
 	return TestClearPageDirty(page);
 }
 
-static void __tux3_test_set_page_writeback(struct page *page, int old_writeback)
+static void
+__tux3_test_set_page_writeback(struct page *page, bool keep_write,
+			       bool old_writeback)
 {
 	struct address_space *mapping = page->mapping;
-#if 0	/* FIXME */
-	unsigned long memcg_flags;
-	struct mem_cgroup *memcg;
-	bool locked;
 
-	memcg = mem_cgroup_begin_page_stat(page, &locked, &memcg_flags);
-#endif
-	if (mapping) {
-		struct backing_dev_info *bdi = mapping->backing_dev_info;
+	lock_page_memcg(page);
+	if (mapping && mapping_use_writeback_tags(mapping)) {
+		struct inode *inode = mapping->host;
+		struct backing_dev_info *bdi = inode_to_bdi(inode);
 		unsigned long flags;
 
 		spin_lock_irqsave(&mapping->tree_lock, flags);
 		if (!old_writeback) {
+			bool on_wblist;
+
 			/* If PageForked(), don't touch tag */
-			if (!PageForked(page))
-				radix_tree_tag_set(&mapping->page_tree,
-						   page_index(page),
+			if (PageForked(page))
+				goto skip_tag_set;
+
+			on_wblist = mapping_tagged(mapping,
 						   PAGECACHE_TAG_WRITEBACK);
+
+			radix_tree_tag_set(&mapping->page_tree,
+					   page_index(page),
+					   PAGECACHE_TAG_WRITEBACK);
+
+#if 0 /* sb_mark_inode_writeback() is not exported to module. And tux3
+       * sync all with ->sync_fs(), thus this just makes slower us. */
+			/*
+			 * We can come through here when swapping anonymous
+			 * pages, so we don't necessarily have an inode to track
+			 * for sync.
+			 */
+			if (mapping->host && !on_wblist)
+				sb_mark_inode_writeback(mapping->host);
+#endif
+
+skip_tag_set:
 			if (bdi_cap_account_writeback(bdi))
-				__inc_bdi_stat(bdi, BDI_WRITEBACK);
+				inc_wb_stat(inode_to_wb(inode), WB_WRITEBACK);
 		}
 		/* If PageForked(), don't touch tag */
 		if (!PageDirty(page) && !PageForked(page))
 			radix_tree_tag_clear(&mapping->page_tree,
 						page_index(page),
 						PAGECACHE_TAG_DIRTY);
-		radix_tree_tag_clear(&mapping->page_tree,
-				     page_index(page),
-				     PAGECACHE_TAG_TOWRITE);
+		if (!keep_write)
+			radix_tree_tag_clear(&mapping->page_tree,
+					     page_index(page),
+					     PAGECACHE_TAG_TOWRITE);
 		spin_unlock_irqrestore(&mapping->tree_lock, flags);
+	} else {
+		BUG();
 	}
 	if (!old_writeback) {
-#if 0
-		mem_cgroup_inc_page_stat(memcg, MEM_CGROUP_STAT_WRITEBACK);
-#endif
-		inc_zone_page_state(page, NR_WRITEBACK);
+		inc_lruvec_page_state(page, NR_WRITEBACK);
+		inc_zone_page_state(page, NR_ZONE_WRITE_PENDING);
 	}
-#if 0	/* FIXME */
-	mem_cgroup_end_page_stat(memcg, &locked, &memcg_flags);
-#endif
+	unlock_page_memcg(page);
 }
+
+#define tux3_test_set_page_writeback(page, old_writeback)		\
+	__tux3_test_set_page_writeback(page, false, old_writeback)
+#define tux3_test_set_page_writeback_keepwrite(page, old_writeback)	\
+	__tux3_test_set_page_writeback(page, true, old_writeback)

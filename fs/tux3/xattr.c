@@ -65,9 +65,9 @@ typedef u32 atom_t;
 /* Initialize base address for dictionaries on atable */
 void atable_init_base(struct sb *sb)
 {
-	sb->atomref_base = 1U << (ATOM_DICT_BITS - sb->blockbits);
-	sb->unatom_base =
-		sb->atomref_base + (1U << (ATOMREF_TABLE_BITS - sb->blockbits));
+	sb->atomref_base = (block_t)1 << (ATOM_DICT_BITS - sb->blockbits);
+	sb->unatom_base = sb->atomref_base
+		+ ((block_t)1 << (ATOMREF_TABLE_BITS - sb->blockbits));
 }
 
 static inline atom_t entry_atom(struct tux3_dirent *entry)
@@ -113,7 +113,7 @@ static loff_t unatom_dict_write(struct inode *atable, atom_t atom, loff_t where)
 		return -EIO;
 
 	/*
-	 * The atable is protected by i_mutex for now.
+	 * The atable is protected by inode_lock for now.
 	 * blockdirty() should never return -EAGAIN.
 	 * FIXME: need finer granularity locking
 	 */
@@ -273,7 +273,7 @@ static int update_refcount(struct sb *sb, struct buffer_head *buffer,
 	__be16 *refcount;
 
 	/*
-	 * The atable is protected by i_mutex for now.
+	 * The atable is protected by inode_lock for now.
 	 * blockdirty() should never return -EAGAIN.
 	 * FIXME: need finer granularity locking
 	 */
@@ -297,7 +297,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 {
 	struct sb *sb = tux_sb(atable->i_sb);
 	unsigned shift = sb->blockbits - ATOMREF_BLKBITS;
-	unsigned block = sb->atomref_base + ATOMREF_SIZE * (atom >> shift);
+	block_t block = sb->atomref_base + ATOMREF_SIZE * (atom >> shift);
 	unsigned offset = atom & ((1U << shift) - 1), kill = 0;
 	struct buffer_head *buffer;
 	__be16 *refcount;
@@ -309,7 +309,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 
 	refcount = bufdata(buffer);
 	int low = be16_to_cpu(refcount[offset]) + use;
-	trace("inc atom %x by %d, offset %x[%x], low = %d",
+	trace("inc atom %x by %d, offset %llx[%x], low = %d",
 	      atom, use, block, offset, low);
 
 	/* This releases buffer */
@@ -327,7 +327,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 		if (!low)
 			blockput(buffer);
 		else {
-			trace("carry %d, offset %x[%x], high = %d",
+			trace("carry %d, offset %llx[%x], high = %d",
 			      (low >> 16), block, offset, high);
 			high += (low >> 16);
 			assert(high >= 0); /* paranoia check */
@@ -389,8 +389,9 @@ void dump_atoms(struct inode *atable)
 	unsigned blocks = (sb->atomgen + (sb->blockmask >> ATOMREF_BLKBITS))
 		>> (sb->blockbits - ATOMREF_BLKBITS);
 
-	for (unsigned j = 0; j < blocks; j++) {
-		unsigned block = sb->atomref_base + ATOMREF_SIZE * j;
+	unsigned j;
+	for (j = 0; j < blocks; j++) {
+		block_t block = sb->atomref_base + ATOMREF_SIZE * j;
 		struct buffer_head *lobuf, *hibuf;
 		lobuf = blockread(mapping(atable), block);
 		if (!lobuf)
@@ -401,7 +402,8 @@ void dump_atoms(struct inode *atable)
 			goto eek;
 		}
 		__be16 *lorefs = bufdata(lobuf), *hirefs = bufdata(hibuf);
-		for (unsigned i = 0; i < (sb->blocksize >> ATOMREF_BLKBITS); i++) {
+		unsigned i;
+		for (i = 0; i < (sb->blocksize >> ATOMREF_BLKBITS); i++) {
 			unsigned refs = (be16_to_cpu(hirefs[i]) << 16) | be16_to_cpu(lorefs[i]);
 			if (!refs)
 				continue;
@@ -669,18 +671,24 @@ int xcache_remove_all(struct inode *inode)
 	if (xcache) {
 		struct xcache_entry *xattr = xcache->xattrs;
 		struct xcache_entry *xlimit = xcache_limit(xcache);
+		int err = 0;
+
+		inode_lock(sb->atable);
 		while (xattr < xlimit) {
 			/*
 			 * FIXME: Inode is going to purse, what to do
 			 * if error ?
 			 */
 			atom_t atom = get_unaligned(&xattr->atom);
-			int err = atomref(sb->atable, atom, -1);
+			err = atomref(sb->atable, atom, -1);
 			if (err)
-				return err;
+				break;
 
 			xattr = xcache_next(xattr);
 		}
+		inode_unlock(sb->atable);
+		if (err)
+			return err;
 		assert(xattr == xlimit);
 	}
 
@@ -696,7 +704,7 @@ int get_xattr(struct inode *inode, const char *name, unsigned len, void *data,
 	atom_t atom;
 	int ret;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock_shared(atable);
 	ret = find_atom(atable, name, len, &atom);
 	if (ret)
 		goto out;
@@ -713,7 +721,7 @@ int get_xattr(struct inode *inode, const char *name, unsigned len, void *data,
 	else if (size)
 		ret = -ERANGE;
 out:
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock_shared(atable);
 	return ret;
 }
 
@@ -723,7 +731,7 @@ int set_xattr(struct inode *inode, const char *name, unsigned len,
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct inode *atable = sb->atable;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock(atable);
 	/* FIXME: cost */
 	change_begin(sb, 0);
 
@@ -737,7 +745,7 @@ int set_xattr(struct inode *inode, const char *name, unsigned len,
 	}
 
 	change_end(sb);
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock(atable);
 
 	return err;
 }
@@ -748,7 +756,7 @@ int del_xattr(struct inode *inode, const char *name, unsigned len)
 	struct inode *atable = sb->atable;
 	int err;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock(atable);
 	/* FIXME: cost */
 	change_begin(sb, 0);
 
@@ -774,7 +782,7 @@ int del_xattr(struct inode *inode, const char *name, unsigned len)
 	}
 out:
 	change_end(sb);
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock(atable);
 
 	return err;
 }
@@ -784,7 +792,7 @@ int list_xattr(struct inode *inode, char *text, size_t size)
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct inode *atable = sb->atable;
 
-	mutex_lock(&atable->i_mutex);
+	inode_lock_shared(atable);
 
 	struct xcache *xcache = tux_inode(inode)->xcache;
 	if (!xcache)
@@ -829,12 +837,12 @@ int list_xattr(struct inode *inode, char *text, size_t size)
 		}
 	}
 	assert(xattr == xlimit);
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock_shared(atable);
 
 	return text - base;
 
 error:
-	mutex_unlock(&atable->i_mutex);
+	inode_unlock_shared(atable);
 	return err;
 }
 

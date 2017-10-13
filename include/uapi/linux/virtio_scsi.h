@@ -29,8 +29,16 @@
 
 #include <linux/virtio_types.h>
 
-#define VIRTIO_SCSI_CDB_SIZE   32
-#define VIRTIO_SCSI_SENSE_SIZE 96
+/* Default values of the CDB and sense data size configuration fields */
+#define VIRTIO_SCSI_CDB_DEFAULT_SIZE   32
+#define VIRTIO_SCSI_SENSE_DEFAULT_SIZE 96
+
+#ifndef VIRTIO_SCSI_CDB_SIZE
+#define VIRTIO_SCSI_CDB_SIZE VIRTIO_SCSI_CDB_DEFAULT_SIZE
+#endif
+#ifndef VIRTIO_SCSI_SENSE_SIZE
+#define VIRTIO_SCSI_SENSE_SIZE VIRTIO_SCSI_SENSE_DEFAULT_SIZE
+#endif
 
 /* SCSI command request, followed by data-out */
 struct virtio_scsi_cmd_req {
@@ -95,16 +103,16 @@ struct virtio_scsi_event {
 } __attribute__((packed));
 
 struct virtio_scsi_config {
-	__u32 num_queues;
-	__u32 seg_max;
-	__u32 max_sectors;
-	__u32 cmd_per_lun;
-	__u32 event_info_size;
-	__u32 sense_size;
-	__u32 cdb_size;
-	__u16 max_channel;
-	__u16 max_target;
-	__u32 max_lun;
+	__virtio32 num_queues;
+	__virtio32 seg_max;
+	__virtio32 max_sectors;
+	__virtio32 cmd_per_lun;
+	__virtio32 event_info_size;
+	__virtio32 sense_size;
+	__virtio32 cdb_size;
+	__virtio16 max_channel;
+	__virtio16 max_target;
+	__virtio32 max_lun;
 } __attribute__((packed));
 
 /* Feature Bits */

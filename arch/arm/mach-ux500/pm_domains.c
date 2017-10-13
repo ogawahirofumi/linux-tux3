@@ -1,8 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2014 Linaro Ltd.
  *
  * Author: Ulf Hansson <ulf.hansson@linaro.org>
- * License terms: GNU General Public License (GPL) version 2
  *
  * Implements PM domains using the generic PM domain for ux500.
  */
@@ -49,7 +49,7 @@ static struct generic_pm_domain *ux500_pm_domains[NR_DOMAINS] = {
 	[DOMAIN_VAPE] = &ux500_pm_domain_vape,
 };
 
-static struct of_device_id ux500_pm_domain_matches[] = {
+static const struct of_device_id ux500_pm_domain_matches[] __initconst = {
 	{ .compatible = "stericsson,ux500-pm-domains", },
 	{ },
 };

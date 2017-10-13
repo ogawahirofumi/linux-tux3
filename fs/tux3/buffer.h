@@ -77,7 +77,7 @@ void tux3_invalidate_buffer(struct buffer_head *buffer);
 /* buffer_writeback.c */
 
 /* Helper for buffer vector I/O */
-#define BUFS_PER_PAGE_CACHE	(PAGE_CACHE_SIZE / 512)
+#define BUFS_PER_PAGE	(PAGE_SIZE / 512)
 struct bufvec {
 	struct list_head *buffers;	/* The dirty buffers for this delta */
 	struct list_head contig;	/* One logical contiguous range */
@@ -88,9 +88,11 @@ struct bufvec {
 	struct {
 		struct buffer_head *buffer;
 		block_t block;
-	} on_page[BUFS_PER_PAGE_CACHE];
+	} on_page[BUFS_PER_PAGE];
 	unsigned on_page_idx;
 
+	enum req_opf req_opf;
+	unsigned int req_flags;
 	struct bio *bio;
 	struct buffer_head *bio_lastbuf;
 };
@@ -126,14 +128,14 @@ static inline block_t bufvec_contig_last_index(struct bufvec *bufvec)
 	return bufvec_contig_index(bufvec) + bufvec_contig_count(bufvec) - 1;
 }
 
-int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count);
+int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	struct list_head *head, int req_flag);
-int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t physical,
-		     unsigned count);
-int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer);
-int tux3_volmap_early_io(int rw, struct bufvec *bufvec);
+	       struct list_head *head, unsigned int req_flags);
+int __tux3_volmap_io(struct bufvec *bufvec, block_t physical, unsigned count);
+int vol_early_io(enum req_opf req_opf, unsigned req_flags, struct sb *sb,
+		 struct buffer_head *buffer);
+int tux3_volmap_early_io(struct bufvec *bufvec);
 int tux3_volmap_clean_io(struct inode *inode);
 
 /* block_fork.c */
@@ -149,7 +151,8 @@ static inline int buffer_forked(struct buffer_head *buffer)
 void free_forked_buffers(struct sb *sb, struct inode *inode, int force);
 struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta);
 struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
-				     struct page *oldpage, unsigned newdelta);
+				     struct page *oldpage, bool keep_refcnt,
+				     unsigned newdelta);
 int bufferfork_to_invalidate(struct address_space *mapping, struct page *page);
 #endif /* __KERNEL__ */
 #endif /* !TUX3_BUFFER_H */

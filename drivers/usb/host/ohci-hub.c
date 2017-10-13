@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-1.0+
 /*
  * OHCI HCD (Host Controller Driver) for USB.
  *
@@ -17,21 +18,21 @@
 	ohci_dbg (hc, \
 		"%s roothub.portstatus [%d] " \
 		"= 0x%08x%s%s%s%s%s%s%s%s%s%s%s%s\n", \
-		label, num, temp, \
-		(temp & RH_PS_PRSC) ? " PRSC" : "", \
-		(temp & RH_PS_OCIC) ? " OCIC" : "", \
-		(temp & RH_PS_PSSC) ? " PSSC" : "", \
-		(temp & RH_PS_PESC) ? " PESC" : "", \
-		(temp & RH_PS_CSC) ? " CSC" : "", \
+		label, num, value, \
+		(value & RH_PS_PRSC) ? " PRSC" : "", \
+		(value & RH_PS_OCIC) ? " OCIC" : "", \
+		(value & RH_PS_PSSC) ? " PSSC" : "", \
+		(value & RH_PS_PESC) ? " PESC" : "", \
+		(value & RH_PS_CSC) ? " CSC" : "", \
 		\
-		(temp & RH_PS_LSDA) ? " LSDA" : "", \
-		(temp & RH_PS_PPS) ? " PPS" : "", \
-		(temp & RH_PS_PRS) ? " PRS" : "", \
-		(temp & RH_PS_POCI) ? " POCI" : "", \
-		(temp & RH_PS_PSS) ? " PSS" : "", \
+		(value & RH_PS_LSDA) ? " LSDA" : "", \
+		(value & RH_PS_PPS) ? " PPS" : "", \
+		(value & RH_PS_PRS) ? " PRS" : "", \
+		(value & RH_PS_POCI) ? " POCI" : "", \
+		(value & RH_PS_PSS) ? " PSS" : "", \
 		\
-		(temp & RH_PS_PES) ? " PES" : "", \
-		(temp & RH_PS_CCS) ? " CCS" : "" \
+		(value & RH_PS_PES) ? " PES" : "", \
+		(value & RH_PS_CCS) ? " CCS" : "" \
 		);
 
 /*-------------------------------------------------------------------------*/
@@ -57,7 +58,7 @@ __acquires(ohci->lock)
 		ohci->hc_control |= OHCI_USB_RESET;
 		ohci_writel (ohci, ohci->hc_control, &ohci->regs->control);
 		(void) ohci_readl (ohci, &ohci->regs->control);
-		/* FALL THROUGH */
+		fallthrough;
 	case OHCI_USB_RESET:
 		status = -EBUSY;
 		ohci_dbg (ohci, "needs reinit!\n");
@@ -89,6 +90,9 @@ __acquires(ohci->lock)
 	}
 	update_done_list(ohci);
 	ohci_work(ohci);
+
+	/* All ED unlinks should be finished, no need for SOF interrupts */
+	ohci_writel(ohci, OHCI_INTR_SF, &ohci->regs->intrdisable);
 
 	/*
 	 * Some controllers don't handle "global" suspend properly if
@@ -310,8 +314,10 @@ static int ohci_bus_suspend (struct usb_hcd *hcd)
 		rc = ohci_rh_suspend (ohci, 0);
 	spin_unlock_irq (&ohci->lock);
 
-	if (rc == 0)
+	if (rc == 0) {
 		del_timer_sync(&ohci->io_watchdog);
+		ohci->prev_frame_no = IO_WATCHDOG_OFF;
+	}
 	return rc;
 }
 
@@ -536,7 +542,7 @@ ohci_hub_descriptor (
 	u32		rh = roothub_a (ohci);
 	u16		temp;
 
-	desc->bDescriptorType = 0x29;
+	desc->bDescriptorType = USB_DT_HUB;
 	desc->bPwrOn2PwrGood = (rh & RH_A_POTPGT) >> 24;
 	desc->bHubContrCurrent = 0;
 
@@ -544,15 +550,15 @@ ohci_hub_descriptor (
 	temp = 1 + (ohci->num_ports / 8);
 	desc->bDescLength = 7 + 2 * temp;
 
-	temp = 0;
+	temp = HUB_CHAR_COMMON_LPSM | HUB_CHAR_COMMON_OCPM;
 	if (rh & RH_A_NPS)		/* no power switching? */
-	    temp |= 0x0002;
+		temp |= HUB_CHAR_NO_LPSM;
 	if (rh & RH_A_PSM)		/* per-port power switching? */
-	    temp |= 0x0001;
+		temp |= HUB_CHAR_INDV_PORT_LPSM;
 	if (rh & RH_A_NOCP)		/* no overcurrent reporting? */
-	    temp |= 0x0010;
+		temp |= HUB_CHAR_NO_OCPM;
 	else if (rh & RH_A_OCPM)	/* per-port overcurrent reporting? */
-	    temp |= 0x0008;
+		temp |= HUB_CHAR_INDV_PORT_OCPM;
 	desc->wHubCharacteristics = cpu_to_le16(temp);
 
 	/* ports removable, and usb 1.0 legacy PortPwrCtrlMask */
@@ -689,6 +695,7 @@ int ohci_hub_control(
 		case C_HUB_OVER_CURRENT:
 			ohci_writel (ohci, RH_HS_OCIC,
 					&ohci->regs->roothub.status);
+			break;
 		case C_HUB_LOCAL_POWER:
 			break;
 		default:

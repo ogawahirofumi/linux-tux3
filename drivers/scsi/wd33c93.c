@@ -1,17 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (c) 1996 John Shifflett, GeoLog Consulting
  *    john@geolog.com
  *    jshiffle@netcom.com
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 /*
@@ -371,9 +362,7 @@ calc_sync_msg(unsigned int period, unsigned int offset, unsigned int fast,
 	msg[1] = offset;
 }
 
-static int
-wd33c93_queuecommand_lck(struct scsi_cmnd *cmd,
-		void (*done)(struct scsi_cmnd *))
+static int wd33c93_queuecommand_lck(struct scsi_cmnd *cmd)
 {
 	struct WD33C93_hostdata *hostdata;
 	struct scsi_cmnd *tmp;
@@ -385,11 +374,9 @@ wd33c93_queuecommand_lck(struct scsi_cmnd *cmd,
 
 /* Set up a few fields in the scsi_cmnd structure for our own use:
  *  - host_scribble is the pointer to the next cmd in the input queue
- *  - scsi_done points to the routine we call when a cmd is finished
  *  - result is what you'd expect
  */
 	cmd->host_scribble = NULL;
-	cmd->scsi_done = done;
 	cmd->result = 0;
 
 /* We use the Scsi_Pointer structure that's included with each command
@@ -744,7 +731,7 @@ transfer_bytes(const wd33c93_regs regs, struct scsi_cmnd *cmd,
  * source or destination for THIS transfer.
  */
 	if (!cmd->SCp.this_residual && cmd->SCp.buffers_residual) {
-		++cmd->SCp.buffer;
+		cmd->SCp.buffer = sg_next(cmd->SCp.buffer);
 		--cmd->SCp.buffers_residual;
 		cmd->SCp.this_residual = cmd->SCp.buffer->length;
 		cmd->SCp.ptr = sg_virt(cmd->SCp.buffer);
@@ -865,7 +852,7 @@ wd33c93_intr(struct Scsi_Host *instance)
 		cmd->result = DID_NO_CONNECT << 16;
 		hostdata->busy[cmd->device->id] &= ~(1 << (cmd->device->lun & 0xff));
 		hostdata->state = S_UNCONNECTED;
-		cmd->scsi_done(cmd);
+		scsi_done(cmd);
 
 		/* From esp.c:
 		 * There is a window of time within the scsi_done() path
@@ -1185,14 +1172,14 @@ wd33c93_intr(struct Scsi_Host *instance)
 			if (cmd->SCp.Status == ILLEGAL_STATUS_BYTE)
 				cmd->SCp.Status = lun;
 			if (cmd->cmnd[0] == REQUEST_SENSE
-			    && cmd->SCp.Status != GOOD)
-				cmd->result =
-				    (cmd->
-				     result & 0x00ffff) | (DID_ERROR << 16);
-			else
-				cmd->result =
-				    cmd->SCp.Status | (cmd->SCp.Message << 8);
-			cmd->scsi_done(cmd);
+			    && cmd->SCp.Status != SAM_STAT_GOOD) {
+				set_host_byte(cmd, DID_ERROR);
+			} else {
+				set_host_byte(cmd, DID_OK);
+				scsi_msg_to_host_byte(cmd, cmd->SCp.Message);
+				set_status_byte(cmd, cmd->SCp.Status);
+			}
+			scsi_done(cmd);
 
 /* We are no longer  connected to a target - check to see if
  * there are commands waiting to be executed.
@@ -1271,12 +1258,15 @@ wd33c93_intr(struct Scsi_Host *instance)
 		    hostdata->connected = NULL;
 		hostdata->busy[cmd->device->id] &= ~(1 << (cmd->device->lun & 0xff));
 		hostdata->state = S_UNCONNECTED;
-		if (cmd->cmnd[0] == REQUEST_SENSE && cmd->SCp.Status != GOOD)
-			cmd->result =
-			    (cmd->result & 0x00ffff) | (DID_ERROR << 16);
-		else
-			cmd->result = cmd->SCp.Status | (cmd->SCp.Message << 8);
-		cmd->scsi_done(cmd);
+		if (cmd->cmnd[0] == REQUEST_SENSE &&
+		    cmd->SCp.Status != SAM_STAT_GOOD) {
+			set_host_byte(cmd, DID_ERROR);
+		} else {
+			set_host_byte(cmd, DID_OK);
+			scsi_msg_to_host_byte(cmd, cmd->SCp.Message);
+			set_status_byte(cmd, cmd->SCp.Status);
+		}
+		scsi_done(cmd);
 
 /* We are no longer connected to a target - check to see if
  * there are commands waiting to be executed.
@@ -1304,15 +1294,15 @@ wd33c93_intr(struct Scsi_Host *instance)
 			hostdata->busy[cmd->device->id] &= ~(1 << (cmd->device->lun & 0xff));
 			hostdata->state = S_UNCONNECTED;
 			DB(DB_INTR, printk(":%d", cmd->SCp.Status))
-			    if (cmd->cmnd[0] == REQUEST_SENSE
-				&& cmd->SCp.Status != GOOD)
-				cmd->result =
-				    (cmd->
-				     result & 0x00ffff) | (DID_ERROR << 16);
-			else
-				cmd->result =
-				    cmd->SCp.Status | (cmd->SCp.Message << 8);
-			cmd->scsi_done(cmd);
+			if (cmd->cmnd[0] == REQUEST_SENSE
+			    && cmd->SCp.Status != SAM_STAT_GOOD) {
+				set_host_byte(cmd, DID_ERROR);
+			} else {
+				set_host_byte(cmd, DID_OK);
+				scsi_msg_to_host_byte(cmd, cmd->SCp.Message);
+				set_status_byte(cmd, cmd->SCp.Status);
+			}
+			scsi_done(cmd);
 			break;
 		case S_PRE_TMP_DISC:
 		case S_RUNNING_LEVEL2:
@@ -1578,6 +1568,7 @@ wd33c93_host_reset(struct scsi_cmnd * SCpnt)
 	int i;
 
 	instance = SCpnt->device->host;
+	spin_lock_irq(instance->host_lock);
 	hostdata = (struct WD33C93_hostdata *) instance->hostdata;
 
 	printk("scsi%d: reset. ", instance->host_no);
@@ -1603,6 +1594,7 @@ wd33c93_host_reset(struct scsi_cmnd * SCpnt)
 	reset_wd33c93(instance);
 	SCpnt->result = DID_RESET << 16;
 	enable_irq(instance->irq);
+	spin_unlock_irq(instance->host_lock);
 	return SUCCESS;
 }
 
@@ -1640,7 +1632,7 @@ wd33c93_abort(struct scsi_cmnd * cmd)
 			    ("scsi%d: Abort - removing command from input_Q. ",
 			     instance->host_no);
 			enable_irq(cmd->device->host->irq);
-			cmd->scsi_done(cmd);
+			scsi_done(cmd);
 			return SUCCESS;
 		}
 		prev = tmp;
@@ -1715,7 +1707,7 @@ wd33c93_abort(struct scsi_cmnd * cmd)
 		wd33c93_execute(instance);
 
 		enable_irq(cmd->device->host->irq);
-		cmd->scsi_done(cmd);
+		scsi_done(cmd);
 		return SUCCESS;
 	}
 
@@ -1861,6 +1853,7 @@ round_4(unsigned int x)
 		case 1: --x;
 			break;
 		case 2: ++x;
+			fallthrough;
 		case 3: ++x;
 	}
 	return x;
@@ -2143,22 +2136,22 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 		seq_printf(m, "\nclock_freq=%02x no_sync=%02x no_dma=%d"
 			" dma_mode=%02x fast=%d",
 			hd->clock_freq, hd->no_sync, hd->no_dma, hd->dma_mode, hd->fast);
-		seq_printf(m, "\nsync_xfer[] =       ");
+		seq_puts(m, "\nsync_xfer[] =       ");
 		for (x = 0; x < 7; x++)
 			seq_printf(m, "\t%02x", hd->sync_xfer[x]);
-		seq_printf(m, "\nsync_stat[] =       ");
+		seq_puts(m, "\nsync_stat[] =       ");
 		for (x = 0; x < 7; x++)
 			seq_printf(m, "\t%02x", hd->sync_stat[x]);
 	}
 #ifdef PROC_STATISTICS
 	if (hd->proc & PR_STATISTICS) {
-		seq_printf(m, "\ncommands issued:    ");
+		seq_puts(m, "\ncommands issued:    ");
 		for (x = 0; x < 7; x++)
 			seq_printf(m, "\t%ld", hd->cmd_cnt[x]);
-		seq_printf(m, "\ndisconnects allowed:");
+		seq_puts(m, "\ndisconnects allowed:");
 		for (x = 0; x < 7; x++)
 			seq_printf(m, "\t%ld", hd->disc_allowed_cnt[x]);
-		seq_printf(m, "\ndisconnects done:   ");
+		seq_puts(m, "\ndisconnects done:   ");
 		for (x = 0; x < 7; x++)
 			seq_printf(m, "\t%ld", hd->disc_done_cnt[x]);
 		seq_printf(m,
@@ -2167,7 +2160,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 	}
 #endif
 	if (hd->proc & PR_CONNECTED) {
-		seq_printf(m, "\nconnected:     ");
+		seq_puts(m, "\nconnected:     ");
 		if (hd->connected) {
 			cmd = (struct scsi_cmnd *) hd->connected;
 			seq_printf(m, " %d:%llu(%02x)",
@@ -2175,7 +2168,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 		}
 	}
 	if (hd->proc & PR_INPUTQ) {
-		seq_printf(m, "\ninput_Q:       ");
+		seq_puts(m, "\ninput_Q:       ");
 		cmd = (struct scsi_cmnd *) hd->input_Q;
 		while (cmd) {
 			seq_printf(m, " %d:%llu(%02x)",
@@ -2184,7 +2177,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 		}
 	}
 	if (hd->proc & PR_DISCQ) {
-		seq_printf(m, "\ndisconnected_Q:");
+		seq_puts(m, "\ndisconnected_Q:");
 		cmd = (struct scsi_cmnd *) hd->disconnected_Q;
 		while (cmd) {
 			seq_printf(m, " %d:%llu(%02x)",
@@ -2192,7 +2185,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 			cmd = (struct scsi_cmnd *) cmd->host_scribble;
 		}
 	}
-	seq_printf(m, "\n");
+	seq_putc(m, '\n');
 	spin_unlock_irq(&hd->lock);
 #endif				/* PROC_INTERFACE */
 	return 0;

@@ -18,20 +18,20 @@
  * down_write(inode: btree->lock) (btree_chop, filemap for write)
  * down_read(inode: btree->lock) (filemap for read)
  *
- * inode->i_mutex
+ * inode_lock
  *     mapping->private_lock (front uses to protect dirty buffer list)
  *     tuxnode->hole_extents_lock (for inode->hole_extents,
- *				   i_ddc->dirty_holes is protected by ->i_mutex)
+ *				   i_ddc->dirty_holes is protected by inode_lock)
  *
  *     inode->i_lock
  *         tuxnode->lock (to protect tuxnode data)
  *             tuxnode->dirty_inodes_lock (for i_ddc->dirty_inodes,
  *					   Note: timestamp can be updated
- *					   outside inode->i_mutex)
+ *					   outside inode_lock(inode))
  *
  * sb->forked_buffers (for sb->forked_buffers)
  *
- * This lock may be first lock except vfs locks (lock_super, i_mutex).
+ * This lock may be first lock except vfs locks (lock_super, inode_lock).
  * sb->delta_lock (change_begin, change_end) [only for TUX3_FLUSHER_SYNC]
  *
  * memory allocation: (blockread, blockget, kmalloc, etc.)
@@ -43,6 +43,7 @@
 
 #include "tux3.h"
 #include "dleaf.h"
+#include "ioinfo.h"
 
 #ifndef trace
 #define trace trace_on
@@ -62,7 +63,8 @@ enum map_mode {
 void show_segs(struct block_segment seg[], unsigned segs)
 {
 	__tux3_dbg("%i segs: ", segs);
-	for (int i = 0; i < segs; i++)
+	int i;
+	for (i = 0; i < segs; i++)
 		__tux3_dbg("%Lx/%i ", seg[i].block, seg[i].count);
 	__tux3_dbg("\n");
 }
@@ -400,8 +402,11 @@ out_unlock:
 void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf)
 {
 	if (leafbuf != sb->last_dleaf) {
-		if (sb->last_dleaf)
-			vol_early_io(WRITE | REQ_META, sb, sb->last_dleaf);
+		if (sb->last_dleaf) {
+			vol_early_io(REQ_OP_WRITE,
+				     REQ_META | tux3_io_req_flags(sb->ioinfo),
+				     sb, sb->last_dleaf);
+		}
 
 		assert(leafbuf == NULL || buffer_dirty(leafbuf));
 		sb->last_dleaf = leafbuf;
@@ -422,7 +427,7 @@ static int filemap(struct inode *inode, block_t start, unsigned count,
 	int segs;
 
 	/*
-	 * NOTE: hole extents are not protected by i_mutex on MAP_READ
+	 * NOTE: hole extents are not protected by inode_lock on MAP_READ
 	 * path. So, we shouldn't assume it is stable.
 	 */
 
@@ -447,46 +452,48 @@ static int filemap(struct inode *inode, block_t start, unsigned count,
 	return segs;
 }
 
-static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec);
-int tux3_filemap_overwrite_io(int rw, struct bufvec *bufvec)
+static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec);
+int tux3_filemap_overwrite_io(struct bufvec *bufvec)
 {
-	enum map_mode mode = (rw & WRITE) ? MAP_WRITE : MAP_READ;
-	return filemap_extent_io(mode, rw, bufvec);
+	enum map_mode mode =
+		op_is_write(bufvec->req_opf) ? MAP_WRITE : MAP_READ;
+	return filemap_extent_io(mode, bufvec);
 }
 
-int tux3_filemap_redirect_io(int rw, struct bufvec *bufvec)
+int tux3_filemap_redirect_io(struct bufvec *bufvec)
 {
-	enum map_mode mode = (rw & WRITE) ? MAP_REDIRECT : MAP_READ;
-	return filemap_extent_io(mode, rw, bufvec);
+	enum map_mode mode =
+		op_is_write(bufvec->req_opf) ? MAP_REDIRECT : MAP_READ;
+	return filemap_extent_io(mode, bufvec);
 }
 
 #ifdef __KERNEL__
 #include <linux/mpage.h>
 #include <linux/aio.h>		/* for kiocb */
 
-static int filemap_extent_io(enum map_mode mode, int rw, struct bufvec *bufvec)
+static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 {
 	struct inode *inode = bufvec_inode(bufvec);
 	block_t block, index = bufvec_contig_index(bufvec);
 	unsigned count = bufvec_contig_count(bufvec);
-	int err;
+	int err, i, segs;
 	struct block_segment seg[10];
 
 	/* FIXME: For now, this is only for write */
 	assert(mode != MAP_READ);
 
-	int segs = filemap(inode, index, count, seg, ARRAY_SIZE(seg), mode);
+	segs = filemap(inode, index, count, seg, ARRAY_SIZE(seg), mode);
 	if (segs < 0)
 		return segs;
 	assert(segs);
 
-	for (int i = 0; i < segs; i++) {
+	for (i = 0; i < segs; i++) {
 		block = seg[i].block;
 		count = seg[i].count;
 
 		trace("extent 0x%Lx/%x => %Lx", index, count, block);
 
-		err = blockio_vec(rw, bufvec, block, count);
+		err = blockio_vec(bufvec, block, count);
 		if (err)
 			break;
 
@@ -516,7 +523,7 @@ static void seg_to_buffer(struct sb *sb, struct buffer_head *buffer,
 //			clear_buffer_delay(buffer);
 			buffer->b_blocknr = seg->block;
 			/*
-			 * FIXME: do we need to unmap_underlying_metadata()
+			 * FIXME: do we need to clean_bdev_bh_alias()
 			 * for sb->volmap? (at least, check buffer state?)
 			 * And if needed, is it enough?
 			 */
@@ -654,7 +661,7 @@ static struct buffer_head *__find_get_buffer(struct address_space *mapping,
 			}
 			spin_unlock(&mapping->private_lock);
 		}
-		page_cache_release(page);
+		put_page(page);
 	}
 	return bh;
 }
@@ -671,8 +678,8 @@ struct buffer_head *peekblk(struct address_space *mapping, block_t iblock)
 	pgoff_t index;
 	int offset;
 
-	index = iblock >> (PAGE_CACHE_SHIFT - inode->i_blkbits);
-	offset = iblock & ((1 << (PAGE_CACHE_SHIFT - inode->i_blkbits)) - 1);
+	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
+	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
 
 	return __find_get_buffer(mapping, index, offset, 0);
 }
@@ -680,14 +687,14 @@ struct buffer_head *peekblk(struct address_space *mapping, block_t iblock)
 struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 {
 	struct inode *inode = mapping->host;
-	gfp_t gfp_mask = mapping_gfp_mask(mapping) | __GFP_COLD; /* FIXME(?) */
+	gfp_t gfp_mask = mapping_gfp_mask(mapping);
 	pgoff_t index;
 	struct page *page;
 	struct buffer_head *bh;
 	int err, offset;
 
-	index = iblock >> (PAGE_CACHE_SHIFT - inode->i_blkbits);
-	offset = iblock & ((1 << (PAGE_CACHE_SHIFT - inode->i_blkbits)) - 1);
+	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
+	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
 
 	bh = find_get_buffer(mapping, index, offset);
 	if (bh)
@@ -715,7 +722,7 @@ struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 			goto error_readpage;
 		}
 	}
-	page_cache_release(page);
+	put_page(page);
 	assert(buffer_uptodate(bh));
 
 out:
@@ -723,7 +730,7 @@ out:
 
 error_readpage:
 	put_bh(bh);
-	page_cache_release(page);
+	put_page(page);
 error:
 	return NULL;
 }
@@ -736,10 +743,10 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 	struct buffer_head *bh;
 	void *fsdata;
 	int err, offset;
-	unsigned aop_flags = AOP_FLAG_UNINTERRUPTIBLE;
+	unsigned aop_flags = 0;
 
-	index = iblock >> (PAGE_CACHE_SHIFT - inode->i_blkbits);
-	offset = iblock & ((1 << (PAGE_CACHE_SHIFT - inode->i_blkbits)) - 1);
+	index = iblock >> (PAGE_SHIFT - inode->i_blkbits);
+	offset = iblock & ((1 << (PAGE_SHIFT - inode->i_blkbits)) - 1);
 
 	/* Prevent reentering into our fs recursively by memory allocation. */
 	if (!(mapping_gfp_mask(mapping) & __GFP_FS))
@@ -747,7 +754,7 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 
 	err = mapping->a_ops->write_begin(NULL, mapping,
 					  iblock << inode->i_blkbits,
-					  1 << inode->i_blkbits,
+					  i_blocksize(inode),
 					  aop_flags, &page, &fsdata);
 	if (err)
 		return NULL;
@@ -790,7 +797,7 @@ struct buffer_head *blockget(struct address_space *mapping, block_t iblock)
 	set_buffer_uptodate(bh);
 
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 
 	return bh;
 }
@@ -921,19 +928,18 @@ static int tux3_disable_writepages(struct address_space *mapping,
  * Direct I/O is unsupport for now. Since this is for
  * non-atomic-commit mode, so this allocates blocks from frontend.
  */
-static ssize_t tux3_direct_IO(int rw, struct kiocb *iocb,
-			      const struct iovec *iov,
-			      loff_t offset, unsigned long nr_segs)
+static ssize_t tux3_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
+	size_t count = iov_iter_count(iter);
+	loff_t offset = iocb->ki_pos;
 	ssize_t ret;
 
-	ret = blockdev_direct_IO(rw, iocb, inode, iov, offset, nr_segs,
-				 tux3_get_block);
-	if (ret < 0 && (rw & WRITE))
-		tux3_write_failed(mapping, offset + iov_length(iov, nr_segs));
+	ret = blockdev_direct_IO(iocb, inode, iter, tux3_get_block);
+	if (ret < 0 && iov_iter_rw(iter) == REQ_OP_WRITE)
+		tux3_write_failed(mapping, offset + count);
 	return ret;
 }
 #endif
@@ -942,9 +948,9 @@ static sector_t tux3_bmap(struct address_space *mapping, sector_t iblock)
 {
 	sector_t blocknr;
 
-	mutex_lock(&mapping->host->i_mutex);
+	inode_lock_shared(mapping->host);
 	blocknr = generic_block_bmap(mapping, iblock, tux3_get_block);
-	mutex_unlock(&mapping->host->i_mutex);
+	inode_unlock_shared(mapping->host);
 
 	return blocknr;
 }
@@ -960,7 +966,8 @@ const struct address_space_operations tux_file_aops = {
 	.write_end		= tux3_file_write_end,
 	.bmap			= tux3_bmap,
 	.set_page_dirty		= tux3_set_page_dirty_assert,
-	.truncatepage		= tux3_truncatepage,
+	.truncatepages		= tux3_truncatepages,
+	.truncatepage_partial	= tux3_truncatepage_partial,
 	.invalidatepage		= tux3_invalidatepage,
 //	.releasepage		= ext4_releasepage,
 #ifdef TUX3_DIRECT_IO

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * NFS server file handle treatment.
  *
@@ -13,6 +14,7 @@
 #include "nfsd.h"
 #include "vfs.h"
 #include "auth.h"
+#include "trace.h"
 
 #define NFSDDBG_FACILITY		NFSDDBG_FH
 
@@ -38,7 +40,8 @@ static int nfsd_acceptable(void *expv, struct dentry *dentry)
 		/* make sure parents give x permission to user */
 		int err;
 		parent = dget_parent(tdentry);
-		err = inode_permission(parent->d_inode, MAY_EXEC);
+		err = inode_permission(&init_user_ns,
+				       d_inode(parent), MAY_EXEC);
 		if (err < 0) {
 			dput(parent);
 			break;
@@ -59,14 +62,20 @@ static int nfsd_acceptable(void *expv, struct dentry *dentry)
  * the write call).
  */
 static inline __be32
-nfsd_mode_check(struct svc_rqst *rqstp, umode_t mode, umode_t requested)
+nfsd_mode_check(struct svc_rqst *rqstp, struct dentry *dentry,
+		umode_t requested)
 {
-	mode &= S_IFMT;
+	umode_t mode = d_inode(dentry)->i_mode & S_IFMT;
 
 	if (requested == 0) /* the caller doesn't care */
 		return nfs_ok;
-	if (mode == requested)
+	if (mode == requested) {
+		if (mode == S_IFDIR && !d_can_lookup(dentry)) {
+			WARN_ON_ONCE(1);
+			return nfserr_notdir;
+		}
 		return nfs_ok;
+	}
 	/*
 	 * v4 has an error more specific than err_notdir which we should
 	 * return in preference to err_notdir:
@@ -80,13 +89,23 @@ nfsd_mode_check(struct svc_rqst *rqstp, umode_t mode, umode_t requested)
 	return nfserr_inval;
 }
 
+static bool nfsd_originating_port_ok(struct svc_rqst *rqstp, int flags)
+{
+	if (flags & NFSEXP_INSECURE_PORT)
+		return true;
+	/* We don't require gss requests to use low ports: */
+	if (rqstp->rq_cred.cr_flavor >= RPC_AUTH_GSS)
+		return true;
+	return test_bit(RQ_SECURE, &rqstp->rq_flags);
+}
+
 static __be32 nfsd_setuser_and_check_port(struct svc_rqst *rqstp,
 					  struct svc_export *exp)
 {
 	int flags = nfsexp_flags(rqstp, exp);
 
 	/* Check if the request originated from a secure port. */
-	if (!test_bit(RQ_SECURE, &rqstp->rq_flags) && !(flags & NFSEXP_INSECURE_PORT)) {
+	if (!nfsd_originating_port_ok(rqstp, flags)) {
 		RPC_IFDEBUG(char buf[RPC_MAX_ADDRBUFLEN]);
 		dprintk("nfsd: request from insecure port %s!\n",
 		        svc_print_addr(rqstp, buf, sizeof(buf)));
@@ -114,8 +133,8 @@ static inline __be32 check_pseudo_root(struct svc_rqst *rqstp,
 	 * We're exposing only the directories and symlinks that have to be
 	 * traversed on the way to real exports:
 	 */
-	if (unlikely(!S_ISDIR(dentry->d_inode->i_mode) &&
-		     !S_ISLNK(dentry->d_inode->i_mode)))
+	if (unlikely(!d_is_dir(dentry) &&
+		     !d_is_symlink(dentry)))
 		return nfserr_stale;
 	/*
 	 * A pseudoroot export gives permission to access only one
@@ -135,11 +154,12 @@ static inline __be32 check_pseudo_root(struct svc_rqst *rqstp,
 static __be32 nfsd_set_fh_dentry(struct svc_rqst *rqstp, struct svc_fh *fhp)
 {
 	struct knfsd_fh	*fh = &fhp->fh_handle;
-	struct fid *fid = NULL, sfid;
+	struct fid *fid = NULL;
 	struct svc_export *exp;
 	struct dentry *dentry;
 	int fileid_type;
 	int data_left = fh->fh_size/4;
+	int len;
 	__be32 error;
 
 	error = nfserr_stale;
@@ -148,55 +168,45 @@ static __be32 nfsd_set_fh_dentry(struct svc_rqst *rqstp, struct svc_fh *fhp)
 	if (rqstp->rq_vers == 4 && fh->fh_size == 0)
 		return nfserr_nofilehandle;
 
-	if (fh->fh_version == 1) {
-		int len;
-
-		if (--data_left < 0)
-			return error;
-		if (fh->fh_auth_type != 0)
-			return error;
-		len = key_len(fh->fh_fsid_type) / 4;
-		if (len == 0)
-			return error;
-		if  (fh->fh_fsid_type == FSID_MAJOR_MINOR) {
-			/* deprecated, convert to type 3 */
-			len = key_len(FSID_ENCODE_DEV)/4;
-			fh->fh_fsid_type = FSID_ENCODE_DEV;
-			/*
-			 * struct knfsd_fh uses host-endian fields, which are
-			 * sometimes used to hold net-endian values. This
-			 * confuses sparse, so we must use __force here to
-			 * keep it from complaining.
-			 */
-			fh->fh_fsid[0] = new_encode_dev(MKDEV(ntohl((__force __be32)fh->fh_fsid[0]),
-							ntohl((__force __be32)fh->fh_fsid[1])));
-			fh->fh_fsid[1] = fh->fh_fsid[2];
-		}
-		data_left -= len;
-		if (data_left < 0)
-			return error;
-		exp = rqst_exp_find(rqstp, fh->fh_fsid_type, fh->fh_fsid);
-		fid = (struct fid *)(fh->fh_fsid + len);
-	} else {
-		__u32 tfh[2];
-		dev_t xdev;
-		ino_t xino;
-
-		if (fh->fh_size != NFS_FHSIZE)
-			return error;
-		/* assume old filehandle format */
-		xdev = old_decode_dev(fh->ofh_xdev);
-		xino = u32_to_ino_t(fh->ofh_xino);
-		mk_fsid(FSID_DEV, tfh, xdev, xino, 0, NULL);
-		exp = rqst_exp_find(rqstp, FSID_DEV, tfh);
-	}
-
-	error = nfserr_stale;
-	if (PTR_ERR(exp) == -ENOENT)
+	if (fh->fh_version != 1)
 		return error;
 
-	if (IS_ERR(exp))
+	if (--data_left < 0)
+		return error;
+	if (fh->fh_auth_type != 0)
+		return error;
+	len = key_len(fh->fh_fsid_type) / 4;
+	if (len == 0)
+		return error;
+	if (fh->fh_fsid_type == FSID_MAJOR_MINOR) {
+		/* deprecated, convert to type 3 */
+		len = key_len(FSID_ENCODE_DEV)/4;
+		fh->fh_fsid_type = FSID_ENCODE_DEV;
+		/*
+		 * struct knfsd_fh uses host-endian fields, which are
+		 * sometimes used to hold net-endian values. This
+		 * confuses sparse, so we must use __force here to
+		 * keep it from complaining.
+		 */
+		fh->fh_fsid[0] = new_encode_dev(MKDEV(ntohl((__force __be32)fh->fh_fsid[0]),
+						      ntohl((__force __be32)fh->fh_fsid[1])));
+		fh->fh_fsid[1] = fh->fh_fsid[2];
+	}
+	data_left -= len;
+	if (data_left < 0)
+		return error;
+	exp = rqst_exp_find(rqstp, fh->fh_fsid_type, fh->fh_fsid);
+	fid = (struct fid *)(fh->fh_fsid + len);
+
+	error = nfserr_stale;
+	if (IS_ERR(exp)) {
+		trace_nfsd_set_fh_dentry_badexport(rqstp, fhp, PTR_ERR(exp));
+
+		if (PTR_ERR(exp) == -ENOENT)
+			return error;
+
 		return nfserrno(PTR_ERR(exp));
+	}
 
 	if (exp->ex_flags & NFSEXP_NOSUBTREECHECK) {
 		/* Elevate privileges so that the lack of 'r' or 'x'
@@ -231,25 +241,25 @@ static __be32 nfsd_set_fh_dentry(struct svc_rqst *rqstp, struct svc_fh *fhp)
 	if (rqstp->rq_vers > 2)
 		error = nfserr_badhandle;
 
-	if (fh->fh_version != 1) {
-		sfid.i32.ino = fh->ofh_ino;
-		sfid.i32.gen = fh->ofh_generation;
-		sfid.i32.parent_ino = fh->ofh_dirino;
-		fid = &sfid;
-		data_left = 3;
-		if (fh->ofh_dirino == 0)
-			fileid_type = FILEID_INO32_GEN;
-		else
-			fileid_type = FILEID_INO32_GEN_PARENT;
-	} else
-		fileid_type = fh->fh_fileid_type;
+	fileid_type = fh->fh_fileid_type;
 
 	if (fileid_type == FILEID_ROOT)
 		dentry = dget(exp->ex_path.dentry);
 	else {
-		dentry = exportfs_decode_fh(exp->ex_path.mnt, fid,
-				data_left, fileid_type,
-				nfsd_acceptable, exp);
+		dentry = exportfs_decode_fh_raw(exp->ex_path.mnt, fid,
+						data_left, fileid_type,
+						nfsd_acceptable, exp);
+		if (IS_ERR_OR_NULL(dentry)) {
+			trace_nfsd_set_fh_dentry_badhandle(rqstp, fhp,
+					dentry ?  PTR_ERR(dentry) : -ESTALE);
+			switch (PTR_ERR(dentry)) {
+			case -ENOMEM:
+			case -ETIMEDOUT:
+				break;
+			default:
+				dentry = ERR_PTR(-ESTALE);
+			}
+		}
 	}
 	if (dentry == NULL)
 		goto out;
@@ -259,7 +269,7 @@ static __be32 nfsd_set_fh_dentry(struct svc_rqst *rqstp, struct svc_fh *fhp)
 		goto out;
 	}
 
-	if (S_ISDIR(dentry->d_inode->i_mode) &&
+	if (d_is_dir(dentry) &&
 			(dentry->d_flags & DCACHE_DISCONNECTED)) {
 		printk("nfsd: find_fh_dentry returned a DISCONNECTED directory: %pd2\n",
 				dentry);
@@ -267,6 +277,20 @@ static __be32 nfsd_set_fh_dentry(struct svc_rqst *rqstp, struct svc_fh *fhp)
 
 	fhp->fh_dentry = dentry;
 	fhp->fh_export = exp;
+
+	switch (rqstp->rq_vers) {
+	case 4:
+		if (dentry->d_sb->s_export_op->flags & EXPORT_OP_NOATOMIC_ATTR)
+			fhp->fh_no_atomic_attr = true;
+		break;
+	case 3:
+		if (dentry->d_sb->s_export_op->flags & EXPORT_OP_NOWCC)
+			fhp->fh_no_wcc = true;
+		break;
+	case 2:
+		fhp->fh_no_wcc = true;
+	}
+
 	return 0;
 out:
 	exp_put(exp);
@@ -298,12 +322,12 @@ out:
  * that it expects something not of the given type.
  *
  * @access is formed from the NFSD_MAY_* constants defined in
- * include/linux/nfsd/nfsd.h.
+ * fs/nfsd/vfs.h.
  */
 __be32
 fh_verify(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type, int access)
 {
-	struct svc_export *exp;
+	struct svc_export *exp = NULL;
 	struct dentry	*dentry;
 	__be32		error;
 
@@ -340,7 +364,7 @@ fh_verify(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type, int access)
 	if (error)
 		goto out;
 
-	error = nfsd_mode_check(rqstp, dentry->d_inode->i_mode, type);
+	error = nfsd_mode_check(rqstp, dentry, type);
 	if (error)
 		goto out;
 
@@ -376,7 +400,7 @@ skip_pseudoflavor_check:
 	}
 out:
 	if (error == nfserr_stale)
-		nfsdstats.fh_stale++;
+		nfsd_stats_fh_stale_inc(exp);
 	return error;
 }
 
@@ -405,20 +429,6 @@ static void _fh_update(struct svc_fh *fhp, struct svc_export *exp,
 	}
 }
 
-/*
- * for composing old style file handles
- */
-static inline void _fh_update_old(struct dentry *dentry,
-				  struct svc_export *exp,
-				  struct knfsd_fh *fh)
-{
-	fh->ofh_ino = ino_t_to_u32(dentry->d_inode->i_ino);
-	fh->ofh_generation = dentry->d_inode->i_generation;
-	if (S_ISDIR(dentry->d_inode->i_mode) ||
-	    (exp->ex_flags & NFSEXP_NOSUBTREECHECK))
-		fh->ofh_dirino = 0;
-}
-
 static bool is_root_export(struct svc_export *exp)
 {
 	return exp->ex_path.dentry == exp->ex_path.dentry->d_sb->s_root;
@@ -426,7 +436,7 @@ static bool is_root_export(struct svc_export *exp)
 
 static struct super_block *exp_sb(struct svc_export *exp)
 {
-	return exp->ex_path.dentry->d_inode->i_sb;
+	return exp->ex_path.dentry->d_sb;
 }
 
 static bool fsid_type_ok_for_exp(u8 fsid_type, struct svc_export *exp)
@@ -434,8 +444,8 @@ static bool fsid_type_ok_for_exp(u8 fsid_type, struct svc_export *exp)
 	switch (fsid_type) {
 	case FSID_DEV:
 		if (!old_valid_dev(exp_sb(exp)->s_dev))
-			return 0;
-		/* FALL THROUGH */
+			return false;
+		fallthrough;
 	case FSID_MAJOR_MINOR:
 	case FSID_ENCODE_DEV:
 		return exp_sb(exp)->s_type->fs_flags & FS_REQUIRES_DEV;
@@ -444,13 +454,13 @@ static bool fsid_type_ok_for_exp(u8 fsid_type, struct svc_export *exp)
 	case FSID_UUID8:
 	case FSID_UUID16:
 		if (!is_root_export(exp))
-			return 0;
-		/* fall through */
+			return false;
+		fallthrough;
 	case FSID_UUID4_INUM:
 	case FSID_UUID16_INUM:
 		return exp->ex_uuid != NULL;
 	}
-	return 1;
+	return true;
 }
 
 
@@ -515,17 +525,14 @@ fh_compose(struct svc_fh *fhp, struct svc_export *exp, struct dentry *dentry,
 	/* ref_fh is a reference file handle.
 	 * if it is non-null and for the same filesystem, then we should compose
 	 * a filehandle which is of the same version, where possible.
-	 * Currently, that means that if ref_fh->fh_handle.fh_version == 0xca
-	 * Then create a 32byte filehandle using nfs_fhbase_old
-	 *
 	 */
 
-	struct inode * inode = dentry->d_inode;
+	struct inode * inode = d_inode(dentry);
 	dev_t ex_dev = exp_sb(exp)->s_dev;
 
 	dprintk("nfsd: fh_compose(exp %02x:%02x/%ld %pd2, ino=%ld)\n",
 		MAJOR(ex_dev), MINOR(ex_dev),
-		(long) exp->ex_path.dentry->d_inode->i_ino,
+		(long) d_inode(exp->ex_path.dentry)->i_ino,
 		dentry,
 		(inode ? inode->i_ino : 0));
 
@@ -533,7 +540,10 @@ fh_compose(struct svc_fh *fhp, struct svc_export *exp, struct dentry *dentry,
 	 * the reference filehandle (if it is in the same export)
 	 * or the export options.
 	 */
-	 set_version_and_fsid_type(fhp, exp, ref_fh);
+	set_version_and_fsid_type(fhp, exp, ref_fh);
+
+	/* If we have a ref_fh, then copy the fh_no_wcc setting from it. */
+	fhp->fh_no_wcc = ref_fh ? ref_fh->fh_no_wcc : false;
 
 	if (ref_fh == fhp)
 		fh_put(ref_fh);
@@ -550,35 +560,21 @@ fh_compose(struct svc_fh *fhp, struct svc_export *exp, struct dentry *dentry,
 	fhp->fh_dentry = dget(dentry); /* our internal copy */
 	fhp->fh_export = exp_get(exp);
 
-	if (fhp->fh_handle.fh_version == 0xca) {
-		/* old style filehandle please */
-		memset(&fhp->fh_handle.fh_base, 0, NFS_FHSIZE);
-		fhp->fh_handle.fh_size = NFS_FHSIZE;
-		fhp->fh_handle.ofh_dcookie = 0xfeebbaca;
-		fhp->fh_handle.ofh_dev =  old_encode_dev(ex_dev);
-		fhp->fh_handle.ofh_xdev = fhp->fh_handle.ofh_dev;
-		fhp->fh_handle.ofh_xino =
-			ino_t_to_u32(exp->ex_path.dentry->d_inode->i_ino);
-		fhp->fh_handle.ofh_dirino = ino_t_to_u32(parent_ino(dentry));
-		if (inode)
-			_fh_update_old(dentry, exp, &fhp->fh_handle);
-	} else {
-		fhp->fh_handle.fh_size =
-			key_len(fhp->fh_handle.fh_fsid_type) + 4;
-		fhp->fh_handle.fh_auth_type = 0;
+	fhp->fh_handle.fh_size =
+		key_len(fhp->fh_handle.fh_fsid_type) + 4;
+	fhp->fh_handle.fh_auth_type = 0;
 
-		mk_fsid(fhp->fh_handle.fh_fsid_type,
-			fhp->fh_handle.fh_fsid,
-			ex_dev,
-			exp->ex_path.dentry->d_inode->i_ino,
-			exp->ex_fsid, exp->ex_uuid);
+	mk_fsid(fhp->fh_handle.fh_fsid_type,
+		fhp->fh_handle.fh_fsid,
+		ex_dev,
+		d_inode(exp->ex_path.dentry)->i_ino,
+		exp->ex_fsid, exp->ex_uuid);
 
-		if (inode)
-			_fh_update(fhp, exp, dentry);
-		if (fhp->fh_handle.fh_fileid_type == FILEID_INVALID) {
-			fh_put(fhp);
-			return nfserr_opnotsupp;
-		}
+	if (inode)
+		_fh_update(fhp, exp, dentry);
+	if (fhp->fh_handle.fh_fileid_type == FILEID_INVALID) {
+		fh_put(fhp);
+		return nfserr_opnotsupp;
 	}
 
 	return 0;
@@ -597,18 +593,14 @@ fh_update(struct svc_fh *fhp)
 		goto out_bad;
 
 	dentry = fhp->fh_dentry;
-	if (!dentry->d_inode)
+	if (d_really_is_negative(dentry))
 		goto out_negative;
-	if (fhp->fh_handle.fh_version != 1) {
-		_fh_update_old(dentry, fhp->fh_export, &fhp->fh_handle);
-	} else {
-		if (fhp->fh_handle.fh_fileid_type != FILEID_ROOT)
-			return 0;
+	if (fhp->fh_handle.fh_fileid_type != FILEID_ROOT)
+		return 0;
 
-		_fh_update(fhp, fhp->fh_export, dentry);
-		if (fhp->fh_handle.fh_fileid_type == FILEID_INVALID)
-			return nfserr_opnotsupp;
-	}
+	_fh_update(fhp, fhp->fh_export, dentry);
+	if (fhp->fh_handle.fh_fileid_type == FILEID_INVALID)
+		return nfserr_opnotsupp;
 	return 0;
 out_bad:
 	printk(KERN_ERR "fh_update: fh not verified!\n");
@@ -631,16 +623,14 @@ fh_put(struct svc_fh *fhp)
 		fh_unlock(fhp);
 		fhp->fh_dentry = NULL;
 		dput(dentry);
-#ifdef CONFIG_NFSD_V3
-		fhp->fh_pre_saved = 0;
-		fhp->fh_post_saved = 0;
-#endif
+		fh_clear_wcc(fhp);
 	}
 	fh_drop_write(fhp);
 	if (exp) {
 		exp_put(exp);
 		fhp->fh_export = NULL;
 	}
+	fhp->fh_no_wcc = false;
 	return;
 }
 
@@ -650,20 +640,15 @@ fh_put(struct svc_fh *fhp)
 char * SVCFH_fmt(struct svc_fh *fhp)
 {
 	struct knfsd_fh *fh = &fhp->fh_handle;
+	static char buf[2+1+1+64*3+1];
 
-	static char buf[80];
-	sprintf(buf, "%d: %08x %08x %08x %08x %08x %08x",
-		fh->fh_size,
-		fh->fh_base.fh_pad[0],
-		fh->fh_base.fh_pad[1],
-		fh->fh_base.fh_pad[2],
-		fh->fh_base.fh_pad[3],
-		fh->fh_base.fh_pad[4],
-		fh->fh_base.fh_pad[5]);
+	if (fh->fh_size < 0 || fh->fh_size> 64)
+		return "bad-fh";
+	sprintf(buf, "%d: %*ph", fh->fh_size, fh->fh_size, fh->fh_raw);
 	return buf;
 }
 
-enum fsid_source fsid_source(struct svc_fh *fhp)
+enum fsid_source fsid_source(const struct svc_fh *fhp)
 {
 	if (fhp->fh_handle.fh_version != 1)
 		return FSIDSOURCE_DEV;

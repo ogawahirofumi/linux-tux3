@@ -113,9 +113,10 @@ int tux3_set_buffer_dirty_list(struct address_space *mapping,
 			       struct buffer_head *buffer, int delta,
 			       struct list_head *head)
 {
+	int dirtied = 0;
+
 	/* FIXME: we better to set this by caller? */
-	if (!buffer_uptodate(buffer))
-		set_buffer_uptodate(buffer);
+	set_buffer_uptodate(buffer);
 
 	/*
 	 * Basically, open code of mark_buffer_dirty() without mark
@@ -127,14 +128,16 @@ int tux3_set_buffer_dirty_list(struct address_space *mapping,
 		/* Mark dirty for delta, then add buffer to our dirty list */
 		__tux3_set_buffer_dirty_list(mapping, buffer, delta, head);
 
+		lock_page_memcg(page);
 		if (!TestSetPageDirty(page)) {
 			struct address_space *mapping = page->mapping;
 			if (mapping)
-				__tux3_set_page_dirty_account(page, mapping, 0);
-			return 1;
+				__tux3_set_page_dirty(page, mapping, 0);
+			dirtied = 1;
 		}
+		unlock_page_memcg(page);
 	}
-	return 0;
+	return dirtied;
 }
 
 int tux3_set_buffer_dirty(struct address_space *mapping,

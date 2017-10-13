@@ -64,10 +64,10 @@ static void free_forked_page(struct page *page)
 	unlock_page(page);
 
 	/* Drop the radix-tree reference */
-	page_cache_release(page);
+	put_page(page);
 	/* Drop the final reference */
 	trace_on("page %p, count %u", page, page_count(page));
-	page_cache_release(page);
+	put_page(page);
 }
 
 /* Use same bit with bufdelta though, this buffer never be dirty */
@@ -197,8 +197,6 @@ void free_forked_buffers(struct sb *sb, struct inode *inode, int force)
  * Block fork core
  */
 
-#include "mmap_builtin_hack.h"
-
 /*
  * Clear writable to protect oldpage from following mmap write race.
  *
@@ -277,7 +275,7 @@ static struct page *tux3_clone_page(struct page *oldpage, unsigned blocksize)
 	/* oldpage should be forked page */
 	BUG_ON(PageForked(oldpage));
 
-	newpage = cow_clone_page(oldpage);
+	newpage = pagefork_clone_page(oldpage);
 	if (!IS_ERR(newpage)) {
 		create_empty_buffers(newpage, blocksize, 0);
 		clone_buffers(oldpage, newpage);
@@ -383,13 +381,83 @@ need_fork(struct page *page, struct buffer_head *buffer, unsigned delta)
 	return RET_CAN_DIRTY;
 }
 
+/*
+ * Clone page, then replace slot by newpage in radix-tree
+ *
+ * need_unmap: need to unmap from PTE.
+ * keep_refcnt: keep refcount of oldpage after fork.
+ */
+static struct page *
+tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
+	       struct page *oldpage, bool keep_refcnt)
+{
+	/* Checked buffer and oldpage, now oldpage->mapping should be valid. */
+	struct sb *sb = tux_sb(oldpage->mapping->host->i_sb);
+	struct page *newpage;
+	int err;
+
+	if (need_unmap) {
+		/* Clear writable to protect oldpage from mmap write race */
+		prepare_clone_page(oldpage);
+	}
+
+	/*
+	 * We need to buffer fork. Start to clone the oldpage.
+	 */
+	newpage = tux3_clone_page(oldpage, sb->blocksize);
+	if (IS_ERR(newpage))
+		return newpage;
+
+	/*
+	 * We keep page->mapping as is for writeback. If keep_refcnt==true,
+	 * keep refcount of oldpage. If not, inherit refcount of caller
+	 * for radix-tree.
+	 */
+	if (keep_refcnt)
+		get_page(oldpage);
+
+	/* Replace oldpage on radix-tree with newpage */
+	err = pagefork_replace_page_cache(oldpage, newpage); /* FIXME: error */
+
+	newpage_add_lru(newpage);
+
+	/*
+	 * Referencer are dummy radix-tree + ->private (plus other
+	 * users and lru_cache).
+	 *
+	 * FIXME: We can't remove from LRU, because page can be on
+	 * per-cpu lru cache at here. So, vmscan will try to free
+	 * oldpage. We get refcount to pin oldpage to prevent vmscan
+	 * try to release oldpage.
+	 */
+	trace("oldpage count %u", page_count(oldpage));
+	assert(page_count(oldpage) >= 2);
+	get_page(oldpage);
+	oldpage_try_remove_from_lru(oldpage);
+
+	/*
+	 * This prevents to re-fork the oldpage. And we guarantee the
+	 * newpage is available on radix-tree here.
+	 */
+	SetPageForked(oldpage);
+	if (need_unmap) {
+		/* Update PTEs for forked page. */
+		page_pagefork_file(vma, oldpage, newpage);
+	}
+	unlock_page(oldpage);
+
+	/* Register forked buffer to free forked page later */
+	forked_buffer_add(sb, page_buffers(oldpage));
+
+	return newpage;
+}
+
 struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta)
 {
 	struct page *newpage, *oldpage = buffer->b_page;
 	struct sb *sb;
 	struct buffer_head *newbuf;
 	enum ret_needfork ret_needfork;
-	int err;
 
 	trace("buffer %p, page %p, index %lx, count %u",
 	      buffer, oldpage, oldpage->index, page_count(oldpage));
@@ -424,59 +492,26 @@ struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta)
 		break;
 	}
 
-	/* Checked buffer and oldpage, now oldpage->mapping should be valid. */
-	sb = tux_sb(oldpage->mapping->host->i_sb);
-
 	if (ret_needfork == RET_CAN_DIRTY) {
 		/* We can dirty this buffer. */
 		goto dirty_buffer;
 	}
 
-	/*
-	 * We need to buffer fork. Start to clone the oldpage.
-	 */
-	newpage = tux3_clone_page(oldpage, sb->blocksize);
+	/* Checked buffer and oldpage, now oldpage->mapping should be valid. */
+	sb = tux_sb(oldpage->mapping->host->i_sb);
+
+	newpage = tux3_fork_page(NULL, false, oldpage, true);
 	if (IS_ERR(newpage)) {
 		buffer = ERR_CAST(newpage);
 		goto out;
 	}
 
 	newbuf = __get_buffer(newpage, bh_offset(buffer) >> sb->blockbits);
-	/* Grab buffer to pin page, then release refcount of page */
+	/* Grab buffer to pin page, then release refcount of newpage */
 	get_bh(newbuf);
-	page_cache_release(newpage);
+	put_page(newpage);
 
-	/* We keep page->mapping as is, so get refcount for radix-tree. */
-	page_cache_get(oldpage);
-
-	/* Replace oldpage on radix-tree with newpage */
-	err = cow_replace_page_cache(oldpage, newpage);
-
-	newpage_add_lru(newpage);
-
-	/*
-	 * Referencer are dummy radix-tree + ->private (plus other
-	 * users and lru_cache).
-	 *
-	 * FIXME: We can't remove from LRU, because page can be on
-	 * per-cpu lru cache at here. So, vmscan will try to free
-	 * oldpage. We get refcount to pin oldpage to prevent vmscan
-	 * try to release oldpage.
-	 */
-	trace("oldpage count %u", page_count(oldpage));
-	assert(page_count(oldpage) >= 2);
-	page_cache_get(oldpage);
-	oldpage_try_remove_from_lru(oldpage);
-
-	/*
-	 * This prevents to re-fork the oldpage. And we guarantee the
-	 * newpage is available on radix-tree here.
-	 */
-	SetPageForked(oldpage);
-	unlock_page(oldpage);
-
-	/* Register forked buffer to free forked page later */
-	forked_buffer_add(sb, buffer);
+	/* Release buffer (so unpin oldpage too). */
 	brelse(buffer);
 
 	trace("cloned page %p, buffer %p", newpage, newbuf);
@@ -502,12 +537,11 @@ out:
  * Caller must hold refcount of oldpage and hold lock_page(oldpage)
  */
 struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
-				     struct page *oldpage, unsigned newdelta)
+				     struct page *oldpage, bool keep_refcnt,
+				     unsigned newdelta)
 {
 	struct page *newpage = oldpage;
-	struct sb *sb;
 	enum ret_needfork ret_needfork;
-	int err;
 
 	/* Check page lock to protect buffer list, and concurrent block_fork */
 	assert(PageLocked(oldpage));
@@ -524,7 +558,7 @@ struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
 	case RET_FORKED:
 		/* This page was already forked. Retry from lookup page. */
 		newpage = ERR_PTR(-EAGAIN);
-		WARN_ON(1);
+		WARN_ON(vma == NULL);
 	case RET_ALREADY_DIRTY:
 		/* This buffer was already dirtied. Done. */
 		goto out;
@@ -536,65 +570,12 @@ struct page *pagefork_for_blockdirty(struct vm_area_struct *vma,
 		break;
 	}
 
-	/* Checked buffer and oldpage, now oldpage->mapping should be valid. */
-	sb = tux_sb(oldpage->mapping->host->i_sb);
-
 	if (ret_needfork == RET_CAN_DIRTY) {
 		/* We can dirty this buffer. */
 		goto out;
 	}
 
-	/* Clear writable to protect oldpage from mmap write race */
-	prepare_clone_page(oldpage);
-
-	/*
-	 * We need to buffer fork. Start to clone the oldpage.
-	 */
-	newpage = tux3_clone_page(oldpage, sb->blocksize);
-	if (IS_ERR(newpage))
-		goto out;
-
-	/*
-	 * We keep page->mapping as is, so inherit refcount of caller
-	 * for radix-tree.
-	 */
-	/*page_cache_get(oldpage);*/
-
-	/* Replace oldpage on radix-tree with newpage */
-	err = cow_replace_page_cache(oldpage, newpage);
-
-	newpage_add_lru(newpage);
-
-	/*
-	 * Referencer are dummy radix-tree + ->private (plus other
-	 * users and lru_cache).
-	 *
-	 * FIXME: We can't remove from LRU, because page can be on
-	 * per-cpu lru cache at here. So, vmscan will try to free
-	 * oldpage. We get refcount to pin oldpage to prevent vmscan
-	 * try to release oldpage.
-	 */
-	trace("oldpage count %u", page_count(oldpage));
-	assert(page_count(oldpage) >= 2);
-	page_cache_get(oldpage);
-	oldpage_try_remove_from_lru(oldpage);
-
-	/*
-	 * This prevents to re-fork the oldpage. And we guarantee the
-	 * newpage is available on radix-tree here.
-	 */
-	SetPageForked(oldpage);
-	/*
-	 * Update PTEs for forked page.
-	 */
-	page_cow_file(vma, oldpage, newpage);
-	unlock_page(oldpage);
-
-	/* Register forked buffer to free forked page later */
-	forked_buffer_add(sb, page_buffers(oldpage));
-
-	trace("cloned page %p", newpage);
-
+	newpage = tux3_fork_page(vma, true, oldpage, keep_refcnt);
 out:
 	return newpage;
 }
@@ -632,12 +613,12 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 	}
 
 	/* We keep page->mapping as is, so get refcount for radix-tree. */
-	page_cache_get(page);
+	get_page(page);
 
 	/* FIXME: need this? */
 	ClearPageMappedToDisk(page);
 	/* Delete page from radix-tree */
-	cow_delete_from_page_cache(page);
+	pagefork_delete_from_page_cache(page);
 
 	/*
 	 * Referencer are dummy radix-tree + ->private (plus other
@@ -650,7 +631,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 	 */
 	trace("page count %u", page_count(page));
 	assert(page_count(page) >= 2);
-	page_cache_get(page);
+	get_page(page);
 	oldpage_try_remove_from_lru(page);
 
 	/*

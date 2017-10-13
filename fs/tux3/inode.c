@@ -557,7 +557,7 @@ static int tux3_truncate(struct inode *inode, loff_t newsize)
 {
 	/* FIXME: expanding size is not tested */
 #ifdef __KERNEL__
-	const unsigned boundary = PAGE_CACHE_SIZE;
+	const unsigned boundary = PAGE_SIZE;
 #else
 	const unsigned boundary = tux_sb(inode->i_sb)->blocksize;
 #endif
@@ -773,11 +773,11 @@ static inline void tux_setup_inode_common(struct inode *inode)
 	case S_IFBLK:
 	case S_IFCHR:
 	case S_IFREG:
-	case S_IFLNK:
 		/* Use default gfp type */
 		break;
+	case S_IFLNK:
 	case S_IFDIR:
-		mapping_set_gfp_mask(mapping(inode), GFP_USER);
+		inode_nohighmem(inode);
 		break;
 	case 0: /* internal inode */
 	{
@@ -854,11 +854,11 @@ static inline void tux_setup_inode_common(struct inode *inode)
 
 int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err, need_truncate = 0, need_lock = 0;
 
-	err = inode_change_ok(inode, iattr);
+	err = setattr_prepare(dentry, iattr);
 	if (err)
 		return err;
 
@@ -894,9 +894,10 @@ unlock:
 }
 
 #ifdef __KERNEL__
-int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat)
+int tux3_getattr(const struct path *path, struct kstat *stat,
+		 u32 request_mask, unsigned int flags)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(path->dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 
 	generic_fillattr(inode, stat);
@@ -955,6 +956,9 @@ int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 static int tux3_file_update_time(struct inode *inode, struct timespec *time,
 				 int flags)
 {
+	int iflags = I_DIRTY_TIME;
+	bool dirty = false;
+
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
 		inode->i_atime = *time;
@@ -963,12 +967,18 @@ static int tux3_file_update_time(struct inode *inode, struct timespec *time,
 
 	tux3_iattrdirty(inode);
 	if (flags & S_VERSION)
-		inode_inc_iversion(inode);
+		dirty = inode_maybe_inc_iversion(inode, false);
 	if (flags & S_CTIME)
 		inode->i_ctime = *time;
 	if (flags & S_MTIME)
 		inode->i_mtime = *time;
-	mark_inode_dirty_sync(inode);
+	if ((flags & (S_ATIME | S_CTIME | S_MTIME)) &&
+	    !(inode->i_sb->s_flags & SB_LAZYTIME))
+		dirty = true;
+
+	if (dirty)
+		iflags |= I_DIRTY_SYNC;
+	__mark_inode_dirty(inode, iflags);
 	return 0;
 }
 
@@ -992,7 +1002,7 @@ int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags)
 
 /*
  * Timestamp handler for special file.  This is not called under
- * change_{begin,end}() or ->i_mutex.
+ * change_{begin,end}() or inode_lock.
  *
  * FIXME: special file should also handle timestamp as transaction?
  */
@@ -1000,6 +1010,8 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 				    int flags)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
+	int iflags = I_DIRTY_TIME;
+	bool dirty = false;
 
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
@@ -1007,16 +1019,22 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 	if (!(flags & ~S_ATIME))
 		return 0;
 
-	/* FIXME: no i_mutex, so this is racy */
+	/* FIXME: no inode_lock, so this is racy */
 	if (change_begin(sb, 1))
 		return -ENOSPC;
 	if (flags & S_VERSION)
-		inode_inc_iversion(inode);
+		dirty = inode_maybe_inc_iversion(inode, false);
 	if (flags & S_CTIME)
 		inode->i_ctime = *time;
 	if (flags & S_MTIME)
 		inode->i_mtime = *time;
-	mark_inode_dirty_sync(inode);
+	if ((flags & (S_ATIME | S_CTIME | S_MTIME)) &&
+	    !(inode->i_sb->s_flags & SB_LAZYTIME))
+		dirty = true;
+
+	if (dirty)
+		iflags |= I_DIRTY_SYNC;
+	__mark_inode_dirty(inode, iflags);
 	change_end(sb);
 
 	return 0;
@@ -1026,8 +1044,6 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 
 static const struct file_operations tux_file_fops = {
 	.llseek		= generic_file_llseek,
-	.read		= new_sync_read,
-	.write		= new_sync_write,
 	.read_iter	= generic_file_read_iter,
 	.write_iter	= tux3_file_write_iter,
 //	.unlocked_ioctl	= fat_generic_ioctl,
@@ -1070,9 +1086,7 @@ static const struct inode_operations tux_special_iops = {
 };
 
 const struct inode_operations tux_symlink_iops = {
-	.readlink	= generic_readlink,
-	.follow_link	= page_follow_link_light,
-	.put_link	= page_put_link,
+	.get_link	= page_get_link,
 	.setattr	= tux3_setattr,
 	.getattr	= tux3_getattr,
 #if 0

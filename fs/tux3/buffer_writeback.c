@@ -6,7 +6,6 @@
 
 #include "buffer_writebacklib.c"
 #include "ioinfo.h"
-#include "kcompat.h"
 
 /*
  * Helper for buffer vector I/O.
@@ -20,10 +19,13 @@ static inline struct buffer_head *buffers_entry(struct list_head *x)
 #define MAX_BUFVEC_COUNT	UINT_MAX
 
 /* Initialize bufvec */
-static void bufvec_init(struct bufvec *bufvec, struct address_space *mapping,
+static void bufvec_init(struct bufvec *bufvec, enum req_opf req_opf,
+			unsigned int req_flags, struct address_space *mapping,
 			struct list_head *head, struct tux3_iattr_data *idata)
 {
 	INIT_LIST_HEAD(&bufvec->contig);
+	bufvec->req_opf		= req_opf;
+	bufvec->req_flags	= req_flags;
 	bufvec->buffers		= head;
 	bufvec->contig_count	= 0;
 	bufvec->idata		= idata;
@@ -98,7 +100,7 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 	gfp_t gfp_flags = GFP_NOFS;
 	struct bio *bio;
 
-	count = min_t(unsigned int, count, bio_get_nr_vecs(vfs_sb(sb)->s_bdev));
+	count = min_t(unsigned int, count, BIO_MAX_PAGES);
 
 	bio = bio_alloc(gfp_flags, count);
 	/* This retry is from mpage_alloc() */
@@ -108,27 +110,30 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 	}
 	assert(bio);	/* GFP_NOFS shouldn't fail to allocate */
 
-	bio->bi_bdev = vfs_sb(sb)->s_bdev;
-	bio_bi_sector(bio) = physical << (sb->blockbits - 9);
+	bio_set_dev(bio, vfs_sb(sb)->s_bdev);
+	bio->bi_iter.bi_sector = physical << (sb->blockbits - 9);
 	bio->bi_end_io = end_io;
 
 	return bio;
 }
 
-static void bufvec_submit_bio(int rw, struct bufvec *bufvec)
+static void bufvec_submit_bio(struct bufvec *bufvec)
 {
-	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
+	struct inode *inode = bufvec_inode(bufvec);
+	struct sb *sb = tux_sb(inode->i_sb);
 	struct bio *bio = bufvec->bio;
 
 	bufvec->bio = NULL;
 	bufvec->bio_lastbuf = NULL;
 
 	trace("bio %p, physical %Lu, count %u", bio,
-	      (block_t)bio_bi_sector(bio) >> (sb->blockbits - 9),
-	      bio_bi_size(bio) >> sb->blockbits);
+	      (block_t)bio->bi_iter.bi_sector >> (sb->blockbits - 9),
+	      bio->bi_iter.bi_size >> sb->blockbits);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	submit_bio(rw | tux3_io_req_flag(sb->ioinfo), bio);
+	bio->bi_write_hint = inode->i_write_hint;
+	bio_set_op_attrs(bio, bufvec->req_opf, bufvec->req_flags);
+	submit_bio(bio);
 }
 
 /*
@@ -194,8 +199,8 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	if (!is_volmap || !keep_page_dirty(page, on_page_idx)) {
 		/* FIXME: remove outside hack */
 		int outside;
-		offset = i_size & (PAGE_CACHE_SIZE - 1);
-		last_index = i_size >> PAGE_CACHE_SHIFT;
+		offset = i_size & (PAGE_SIZE - 1);
+		last_index = i_size >> PAGE_SHIFT;
 		outside = offset && last_index == page->index;
 
 		old_flag = tux3_clear_page_dirty_for_io(page, outside);
@@ -209,7 +214,7 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	 * NOTE: This is assuming to be called after clearing dirty
 	 * (See comment of tux3_clear_page_dirty_for_io()).
 	 */
-	__tux3_test_set_page_writeback(page, old_writeback);
+	tux3_test_set_page_writeback(page, old_writeback);
 
 	/*
 	 * Zero fill the page for mmap outside i_size after clear dirty.
@@ -220,10 +225,10 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	 * the  page size, the remaining memory is zeroed when mapped, and
 	 * writes to that region are not written out to the file."
 	 */
-	offset = i_size & (PAGE_CACHE_SIZE - 1);
-	last_index = i_size >> PAGE_CACHE_SHIFT;
+	offset = i_size & (PAGE_SIZE - 1);
+	last_index = i_size >> PAGE_SHIFT;
 	if (offset && last_index == page->index)
-		zero_user_segment(page, offset, PAGE_CACHE_SIZE);
+		zero_user_segment(page, offset, PAGE_SIZE);
 }
 
 static void prepare_and_unlock_page(struct page *page)
@@ -232,27 +237,30 @@ static void prepare_and_unlock_page(struct page *page)
 }
 
 /* Completion of page for I/O */
-static void bufvec_page_end_io(struct page *page, int uptodate, int quiet)
+static void bufvec_page_end_io(struct bio *bio, struct page *page)
 {
-	end_page_writeback(page);
+	page_endio(page, op_is_write(bio_op(bio)),
+		   blk_status_to_errno(bio->bi_status));
+}
+
+static void buffer_io_error(struct buffer_head *bh, const char *msg)
+{
+	printk_ratelimited(KERN_ERR
+			"Buffer I/O error on dev %pg, logical block %llu%s\n",
+			bh->b_bdev, (unsigned long long)bh->b_blocknr, msg);
 }
 
 /* Completion of buffer for I/O */
-static void bufvec_buffer_end_io(struct buffer_head *buffer, int uptodate,
-				 int quiet)
+static void bufvec_buffer_end_io(struct bio *bio, struct buffer_head *buffer)
 {
-	char b[BDEVNAME_SIZE];
-
-	if (uptodate)
+	if (!bio->bi_status)
 		set_buffer_uptodate(buffer);
 	else {
-		if (!quiet) {
-			printk(KERN_WARNING "lost page write due to "
-			       "I/O error on %s\n",
-			       bdevname(buffer->b_bdev, b));
-		}
-		set_buffer_write_io_error(buffer);
+		if (!bio_flagged(bio, BIO_QUIET))
+			buffer_io_error(buffer, ", lost page write");
+		mark_buffer_write_io_error(buffer);
 		clear_buffer_uptodate(buffer);
+		SetPageError(buffer->b_page);
 	}
 }
 
@@ -279,16 +287,14 @@ static int bufvec_is_multiple_ranges(struct bufvec *bufvec)
  * page, and those are submitted BIO for each range. So, completion of
  * the page is only if all BIOs are done.
  */
-static void bufvec_end_io_multiple(struct bio *bio, int err)
+static void bufvec_end_io_multiple(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct address_space *mapping;
 	struct page *page;
 	struct buffer_head *buffer, *first, *tmp;
 	unsigned long flags;
 
-	trace("bio %p, err %d", bio, err);
+	trace("bio %p, err %d", bio, bio->bi_status);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -299,11 +305,10 @@ static void bufvec_end_io_multiple(struct bio *bio, int err)
 
 	trace("buffer %p", buffer);
 	tux3_clear_buffer_dirty_for_io_hack(buffer);
-	bufvec_buffer_end_io(buffer, uptodate, quiet);
+	bufvec_buffer_end_io(bio, buffer);
 	put_bh(buffer);
 
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
-	bio_put(bio);
 
 	/* Check buffers on the page. If all was done, clear writeback */
 	local_irq_save(flags);
@@ -319,12 +324,14 @@ static void bufvec_end_io_multiple(struct bio *bio, int err)
 	bit_spin_unlock(BH_Uptodate_Lock, &first->b_state);
 	local_irq_restore(flags);
 
-	bufvec_page_end_io(page, uptodate, quiet);
+	bufvec_page_end_io(bio, page);
+	bio_put(bio);
 	return;
 
 still_busy:
 	bit_spin_unlock(BH_Uptodate_Lock, &first->b_state);
 	local_irq_restore(flags);
+	bio_put(bio);
 }
 
 /*
@@ -337,7 +344,7 @@ still_busy:
  * FIXME: Some buffers on the page can be contiguous, we can submit
  * those as one bio if contiguous.
  */
-static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
+static void bufvec_bio_add_multiple(struct bufvec *bufvec)
 {
 	/* FIXME: inode is still guaranteed to be available? */
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
@@ -347,7 +354,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 
 	/* If there is bio, submit it */
 	if (bufvec->bio)
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 
 	page = bufvec->on_page[0].buffer->b_page;
 
@@ -382,7 +389,7 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 
 		bufvec_bio_add_buffer(bufvec, buffer);
 
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 	}
 	prepare_and_unlock_page(page);
 
@@ -392,14 +399,12 @@ static void bufvec_bio_add_multiple(int rw, struct bufvec *bufvec)
 /*
  * bio completion for bufvec based I/O
  */
-static void bufvec_end_io(struct bio *bio, int err)
+static void bufvec_end_io(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct address_space *mapping;
 	struct page *page, *last_page;
 
-	trace("bio %p, err %d", bio, err);
+	trace("bio %p, err %d", bio, bio->bi_status);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -418,7 +423,7 @@ static void bufvec_end_io(struct bio *bio, int err)
 		put_bh(buffer);
 
 		if (page != last_page) {
-			bufvec_page_end_io(page, uptodate, quiet);
+			bufvec_page_end_io(bio, page);
 			last_page = page;
 		}
 	}
@@ -434,7 +439,7 @@ static void bufvec_end_io(struct bio *bio, int err)
  * FIXME: We can free buffers early, and avoid to use buffers in I/O
  * completion, after prepared the page (like __mpage_writepage).
  */
-static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
+static void bufvec_bio_add_page(struct bufvec *bufvec)
 {
 	/* FIXME: inode is still guaranteed to be available? */
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
@@ -456,7 +461,7 @@ static void bufvec_bio_add_page(int rw, struct bufvec *bufvec)
 	if (!bufvec->bio || !bio_add_page(bufvec->bio, page, length, offset)) {
 		/* Couldn't add. So submit old bio and allocate new bio */
 		if (bufvec->bio)
-			bufvec_submit_bio(rw, bufvec);
+			bufvec_submit_bio(bufvec);
 
 		bufvec->bio =
 			bufvec_bio_alloc(sb, bufvec_contig_count(bufvec) + 1,
@@ -487,7 +492,7 @@ static int bufvec_bio_is_contiguous(struct bufvec *bufvec, block_t physical)
 	struct bio *bio = bufvec->bio;
 	block_t next;
 
-	next = (block_t)bio_bi_sector(bio) + (bio_bi_size(bio) >> 9);
+	next = (block_t)bio->bi_iter.bi_sector + (bio->bi_iter.bi_size >> 9);
 	return next == (physical << (sb->blockbits - 9));
 }
 
@@ -522,7 +527,7 @@ static struct page *bufvec_next_buffer_page(struct bufvec *bufvec)
  * < 0 - error
  *   0 - success
  */
-int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
+int bufvec_io(struct bufvec *bufvec, block_t physical, unsigned count)
 {
 	unsigned int i;
 	int need_check = 0;
@@ -531,7 +536,8 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 	      bufvec_contig_index(bufvec), bufvec_contig_count(bufvec),
 	      physical, count);
 
-	assert(rw & WRITE);	/* FIXME: now only support WRITE */
+	/* FIXME: now only support WRITE */
+	assert(op_is_write(bufvec->req_opf));
 	assert(bufvec_contig_count(bufvec) >= count);
 
 	if (bufvec->on_page_idx) {
@@ -545,7 +551,7 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 		 * If new range is not contiguous with the pending bio,
 		 * submit the pending bio.
 		 */
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 	}
 
 	/* Add buffers to bio for each page */
@@ -570,15 +576,15 @@ int bufvec_io(int rw, struct bufvec *bufvec, block_t physical, unsigned count)
 			}
 
 			if (multiple)
-				bufvec_bio_add_multiple(rw, bufvec);
+				bufvec_bio_add_multiple(bufvec);
 			else
-				bufvec_bio_add_page(rw, bufvec);
+				bufvec_bio_add_page(bufvec);
 		}
 	}
 
 	/* If no more buffer, submit the pending bio */
 	if (bufvec->bio && !bufvec_next_buffer_page(bufvec))
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 
 	return 0;
 }
@@ -595,7 +601,7 @@ static void bufvec_cancel_and_unlock_page(struct page *page,
 	if (page->index < outside_index)
 		tux3_try_cancel_dirty_page(page);
 	else
-		cancel_dirty_page(page, PAGE_CACHE_SIZE);
+		cancel_dirty_page(page);
 
 	unlock_page(page);
 }
@@ -609,7 +615,7 @@ static void bufvec_cancel_dirty_outside(struct bufvec *bufvec)
 	struct buffer_head *buffer;
 	pgoff_t outside_index;
 
-	outside_index = (idata->i_size+(PAGE_CACHE_SIZE-1)) >> PAGE_CACHE_SHIFT;
+	outside_index = (idata->i_size + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
 	buffer = buffers_entry(bufvec->buffers->next);
 	page = prev_page = buffer->b_page;
@@ -636,88 +642,6 @@ static void bufvec_cancel_dirty_outside(struct bufvec *bufvec)
 		}
 	}
 	bufvec_cancel_and_unlock_page(page, outside_index);
-}
-
-/*
- * Try to add buffer to bufvec as contiguous range.
- *
- * return value:
- * 1 - success
- * 0 - fail to add
- */
-int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer)
-{
-	unsigned contig_count = bufvec_contig_count(bufvec);
-
-	if (contig_count) {
-		block_t last;
-
-		/* Check contig_count limit */
-		if (bufvec_contig_count(bufvec) == MAX_BUFVEC_COUNT)
-			return 0;
-
-		/* Check if buffer is logically contiguous */
-		last = bufvec_contig_last_index(bufvec);
-		if (last != bufindex(buffer) - 1)
-			return 0;
-	}
-
-	bufvec_buffer_move_to_contig(bufvec, buffer);
-
-	return 1;
-}
-
-/*
- * Try to collect logically contiguous dirty range from bufvec->buffers.
- *
- * return value:
- * 1 - there is buffers for I/O
- * 0 - no buffers for I/O
- */
-static int bufvec_contig_collect(struct bufvec *bufvec)
-{
-	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
-	struct tux3_iattr_data *idata = bufvec->idata;
-	struct buffer_head *buffer;
-	block_t last_index, next_index, outside_block;
-
-	/* If there is in-progress contiguous range, leave as is */
-	if (bufvec_contig_count(bufvec))
-		return 1;
-	assert(!list_empty(bufvec->buffers));
-
-	outside_block = (idata->i_size + sb->blockmask) >> sb->blockbits;
-
-	buffer = buffers_entry(bufvec->buffers->next);
-	next_index = bufindex(buffer);
-	/* If next buffer is fully outside i_size, clear dirty */
-	if (next_index >= outside_block) {
-		bufvec_cancel_dirty_outside(bufvec);
-		return 0;
-	}
-
-	do {
-		/* Check contig_count limit */
-		if (bufvec_contig_count(bufvec) == MAX_BUFVEC_COUNT)
-			break;
-		bufvec_buffer_move_to_contig(bufvec, buffer);
-		trace("buffer %p", buffer);
-
-		if (list_empty(bufvec->buffers))
-			break;
-
-		buffer = buffers_entry(bufvec->buffers->next);
-		last_index = next_index;
-		next_index = bufindex(buffer);
-
-		/* If next buffer is fully outside i_size, clear dirty */
-		if (next_index >= outside_block) {
-			bufvec_cancel_dirty_outside(bufvec);
-			break;
-		}
-	} while (last_index == next_index - 1);
-
-	return !!bufvec_contig_count(bufvec);
 }
 
 static int buffer_index_cmp(void *priv, struct list_head *a,
@@ -751,50 +675,19 @@ static int buffer_index_cmp(void *priv, struct list_head *a,
 	return 0;
 }
 
-/*
- * Flush buffers in head
- */
-int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
-	       struct list_head *head, int req_flag)
+static inline int tux3_call_io(struct inode *inode, struct bufvec *bufvec)
 {
-	struct tux3_inode *tuxnode = tux_inode(inode);
-	struct bufvec bufvec;
-	int err = 0;
-
-	/* FIXME: on error path, we have to do something for buffer state */
-
-	if (list_empty(head))
-		return 0;
-
-	bufvec_init(&bufvec, mapping(inode), head, idata);
-
-	/* Sort by bufindex() */
-	list_sort(NULL, head, buffer_index_cmp);
-
-	while (bufvec_next_buffer_page(&bufvec)) {
-		/* Collect contiguous buffer range */
-		if (bufvec_contig_collect(&bufvec)) {
-			policy_extents(&bufvec);
-
-			err = tuxnode->io(WRITE | req_flag, &bufvec);
-			if (err)
-				break;
-		}
-	}
-
-	bufvec_free(&bufvec);
-	remember_dleaf(tux_sb(inode->i_sb), NULL);
-
-	return err;
+	return tux_inode(inode)->io(bufvec);
 }
+
+#include "buffer_writeback_common.c"
 
 /*
  * I/O helper for physical index buffers (e.g. buffers on volmap)
  */
-int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t physical,
-		     unsigned count)
+int __tux3_volmap_io(struct bufvec *bufvec, block_t physical, unsigned count)
 {
-	return blockio_vec(rw, bufvec, physical, count);
+	return blockio_vec(bufvec, physical, count);
 }
 
 /*
@@ -826,10 +719,8 @@ int __tux3_volmap_io(int rw, struct bufvec *bufvec, block_t physical,
  * buffers/pages pages clean.
  */
 
-static void vol_early_end_io(struct bio *bio, int err)
+static void vol_early_end_io(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct buffer_head *buffer = bio->bi_private;
 	struct address_space *mapping;
 
@@ -837,38 +728,37 @@ static void vol_early_end_io(struct bio *bio, int err)
 	mapping = bufvec_bio_mapping(bio);
 
 	/* Keep buffer dirty. State will be updated at 2st phase. */
-	bufvec_buffer_end_io(buffer, uptodate, quiet);
+	bufvec_buffer_end_io(bio, buffer);
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 }
 
 /* 1st phase I/O for volmap by random order */
-int vol_early_io(int rw, struct sb *sb, struct buffer_head *buffer)
+int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
+		 struct sb *sb, struct buffer_head *buffer)
 {
 	int err;
 
 	assert(buffer_dirty(buffer));
 	/* FIXME: For now, this is only for write */
-	assert(rw & WRITE);
+	assert(op_is_write(req_opf));
 
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	err = blockio(rw | tux3_io_req_flag(sb->ioinfo), sb, buffer,
-		      bufindex(buffer), vol_early_end_io, buffer);
+	err = blockio(req_opf, req_flags, sb, buffer, bufindex(buffer),
+		      vol_early_end_io, buffer);
 	if (err)
 		tux3_io_inflight_dec(sb->ioinfo);
 
 	return err;
 }
 
-static void bufvec_end_io_early(struct bio *bio, int err)
+static void bufvec_end_io_early(struct bio *bio)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	const int quiet = test_bit(BIO_QUIET, &bio->bi_flags);
 	struct address_space *mapping;
 
-	trace("bio %p, err %d", bio, err);
+	trace("bio %p, err %d", bio, bio->bi_status);
 
 	/* FIXME: inode is still guaranteed to be available? */
 	mapping = bufvec_bio_mapping(bio);
@@ -879,14 +769,14 @@ static void bufvec_end_io_early(struct bio *bio, int err)
 		if (!buffer)
 			break;
 
-		bufvec_buffer_end_io(buffer, uptodate, quiet);
+		bufvec_buffer_end_io(bio, buffer);
 	}
 
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 	bio_put(bio);
 }
 
-static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
+static void bufvec_bio_add_early(struct bufvec *bufvec,
 				 struct buffer_head *buffer, block_t physical)
 {
 	/* FIXME: inode is still guaranteed to be available? */
@@ -898,7 +788,7 @@ static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
 		if (bio_add_page(bufvec->bio, buffer->b_page, length, offset))
 			return;
 		/* Couldn't add buffer, submit current bio */
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 	}
 
 	bufvec->bio = bufvec_bio_alloc(sb, bufvec_contig_count(bufvec) + 1,
@@ -910,7 +800,7 @@ static void bufvec_bio_add_early(int rw, struct bufvec *bufvec,
 }
 
 /* 1st phase I/O for volmap by sequential order */
-int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
+int tux3_volmap_early_io(struct bufvec *bufvec)
 {
 	struct sb *sb = tux_sb(bufvec_inode(bufvec)->i_sb);
 	block_t physical = bufvec_contig_index(bufvec);
@@ -918,7 +808,7 @@ int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 	int err = 0;
 
 	/* FIXME: For now, this is only for write */
-	assert(rw & WRITE);
+	assert(op_is_write(bufvec->req_opf));
 
 	/* Add buffers to bio for each page */
 	for (i = 0; i < count; i++) {
@@ -929,11 +819,11 @@ int tux3_volmap_early_io(int rw, struct bufvec *bufvec)
 		/* FIXME: this can be replaced by list_splice() */
 		list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
-		bufvec_bio_add_early(rw, bufvec, buffer, physical + i);
+		bufvec_bio_add_early(bufvec, buffer, physical + i);
 	}
 	/* Submit the pending bio */
 	if (bufvec->bio)
-		bufvec_submit_bio(rw, bufvec);
+		bufvec_submit_bio(bufvec);
 
 	return err;
 }
@@ -972,7 +862,7 @@ int tux3_volmap_clean_io(struct inode *inode)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct list_head *head = &sb->phase2_buffers;
-	struct buffer_head *on_page[BUFS_PER_PAGE_CACHE];
+	struct buffer_head *on_page[BUFS_PER_PAGE];
 	int done, on_page_idx;
 
 	if (list_empty(head))

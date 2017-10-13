@@ -210,6 +210,11 @@ static int palmas_pwron_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&pwron->input_work, palmas_power_button_work);
 
 	pwron->irq = platform_get_irq(pdev, 0);
+	if (pwron->irq < 0) {
+		error = pwron->irq;
+		goto err_free_input;
+	}
+
 	error = request_threaded_irq(pwron->irq, NULL, pwron_irq,
 				     IRQF_TRIGGER_HIGH |
 					IRQF_TRIGGER_LOW |
@@ -304,7 +309,7 @@ static SIMPLE_DEV_PM_OPS(palmas_pwron_pm,
 			 palmas_pwron_suspend, palmas_pwron_resume);
 
 #ifdef CONFIG_OF
-static struct of_device_id of_palmas_pwr_match[] = {
+static const struct of_device_id of_palmas_pwr_match[] = {
 	{ .compatible = "ti,palmas-pwrbutton" },
 	{ },
 };

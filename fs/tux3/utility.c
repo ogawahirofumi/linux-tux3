@@ -7,30 +7,32 @@
 
 #ifdef __KERNEL__
 #include "tux3.h"
-#include "kcompat.h"
 
-static int vecio(int rw, struct block_device *dev, loff_t offset,
+static int vecio(enum req_opf req_opf, unsigned int req_flags,
+		 struct block_device *dev, loff_t offset,
 		 unsigned vecs, struct bio_vec *vec,
 		 bio_end_io_t endio, void *bio_private)
 {
 	struct bio *bio;
 
-	BUG_ON(vecs > bio_get_nr_vecs(dev));
+	BUG_ON(vecs > BIO_MAX_PAGES);
 
 	bio = bio_alloc(GFP_NOIO, vecs);
 	if (!bio)
 		return -ENOMEM;
 
-	bio->bi_bdev = dev;
-	bio_bi_sector(bio) = offset >> 9;
+	bio_set_dev(bio, dev);
+	bio->bi_iter.bi_sector = offset >> 9;
 	bio->bi_end_io = endio;
 	bio->bi_private = bio_private;
 	bio->bi_vcnt = vecs;
 	memcpy(bio->bi_io_vec, vec, sizeof(*vec) * vecs);
 	while (vecs--)
-		bio_bi_size(bio) += bio->bi_io_vec[vecs].bv_len;
+		bio->bi_iter.bi_size += bio->bi_io_vec[vecs].bv_len;
 
-	submit_bio(rw, bio);
+	bio->bi_write_hint = WRITE_LIFE_NOT_SET;
+	bio_set_op_attrs(bio, req_opf, req_flags);
+	submit_bio(bio);
 
 	return 0;
 }
@@ -40,27 +42,30 @@ struct biosync {
 	int err;
 };
 
-static void syncio_end_io(struct bio *bio, int err)
+static void syncio_end_io(struct bio *bio)
 {
 	struct biosync *sync = bio->bi_private;
-	bio_put(bio);
-	sync->err = err;
+	sync->err = blk_status_to_errno(bio->bi_status);
 	complete(&sync->done);
+	bio_put(bio);
 }
 
-static int syncio(int rw, struct block_device *dev, loff_t offset,
+static int syncio(enum req_opf req_opf, unsigned int req_flags,
+		  struct block_device *dev, loff_t offset,
 		  unsigned vecs, struct bio_vec *vec)
 {
 	struct biosync sync = {
 		.done = COMPLETION_INITIALIZER_ONSTACK(sync.done)
 	};
-	sync.err = vecio(rw, dev, offset, vecs, vec, syncio_end_io, &sync);
+	sync.err = vecio(req_opf, req_flags, dev, offset, vecs, vec,
+			 syncio_end_io, &sync);
 	if (!sync.err)
 		wait_for_completion_io(&sync.done);
 	return sync.err;
 }
 
-int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
+int devio_sync(enum req_opf req_opf, unsigned int req_flags,
+	       struct block_device *dev, loff_t offset, void *data,
 	       unsigned len)
 {
 	struct bio_vec vec = {
@@ -69,10 +74,11 @@ int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
 		.bv_len		= len,
 	};
 
-	return syncio(rw, dev, offset, 1, &vec);
+	return syncio(req_opf, req_flags, dev, offset, 1, &vec);
 }
 
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
+int blockio(enum req_opf req_opf, unsigned int req_flags,
+	    struct sb *sb, struct buffer_head *buffer, block_t block,
 	    bio_end_io_t endio, void *info)
 {
 	struct bio_vec vec = {
@@ -81,12 +87,12 @@ int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
 		.bv_len		= sb->blocksize,
 	};
 
-	return vecio(rw, sb_dev(sb), block << sb->blockbits, 1,
+	return vecio(req_opf, req_flags, sb_dev(sb), block << sb->blockbits, 1,
 		     &vec, endio, info);
 }
 
-int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
-		 block_t block)
+int blockio_sync(enum req_opf req_opf, unsigned int req_flags, struct sb *sb,
+		 struct buffer_head *buffer, block_t block)
 {
 	struct bio_vec vec = {
 		.bv_page	= buffer->b_page,
@@ -94,7 +100,8 @@ int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
 		.bv_len		= sb->blocksize,
 	};
 
-	return syncio(rw, sb_dev(sb), block << sb->blockbits, 1, &vec);
+	return syncio(req_opf, req_flags, sb_dev(sb),
+		      block << sb->blockbits, 1, &vec);
 }
 
 /*
@@ -104,9 +111,9 @@ int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
  * If there was I/O error, it would be handled in ->bi_end_bio()
  * completion.
  */
-int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count)
+int blockio_vec(struct bufvec *bufvec, block_t block, unsigned count)
 {
-	return bufvec_io(rw, bufvec, block, count);
+	return bufvec_io(bufvec, block, count);
 }
 
 void hexdump(void *data, unsigned size)
@@ -145,7 +152,7 @@ void __tux3_fs_error(struct sb *sb, const char *func, unsigned int line,
 	       vfs_sb(sb)->s_id, func, line, &vaf);
 	va_end(args);
 
-	BUG();		/* FIXME: maybe panic() or MS_RDONLY */
+	BUG();		/* FIXME: maybe panic() or SB_RDONLY */
 }
 
 void __tux3_dbg(const char *fmt, ...)

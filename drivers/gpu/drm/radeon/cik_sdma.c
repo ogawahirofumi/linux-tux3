@@ -22,18 +22,17 @@
  * Authors: Alex Deucher
  */
 #include <linux/firmware.h>
-#include <drm/drmP.h>
+
 #include "radeon.h"
 #include "radeon_ucode.h"
 #include "radeon_asic.h"
 #include "radeon_trace.h"
+#include "cik.h"
 #include "cikd.h"
 
 /* sdma */
 #define CIK_SDMA_UCODE_SIZE 1050
 #define CIK_SDMA_UCODE_VERSION 64
-
-u32 cik_gpu_check_soft_reset(struct radeon_device *rdev);
 
 /*
  * sDMA - System DMA
@@ -268,6 +267,17 @@ static void cik_sdma_gfx_stop(struct radeon_device *rdev)
 	}
 	rdev->ring[R600_RING_TYPE_DMA_INDEX].ready = false;
 	rdev->ring[CAYMAN_RING_TYPE_DMA1_INDEX].ready = false;
+
+	/* FIXME use something else than big hammer but after few days can not
+	 * seem to find good combination so reset SDMA blocks as it seems we
+	 * do not shut them down properly. This fix hibernation and does not
+	 * affect suspend to ram.
+	 */
+	WREG32(SRBM_SOFT_RESET, SOFT_RESET_SDMA | SOFT_RESET_SDMA1);
+	(void)RREG32(SRBM_SOFT_RESET);
+	udelay(50);
+	WREG32(SRBM_SOFT_RESET, 0);
+	(void)RREG32(SRBM_SOFT_RESET);
 }
 
 /**
@@ -283,6 +293,33 @@ static void cik_sdma_rlc_stop(struct radeon_device *rdev)
 }
 
 /**
+ * cik_sdma_ctx_switch_enable - enable/disable sdma engine preemption
+ *
+ * @rdev: radeon_device pointer
+ * @enable: enable/disable preemption.
+ *
+ * Halt or unhalt the async dma engines (CIK).
+ */
+static void cik_sdma_ctx_switch_enable(struct radeon_device *rdev, bool enable)
+{
+	uint32_t reg_offset, value;
+	int i;
+
+	for (i = 0; i < 2; i++) {
+		if (i == 0)
+			reg_offset = SDMA0_REGISTER_OFFSET;
+		else
+			reg_offset = SDMA1_REGISTER_OFFSET;
+		value = RREG32(SDMA0_CNTL + reg_offset);
+		if (enable)
+			value |= AUTO_CTXSW_ENABLE;
+		else
+			value &= ~AUTO_CTXSW_ENABLE;
+		WREG32(SDMA0_CNTL + reg_offset, value);
+	}
+}
+
+/**
  * cik_sdma_enable - stop the async dma engines
  *
  * @rdev: radeon_device pointer
@@ -295,7 +332,7 @@ void cik_sdma_enable(struct radeon_device *rdev, bool enable)
 	u32 me_cntl, reg_offset;
 	int i;
 
-	if (enable == false) {
+	if (!enable) {
 		cik_sdma_gfx_stop(rdev);
 		cik_sdma_rlc_stop(rdev);
 	}
@@ -312,6 +349,8 @@ void cik_sdma_enable(struct radeon_device *rdev, bool enable)
 			me_cntl |= SDMA_HALT;
 		WREG32(SDMA0_ME_CNTL + reg_offset, me_cntl);
 	}
+
+	cik_sdma_ctx_switch_enable(rdev, enable);
 }
 
 /**
@@ -539,7 +578,7 @@ void cik_sdma_fini(struct radeon_device *rdev)
 struct radeon_fence *cik_copy_dma(struct radeon_device *rdev,
 				  uint64_t src_offset, uint64_t dst_offset,
 				  unsigned num_gpu_pages,
-				  struct reservation_object *resv)
+				  struct dma_resv *resv)
 {
 	struct radeon_fence *fence;
 	struct radeon_sync sync;
@@ -637,7 +676,7 @@ int cik_sdma_ring_test(struct radeon_device *rdev,
 		tmp = le32_to_cpu(rdev->wb.wb[index/4]);
 		if (tmp == 0xDEADBEEF)
 			break;
-		DRM_UDELAY(1);
+		udelay(1);
 	}
 
 	if (i < rdev->usec_timeout) {
@@ -697,16 +736,21 @@ int cik_sdma_ib_test(struct radeon_device *rdev, struct radeon_ring *ring)
 		DRM_ERROR("radeon: failed to schedule ib (%d).\n", r);
 		return r;
 	}
-	r = radeon_fence_wait(ib.fence, false);
-	if (r) {
+	r = radeon_fence_wait_timeout(ib.fence, false, usecs_to_jiffies(
+		RADEON_USEC_IB_TEST_TIMEOUT));
+	if (r < 0) {
 		DRM_ERROR("radeon: fence wait failed (%d).\n", r);
 		return r;
+	} else if (r == 0) {
+		DRM_ERROR("radeon: fence wait timed out.\n");
+		return -ETIMEDOUT;
 	}
+	r = 0;
 	for (i = 0; i < rdev->usec_timeout; i++) {
 		tmp = le32_to_cpu(rdev->wb.wb[index/4]);
 		if (tmp == 0xDEADBEEF)
 			break;
-		DRM_UDELAY(1);
+		udelay(1);
 	}
 	if (i < rdev->usec_timeout) {
 		DRM_INFO("ib test on ring %d succeeded in %u usecs\n", ib.fence->ring, i);
@@ -891,10 +935,8 @@ void cik_sdma_vm_pad_ib(struct radeon_ib *ib)
 		ib->ptr[ib->length_dw++] = SDMA_PACKET(SDMA_OPCODE_NOP, 0, 0);
 }
 
-/**
+/*
  * cik_dma_vm_flush - cik vm flush using sDMA
- *
- * @rdev: radeon_device pointer
  *
  * Update the page table base and flush the VM TLB
  * using sDMA (CIK).

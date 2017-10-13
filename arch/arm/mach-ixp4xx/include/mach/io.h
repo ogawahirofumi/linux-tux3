@@ -1,13 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * arch/arm/mach-ixp4xx/include/mach/io.h
  *
  * Author: Deepak Saxena <dsaxena@plexity.net>
  *
  * Copyright (C) 2002-2005  MontaVista Software, Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #ifndef __ASM_ARM_ARCH_IO_H
@@ -95,8 +92,10 @@ static inline void __indirect_writeb(u8 value, volatile void __iomem *p)
 }
 
 static inline void __indirect_writesb(volatile void __iomem *bus_addr,
-				      const u8 *vaddr, int count)
+				      const void *p, int count)
 {
+	const u8 *vaddr = p;
+
 	while (count--)
 		writeb(*vaddr++, bus_addr);
 }
@@ -118,8 +117,10 @@ static inline void __indirect_writew(u16 value, volatile void __iomem *p)
 }
 
 static inline void __indirect_writesw(volatile void __iomem *bus_addr,
-				      const u16 *vaddr, int count)
+				      const void *p, int count)
 {
+	const u16 *vaddr = p;
+
 	while (count--)
 		writew(*vaddr++, bus_addr);
 }
@@ -137,13 +138,14 @@ static inline void __indirect_writel(u32 value, volatile void __iomem *p)
 }
 
 static inline void __indirect_writesl(volatile void __iomem *bus_addr,
-				      const u32 *vaddr, int count)
+				      const void *p, int count)
 {
+	const u32 *vaddr = p;
 	while (count--)
 		writel(*vaddr++, bus_addr);
 }
 
-static inline unsigned char __indirect_readb(const volatile void __iomem *p)
+static inline u8 __indirect_readb(const volatile void __iomem *p)
 {
 	u32 addr = (u32)p;
 	u32 n, byte_enables, data;
@@ -160,13 +162,15 @@ static inline unsigned char __indirect_readb(const volatile void __iomem *p)
 }
 
 static inline void __indirect_readsb(const volatile void __iomem *bus_addr,
-				     u8 *vaddr, u32 count)
+				     void *p, u32 count)
 {
+	u8 *vaddr = p;
+
 	while (count--)
 		*vaddr++ = readb(bus_addr);
 }
 
-static inline unsigned short __indirect_readw(const volatile void __iomem *p)
+static inline u16 __indirect_readw(const volatile void __iomem *p)
 {
 	u32 addr = (u32)p;
 	u32 n, byte_enables, data;
@@ -183,13 +187,15 @@ static inline unsigned short __indirect_readw(const volatile void __iomem *p)
 }
 
 static inline void __indirect_readsw(const volatile void __iomem *bus_addr,
-				     u16 *vaddr, u32 count)
+				     void *p, u32 count)
 {
+	u16 *vaddr = p;
+
 	while (count--)
 		*vaddr++ = readw(bus_addr);
 }
 
-static inline unsigned long __indirect_readl(const volatile void __iomem *p)
+static inline u32 __indirect_readl(const volatile void __iomem *p)
 {
 	u32 addr = (__force u32)p;
 	u32 data;
@@ -204,8 +210,10 @@ static inline unsigned long __indirect_readl(const volatile void __iomem *p)
 }
 
 static inline void __indirect_readsl(const volatile void __iomem *bus_addr,
-				     u32 *vaddr, u32 count)
+				     void *p, u32 count)
 {
+	u32 *vaddr = p;
+
 	while (count--)
 		*vaddr++ = readl(bus_addr);
 }
@@ -245,8 +253,10 @@ static inline void outb(u8 value, u32 addr)
 }
 
 #define outsb outsb
-static inline void outsb(u32 io_addr, const u8 *vaddr, u32 count)
+static inline void outsb(u32 io_addr, const void *p, u32 count)
 {
+	const u8 *vaddr = p;
+
 	while (count--)
 		outb(*vaddr++, io_addr);
 }
@@ -262,8 +272,9 @@ static inline void outw(u16 value, u32 addr)
 }
 
 #define outsw outsw
-static inline void outsw(u32 io_addr, const u16 *vaddr, u32 count)
+static inline void outsw(u32 io_addr, const void *p, u32 count)
 {
+	const u16 *vaddr = p;
 	while (count--)
 		outw(cpu_to_le16(*vaddr++), io_addr);
 }
@@ -275,8 +286,9 @@ static inline void outl(u32 value, u32 addr)
 }
 
 #define outsl outsl
-static inline void outsl(u32 io_addr, const u32 *vaddr, u32 count)
+static inline void outsl(u32 io_addr, const void *p, u32 count)
 {
+	const u32 *vaddr = p;
 	while (count--)
 		outl(cpu_to_le32(*vaddr++), io_addr);
 }
@@ -294,8 +306,9 @@ static inline u8 inb(u32 addr)
 }
 
 #define insb insb
-static inline void insb(u32 io_addr, u8 *vaddr, u32 count)
+static inline void insb(u32 io_addr, void *p, u32 count)
 {
+	u8 *vaddr = p;
 	while (count--)
 		*vaddr++ = inb(io_addr);
 }
@@ -313,8 +326,9 @@ static inline u16 inw(u32 addr)
 }
 
 #define insw insw
-static inline void insw(u32 io_addr, u16 *vaddr, u32 count)
+static inline void insw(u32 io_addr, void *p, u32 count)
 {
+	u16 *vaddr = p;
 	while (count--)
 		*vaddr++ = le16_to_cpu(inw(io_addr));
 }
@@ -330,8 +344,9 @@ static inline u32 inl(u32 addr)
 }
 
 #define insl insl
-static inline void insl(u32 io_addr, u32 *vaddr, u32 count)
+static inline void insl(u32 io_addr, void *p, u32 count)
 {
+	u32 *vaddr = p;
 	while (count--)
 		*vaddr++ = le32_to_cpu(inl(io_addr));
 }
@@ -343,7 +358,7 @@ static inline void insl(u32 io_addr, u32 *vaddr, u32 count)
 					((unsigned long)p <= (PIO_MASK + PIO_OFFSET)))
 
 #define	ioread8(p)			ioread8(p)
-static inline unsigned int ioread8(const void __iomem *addr)
+static inline u8 ioread8(const void __iomem *addr)
 {
 	unsigned long port = (unsigned long __force)addr;
 	if (__is_io_address(port))
@@ -371,7 +386,7 @@ static inline void ioread8_rep(const void __iomem *addr, void *vaddr, u32 count)
 }
 
 #define	ioread16(p)			ioread16(p)
-static inline unsigned int ioread16(const void __iomem *addr)
+static inline u16 ioread16(const void __iomem *addr)
 {
 	unsigned long port = (unsigned long __force)addr;
 	if (__is_io_address(port))
@@ -400,7 +415,7 @@ static inline void ioread16_rep(const void __iomem *addr, void *vaddr,
 }
 
 #define	ioread32(p)			ioread32(p)
-static inline unsigned int ioread32(const void __iomem *addr)
+static inline u32 ioread32(const void __iomem *addr)
 {
 	unsigned long port = (unsigned long __force)addr;
 	if (__is_io_address(port))
@@ -516,8 +531,15 @@ static inline void iowrite32_rep(void __iomem *addr, const void *vaddr,
 #endif
 }
 
-#define	ioport_map(port, nr)		((void __iomem*)(port + PIO_OFFSET))
-#define	ioport_unmap(addr)
+#define ioport_map(port, nr) ioport_map(port, nr)
+static inline void __iomem *ioport_map(unsigned long port, unsigned int nr)
+{
+	return ((void __iomem*)((port) + PIO_OFFSET));
+}
+#define	ioport_unmap(addr) ioport_unmap(addr)
+static inline void ioport_unmap(void __iomem *addr)
+{
+}
 #endif /* CONFIG_PCI */
 
 #endif /* __ASM_ARM_ARCH_IO_H */

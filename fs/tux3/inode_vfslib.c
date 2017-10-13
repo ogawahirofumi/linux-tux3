@@ -19,25 +19,22 @@ static ssize_t tux3_file_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct sb *sb = tux_sb(inode->i_sb);
 	ssize_t ret;
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 	/* For each ->write_end() calls change_end(). */
 	if (change_begin(sb, 1)) {
-		mutex_unlock(&inode->i_mutex);
+		inode_unlock(inode);
 		return -ENOSPC;
 	}
-
-	/* FIXME: file_update_time() in this can be race with mmap */
-	ret = __generic_file_write_iter(iocb, from);
+	ret = generic_write_checks(iocb, from);
+	if (ret > 0) {
+		/* FIXME: file_update_time() in this can be race with mmap */
+		ret = __generic_file_write_iter(iocb, from);
+	}
 	if (change_active())
 		change_end(sb);
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 
-	if (ret > 0) {
-		ssize_t err;
-
-		err = generic_write_sync(file, iocb->ki_pos - ret, ret);
-		if (err < 0)
-			ret = err;
-	}
+	if (ret > 0)
+		ret = generic_write_sync(iocb, ret);
 	return ret;
 }

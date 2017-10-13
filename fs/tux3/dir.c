@@ -28,7 +28,6 @@
  */
 
 #include "tux3.h"
-#include "kcompat.h"
 
 #ifndef trace
 #define trace trace_off
@@ -42,7 +41,7 @@
 static inline unsigned tux_rec_len_from_disk(__be16 dlen)
 {
 	unsigned len = be16_to_cpu(dlen);
-#if (PAGE_CACHE_SIZE >= 65536)
+#if (PAGE_SIZE >= 65536)
 	if (len == TUX_MAX_REC_LEN)
 		return 1 << 16;
 #endif
@@ -51,7 +50,7 @@ static inline unsigned tux_rec_len_from_disk(__be16 dlen)
 
 static inline __be16 tux_rec_len_to_disk(unsigned len)
 {
-#if (PAGE_CACHE_SIZE >= 65536)
+#if (PAGE_SIZE >= 65536)
 	if (len == (1 << 16))
 		return cpu_to_be16(TUX_MAX_REC_LEN);
 	else
@@ -94,15 +93,36 @@ enum {
 
 #define STAT_SHIFT 12
 
-static unsigned char tux_type_by_mode[S_IFMT >> STAT_SHIFT] = {
-	[S_IFREG >> STAT_SHIFT] = TUX_REG,
-	[S_IFDIR >> STAT_SHIFT] = TUX_DIR,
-	[S_IFCHR >> STAT_SHIFT] = TUX_CHR,
-	[S_IFBLK >> STAT_SHIFT] = TUX_BLK,
-	[S_IFIFO >> STAT_SHIFT] = TUX_FIFO,
-	[S_IFSOCK >> STAT_SHIFT] = TUX_SOCK,
-	[S_IFLNK >> STAT_SHIFT] = TUX_LNK,
-};
+static inline u8 tux3_mode_to_type(umode_t mode)
+{
+	static u8 type_by_mode[S_IFMT >> STAT_SHIFT] = {
+		[S_IFREG >> STAT_SHIFT] = TUX_REG,
+		[S_IFDIR >> STAT_SHIFT] = TUX_DIR,
+		[S_IFCHR >> STAT_SHIFT] = TUX_CHR,
+		[S_IFBLK >> STAT_SHIFT] = TUX_BLK,
+		[S_IFIFO >> STAT_SHIFT] = TUX_FIFO,
+		[S_IFSOCK >> STAT_SHIFT] = TUX_SOCK,
+		[S_IFLNK >> STAT_SHIFT] = TUX_LNK,
+	};
+	return type_by_mode[(mode & S_IFMT) >> STAT_SHIFT];
+}
+
+static inline unsigned tux3_type_to_dt(u8 type)
+{
+	static u8 dt_by_type[TUX_TYPES] = {
+		[TUX_UNKNOWN]	= DT_UNKNOWN,
+		[TUX_REG]	= DT_REG,
+		[TUX_DIR]	= DT_DIR,
+		[TUX_CHR]	= DT_CHR,
+		[TUX_BLK]	= DT_BLK,
+		[TUX_FIFO]	= DT_FIFO,
+		[TUX_SOCK]	= DT_SOCK,
+		[TUX_LNK]	= DT_LNK,
+	};
+	if (type < TUX_TYPES)
+		return dt_by_type[type];
+	return DT_UNKNOWN;
+}
 
 #define tux_zero_len_error(dir, block)					\
 	tux3_fs_error(tux_sb((dir)->i_sb),				\
@@ -113,7 +133,7 @@ void tux_set_entry(struct buffer_head *buffer, struct tux3_dirent *entry,
 		   inum_t inum, umode_t mode)
 {
 	entry->inum = cpu_to_be64(inum);
-	entry->type = tux_type_by_mode[(mode & S_IFMT) >> STAT_SHIFT];
+	entry->type = tux3_mode_to_type(mode);
 	mark_buffer_dirty_non(buffer);
 	blockput(buffer);
 }
@@ -174,7 +194,7 @@ loff_t tux_alloc_entry(struct inode *dir, const char *name, unsigned len,
 
 create:
 	/*
-	 * The directory is protected by i_mutex.
+	 * The directory is protected by inode_lock.
 	 * blockdirty() should never return -EAGAIN.
 	 */
 	olddata = bufdata(buffer);
@@ -224,7 +244,7 @@ struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
 	inum_t inum;
 	int err, err2;
 
-	/* Holding dir->i_mutex, so no i_size_read() */
+	/* Holding inode_lock(dir), so no i_size_read() */
 	i_size = dir->i_size;
 	where = tux_alloc_entry(dir, name, len, &i_size, &buffer);
 	if (where < 0)
@@ -300,21 +320,10 @@ error:
 struct tux3_dirent *tux_find_dirent(struct inode *dir, const struct qstr *qstr,
 				    struct buffer_head **result)
 {
-	/* Holding dir->i_mutex, so no i_size_read() */
+	/* Holding inode_lock(_shared)(dir), so no i_size_read() */
 	return tux_find_entry(dir, (const char *)qstr->name, qstr->len,
 			      result, dir->i_size);
 }
-
-static unsigned char filetype[TUX_TYPES] = {
-	[TUX_UNKNOWN] = DT_UNKNOWN,
-	[TUX_REG] = DT_REG,
-	[TUX_DIR] = DT_DIR,
-	[TUX_CHR] = DT_CHR,
-	[TUX_BLK] = DT_BLK,
-	[TUX_FIFO] = DT_FIFO,
-	[TUX_SOCK] = DT_SOCK,
-	[TUX_LNK] = DT_LNK,
-};
 
 /*
  * Return 0 if the directory entry is OK, and 1 if there is a problem
@@ -379,7 +388,7 @@ static bool tux3_dir_emit_dots(struct file *file, struct dir_context *ctx)
 int tux_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct inode *dir = file_inode(file);
-	int revalidate = file->f_version != dir->i_version;
+	bool need_revalidate = !inode_eq_iversion(dir, file->f_version);
 	struct sb *sb = tux_sb(dir->i_sb);
 	unsigned blockbits = sb->blockbits;
 	block_t block, blocks = dir->i_size >> blockbits;
@@ -406,25 +415,26 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 		if (!buffer)
 			return -EIO;
 		void *base = bufdata(buffer);
-		if (revalidate) {
+		if (need_revalidate) {
 			if (offset) {
 				offset = tux_validate_entry(base, offset);
 				ctx->pos = (block << blockbits) + offset;
 				/* Adjust pos for fake "." and ".." */
 				ctx->pos = max_t(loff_t, ctx->pos, 2);
 			}
-			file->f_version = dir->i_version;
-			revalidate = 0;
+			file->f_version = inode_query_iversion(dir);
+			need_revalidate = false;
 		}
 		struct tux3_dirent *limit = base + sb->blocksize - TUX_REC_LEN(1);
-		for (struct tux3_dirent *entry = base + offset; entry <= limit; entry = next_entry(entry)) {
+		struct tux3_dirent *entry;
+		for (entry = base + offset; entry <= limit; entry = next_entry(entry)) {
 			if (check_dir_entry(dir, buffer, entry)) {
 				/* On error, skip to next block */
 				ctx->pos = (ctx->pos | sb->blockmask) + 1;
 				break;
 			}
 			if (!is_deleted(entry)) {
-				unsigned type = (entry->type < TUX_TYPES) ? filetype[entry->type] : DT_UNKNOWN;
+				unsigned type = tux3_type_to_dt(entry->type);
 				if (!dir_emit(ctx, entry->name, entry->name_len,
 					      be64_to_cpu(entry->inum), type)) {
 					blockput(buffer);
@@ -441,7 +451,7 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 		offset = 0;
 
 		if (ctx->pos < dir->i_size) {
-			if (!dir_relax(dir))
+			if (!dir_relax_shared(dir))
 				return 0;
 		}
 	}
@@ -467,7 +477,7 @@ int tux_delete_entry(struct inode *dir, struct buffer_head *buffer,
 	}
 
 	/*
-	 * The directory is protected by i_mutex.
+	 * The directory is protected by inode_lock.
 	 * blockdirty() should never return -EAGAIN.
 	 */
 	olddata = bufdata(buffer);

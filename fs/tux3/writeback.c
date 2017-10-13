@@ -21,6 +21,9 @@
 #if I_DIRTY != ((1 << 0) | (1 << 1) | (1 << 2))
 #error "I_DIRTY was changed"
 #endif
+#if I_DIRTY_ALL != (I_DIRTY | I_DIRTY_TIME)
+#error "I_DIRTY_ALL was changed"
+#endif
 
 /*
  * tuxnode->state usage from LSB:
@@ -108,10 +111,14 @@ void tux3_dirty_inode(struct inode *inode, int flags)
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	unsigned delta = tux3_inode_delta(inode);
-	unsigned mask = tux3_dirty_mask(flags, delta);
 	struct sb_delta_dirty *s_ddc;
 	struct inode_delta_dirty *uninitialized_var(i_ddc);
 	int re_dirtied = 0;
+	unsigned mask;
+
+	/* FIXME: SB_LAZYTIME is not supported yet */
+	flags &= I_DIRTY;
+	mask = tux3_dirty_mask(flags, delta);
 
 	if ((tuxnode->state & mask) == mask)
 		return;
@@ -204,8 +211,10 @@ static void tux3_clear_dirty_inode_nolock(struct inode *inode, unsigned delta,
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	unsigned mask = tux3_dirty_mask(I_DIRTY, delta);
-	unsigned old_dirty;
+	unsigned mask, old_dirty;
+
+	/* FIXME: SB_LAZYTIME is not supported yet */
+	mask = tux3_dirty_mask(I_DIRTY, delta);
 
 	old_dirty = tuxnode->state & (TUX3_DIRTY_BTREE | mask);
 	/* Clear dirty flags for delta */
@@ -407,7 +416,7 @@ static void tux3_state_read_and_clear(struct inode *inode,
 static inline int tux3_flush_buffers(struct inode *inode,
 				     struct tux3_iattr_data *idata,
 				     unsigned deleted,
-				     unsigned delta, int req_flag)
+				     unsigned delta, unsigned int req_flags)
 {
 	struct list_head *dirty_buffers = tux3_dirty_buffers(inode, delta);
 	int err;
@@ -432,7 +441,7 @@ static inline int tux3_flush_buffers(struct inode *inode,
 	}
 
 	/* Apply page caches */
-	return flush_list(inode, idata, dirty_buffers, req_flag);
+	return flush_list(inode, idata, dirty_buffers, req_flags);
 }
 
 /*
@@ -443,16 +452,17 @@ static inline int tux3_flush_buffers(struct inode *inode,
  * instead we keeps the inode while writeback is running.
  */
 static int tux3_flush_inode_data(struct inode *inode, unsigned delta,
-				 int req_flag)
+				 unsigned int req_flags)
 {
 	struct tux3_iattr_data idata;
 	unsigned deleted;
 
 	idata.i_size = tux3_state_peek_i_size(inode, &deleted, delta);
-	return tux3_flush_buffers(inode, &idata, deleted, delta, req_flag);
+	return tux3_flush_buffers(inode, &idata, deleted, delta, req_flags);
 }
 
-int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
+int tux3_flush_inode(struct inode *inode, unsigned delta,
+		     unsigned int req_flags)
 {
 	struct tux3_iattr_data idata;
 	unsigned dirty = 0, orphaned, deleted;
@@ -520,7 +530,8 @@ int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag)
  * If inode is TUX3_I_NO_FLUSH, those can clear inode dirty state
  * immediately. Because those inodes is pinned until umount.
 */
-int tux3_flush_inode_internal(struct inode *inode, unsigned delta, int req_flag)
+int tux3_flush_inode_internal(struct inode *inode, unsigned delta,
+			      unsigned int req_flags)
 {
 	int err;
 
@@ -535,8 +546,8 @@ int tux3_flush_inode_internal(struct inode *inode, unsigned delta, int req_flag)
 	if (!(inode->i_state & I_DIRTY))
 		return 0;
 
-	err = tux3_flush_inode_data(inode, delta, req_flag);
-	err = tux3_flush_inode(inode, delta, req_flag);
+	err = tux3_flush_inode_data(inode, delta, req_flags);
+	err = tux3_flush_inode(inode, delta, req_flags);
 	/* FIXME: error handling */
 	__tux3_clear_dirty_inode(inode, delta);
 

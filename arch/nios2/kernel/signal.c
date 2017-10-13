@@ -39,11 +39,11 @@ static inline int rt_restore_ucontext(struct pt_regs *regs,
 					struct ucontext *uc, int *pr2)
 {
 	int temp;
-	greg_t *gregs = uc->uc_mcontext.gregs;
+	unsigned long *gregs = uc->uc_mcontext.gregs;
 	int err;
 
 	/* Always make any pending restarted system calls return -EINTR */
-	current_thread_info()->restart_block.fn = do_no_restart_syscall;
+	current->restart_block.fn = do_no_restart_syscall;
 
 	err = __get_user(temp, &uc->uc_mcontext.version);
 	if (temp != MCONTEXT_VERSION)
@@ -106,7 +106,7 @@ asmlinkage int do_rt_sigreturn(struct switch_stack *sw)
 	sigset_t set;
 	int rval;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof(*frame)))
+	if (!access_ok(frame, sizeof(*frame)))
 		goto badframe;
 
 	if (__copy_from_user(&set, &frame->uc.uc_sigmask, sizeof(set)))
@@ -120,14 +120,14 @@ asmlinkage int do_rt_sigreturn(struct switch_stack *sw)
 	return rval;
 
 badframe:
-	force_sig(SIGSEGV, current);
+	force_sig(SIGSEGV);
 	return 0;
 }
 
 static inline int rt_setup_ucontext(struct ucontext *uc, struct pt_regs *regs)
 {
 	struct switch_stack *sw = (struct switch_stack *)regs - 1;
-	greg_t *gregs = uc->uc_mcontext.gregs;
+	unsigned long *gregs = uc->uc_mcontext.gregs;
 	int err = 0;
 
 	err |= __put_user(MCONTEXT_VERSION, &uc->uc_mcontext.version);
@@ -211,7 +211,7 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 	return 0;
 
 give_sigsegv:
-	force_sigsegv(ksig->sig, current);
+	force_sigsegv(ksig->sig);
 	return -EFAULT;
 }
 
@@ -252,6 +252,7 @@ static int do_signal(struct pt_regs *regs)
 		switch (retval) {
 		case ERESTART_RESTARTBLOCK:
 			restart = -2;
+			fallthrough;
 		case ERESTARTNOHAND:
 		case ERESTARTSYS:
 		case ERESTARTNOINTR:
@@ -305,7 +306,8 @@ asmlinkage int do_notify_resume(struct pt_regs *regs)
 	if (!user_mode(regs))
 		return 0;
 
-	if (test_thread_flag(TIF_SIGPENDING)) {
+	if (test_thread_flag(TIF_SIGPENDING) ||
+	    test_thread_flag(TIF_NOTIFY_SIGNAL)) {
 		int restart = do_signal(regs);
 
 		if (unlikely(restart)) {
@@ -316,7 +318,7 @@ asmlinkage int do_notify_resume(struct pt_regs *regs)
 			 */
 			return restart;
 		}
-	} else if (test_and_clear_thread_flag(TIF_NOTIFY_RESUME))
+	} else if (test_thread_flag(TIF_NOTIFY_RESUME))
 		tracehook_notify_resume(regs);
 
 	return 0;

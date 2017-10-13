@@ -30,6 +30,7 @@
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
 #include <linux/gpio.h>
+#include <linux/gpio/machine.h>
 #include <linux/power/gpio-charger.h>
 
 #include <video/sa1100fb.h>
@@ -43,7 +44,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/flash.h>
 #include <asm/mach/map.h>
-#include <asm/mach/irda.h>
+#include <linux/platform_data/irda-sa11x0.h>
 
 #include <asm/hardware/scoop.h>
 #include <asm/mach/sharpsl_param.h>
@@ -97,6 +98,26 @@ static struct mcp_plat_data collie_mcp_data = {
 	.codec_pdata	= &collie_ucb1x00_data,
 };
 
+/* Battery management GPIOs */
+static struct gpiod_lookup_table collie_battery_gpiod_table = {
+	/* the MCP codec mcp0 has the ucb1x00 as attached device */
+	.dev_id = "ucb1x00",
+	.table = {
+		/* This is found on the main GPIO on the SA1100 */
+		GPIO_LOOKUP("gpio", COLLIE_GPIO_CO,
+			    "main battery full", GPIO_ACTIVE_HIGH),
+		GPIO_LOOKUP("gpio", COLLIE_GPIO_MAIN_BAT_LOW,
+			    "main battery low", GPIO_ACTIVE_HIGH),
+		/*
+		 * This is GPIO 0 on the Scoop expander, which is registered
+		 * from common/scoop.c with this gpio chip label.
+		 */
+		GPIO_LOOKUP("sharp-scoop", 0,
+			    "main charge on", GPIO_ACTIVE_HIGH),
+		{ },
+	},
+};
+
 static int collie_ir_startup(struct device *dev)
 {
 	int rc = gpio_request(COLLIE_GPIO_IR_ON, "IrDA");
@@ -131,16 +152,23 @@ static struct irda_platform_data collie_ir_data = {
 /*
  * Collie AC IN
  */
+static struct gpiod_lookup_table collie_power_gpiod_table = {
+	.dev_id = "gpio-charger",
+	.table = {
+		GPIO_LOOKUP("gpio", COLLIE_GPIO_AC_IN,
+			    NULL, GPIO_ACTIVE_HIGH),
+		{ },
+	},
+};
+
 static char *collie_ac_supplied_to[] = {
 	"main-battery",
 	"backup-battery",
 };
 
-
 static struct gpio_charger_platform_data collie_power_data = {
 	.name			= "charger",
 	.type			= POWER_SUPPLY_TYPE_MAINS,
-	.gpio			= COLLIE_GPIO_AC_IN,
 	.supplied_to		= collie_ac_supplied_to,
 	.num_supplicants	= ARRAY_SIZE(collie_ac_supplied_to),
 };
@@ -196,18 +224,12 @@ static int collie_uart_probe(struct locomo_dev *dev)
 	return 0;
 }
 
-static int collie_uart_remove(struct locomo_dev *dev)
-{
-	return 0;
-}
-
 static struct locomo_driver collie_uart_driver = {
 	.drv = {
 		.name = "collie_uart",
 	},
 	.devid	= LOCOMO_DEVID_UART,
 	.probe	= collie_uart_probe,
-	.remove	= collie_uart_remove,
 };
 
 static int __init collie_uart_init(void)
@@ -371,8 +393,7 @@ static void __init collie_init(void)
 		PPC_LDD6 | PPC_LDD7 | PPC_L_PCLK | PPC_L_LCLK | PPC_L_FCLK | PPC_L_BIAS |
 		PPC_TXD1 | PPC_TXD2 | PPC_TXD3 | PPC_TXD4 | PPC_SCLK | PPC_SFRM;
 
-	PWER = _COLLIE_GPIO_AC_IN | _COLLIE_GPIO_CO | _COLLIE_GPIO_ON_KEY |
-		_COLLIE_GPIO_WAKEUP | _COLLIE_GPIO_nREMOCON_INT | PWER_RTC;
+	PWER = 0;
 
 	PGSR = _COLLIE_GPIO_nREMOCON_ON;
 
@@ -386,6 +407,9 @@ static void __init collie_init(void)
 
 
 	platform_scoop_config = &collie_pcmcia_config;
+
+	gpiod_add_lookup_table(&collie_power_gpiod_table);
+	gpiod_add_lookup_table(&collie_battery_gpiod_table);
 
 	ret = platform_add_devices(devices, ARRAY_SIZE(devices));
 	if (ret) {

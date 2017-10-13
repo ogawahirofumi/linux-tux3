@@ -6,7 +6,10 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/time.h>
+#include <linux/writeback.h>
+#include <linux/backing-dev.h>
 #include <linux/fs.h>
+#include <linux/memcontrol.h>	/* for lock_page_memcg */
 #include <linux/buffer_head.h>
 #include <linux/bio.h>
 #include <linux/blkdev.h>	/* for struct blk_plug */
@@ -15,6 +18,7 @@
 #include <linux/slab.h>
 #include <linux/xattr.h>
 #include <linux/list_sort.h>
+#include <linux/iversion.h>
 #include <asm/unaligned.h>
 
 #include "trace.h"
@@ -306,7 +310,6 @@ struct orphan_head {
 /* Work item for writeback flusher */
 struct tux3_wb_work {
 	struct wb_writeback_work work;
-	struct completion dummy_done;
 	int flusher_is_waiting;
 	unsigned delta;
 };
@@ -314,7 +317,7 @@ struct tux3_wb_work {
 
 /* Refcount for delta */
 struct delta_ref {
-	atomic_t refcount;
+	refcount_t refcount;
 	unsigned delta;
 	struct completion waitref_done;
 };
@@ -403,8 +406,8 @@ struct sb {
 	unsigned entries_per_node; /* must be per-btree type, get rid of this */
 	unsigned version;	/* Currently mounted volume version view */
 
-	unsigned atomref_base;	/* Index of atom refcount base */
-	unsigned unatom_base;	/* Index of unatom base */
+	block_t atomref_base;	/* Index of atom refcount base */
+	block_t unatom_base;	/* Index of unatom base */
 	loff_t atomdictsize;	/* Atom dictionary size */
 	unsigned freeatom;	/* Start of free atom list in atom table */
 	unsigned atomgen;	/* Next atom number to allocate if no free atoms */
@@ -518,7 +521,7 @@ struct tux3_inode {
 	unsigned state;			/* inode dirty state */
 	struct inode_delta_dirty i_ddc[TUX3_MAX_DELTA];
 #ifdef __KERNEL__
-	int (*io)(int rw, struct bufvec *bufvec);
+	int (*io)(struct bufvec *bufvec);
 #endif
 	/* Generic inode */
 	struct inode vfs_inode;
@@ -772,8 +775,8 @@ int tux3_get_block(struct inode *inode, sector_t iblock,
 		   struct buffer_head *bh_result, int create);
 struct buffer_head *__get_buffer(struct page *page, int offset);
 void tux3_try_cancel_dirty_page(struct page *page);
-void __tux3_set_page_dirty_account(struct page *page,
-				   struct address_space *mapping, int warn);
+void __tux3_set_page_dirty(struct page *page,
+			   struct address_space *mapping, int warn);
 int tux3_file_mmap(struct file *file, struct vm_area_struct *vma);
 extern const struct address_space_operations tux_file_aops;
 extern const struct address_space_operations tux_symlink_aops;
@@ -781,7 +784,8 @@ extern const struct address_space_operations tux_blk_aops;
 extern const struct address_space_operations tux_vol_aops;
 
 /* inode.c */
-int tux3_getattr(struct vfsmount *mnt, struct dentry *dentry, struct kstat *stat);
+int tux3_getattr(const struct path *path, struct kstat *stat,
+		 u32 request_mask, unsigned int flags);
 int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync);
 int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags);
 
@@ -789,13 +793,15 @@ int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags);
 extern const struct inode_operations tux_symlink_iops;
 
 /* utility.c */
-int devio_sync(int rw, struct block_device *dev, loff_t offset, void *data,
+int devio_sync(enum req_opf req_opf, unsigned int req_flags,
+	       struct block_device *dev, loff_t offset, void *data,
 	       unsigned len);
-int blockio(int rw, struct sb *sb, struct buffer_head *buffer, block_t block,
-	    bio_end_io_t endio, void *bio_private);
-int blockio_sync(int rw, struct sb *sb, struct buffer_head *buffer,
-		 block_t block);
-int blockio_vec(int rw, struct bufvec *bufvec, block_t block, unsigned count);
+int blockio(enum req_opf req_opf, unsigned int req_flags,
+	    struct sb *sb, struct buffer_head *buffer, block_t block,
+	    bio_end_io_t endio, void *info);
+int blockio_sync(enum req_opf req_opf, unsigned int req_flags, struct sb *sb,
+		 struct buffer_head *buffer, block_t block);
+int blockio_vec(struct bufvec *bufvec, block_t block, unsigned count);
 
 #define tux3_msg(sb, fmt, ...)						\
 	__tux3_msg(sb, KERN_INFO, "", fmt, ##__VA_ARGS__)
@@ -942,8 +948,8 @@ extern struct btree_ops dtree_ops;
 /* filemap.c */
 void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf);
 int dtree_chop(struct btree *btree, tuxkey_t start, u64 len);
-int tux3_filemap_overwrite_io(int rw, struct bufvec *bufvec);
-int tux3_filemap_redirect_io(int rw, struct bufvec *bufvec);
+int tux3_filemap_overwrite_io(struct bufvec *bufvec);
+int tux3_filemap_redirect_io(struct bufvec *bufvec);
 int tux3_truncate_partial_block(struct inode *inode, loff_t newsize);
 
 /* iattr.c */
@@ -1002,7 +1008,7 @@ void log_next(struct sb *sb);
 void log_drop(struct sb *sb);
 void log_finish(struct sb *sb);
 void log_finish_cycle(struct sb *sb, int discard);
-int tux3_logmap_io(int rw, struct bufvec *bufvec);
+int tux3_logmap_io(struct bufvec *bufvec);
 void log_balloc(struct sb *sb, block_t block, unsigned count);
 void log_bfree(struct sb *sb, block_t block, unsigned count);
 void log_bfree_on_unify(struct sb *sb, block_t block, unsigned count);
@@ -1108,8 +1114,10 @@ void tux3_mark_buffer_dirty(struct buffer_head *buffer);
 void tux3_mark_buffer_unify(struct buffer_head *buffer);
 void tux3_mark_inode_orphan(struct tux3_inode *tuxnode);
 int tux3_inode_is_orphan(struct tux3_inode *tuxnode);
-int tux3_flush_inode_internal(struct inode *inode, unsigned delta, int req_flag);
-int tux3_flush_inode(struct inode *inode, unsigned delta, int req_flag);
+int tux3_flush_inode_internal(struct inode *inode, unsigned delta,
+			      unsigned int req_flags);
+int tux3_flush_inode(struct inode *inode, unsigned delta,
+		     unsigned int req_flags);
 int tux3_flush_inodes(struct sb *sb, unsigned delta);
 int tux3_has_dirty_inodes(struct sb *sb, unsigned delta);
 void tux3_clear_dirty_inodes(struct sb *sb, unsigned delta);

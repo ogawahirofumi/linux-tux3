@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Freescale SPI controller driver cpm functions.
  *
@@ -9,20 +10,17 @@
  * CPM SPI and QE buffer descriptors mode support:
  * Copyright (c) 2009  MontaVista Software, Inc.
  * Author: Anton Vorontsov <avorontsov@ru.mvista.com>
- *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
  */
 #include <asm/cpm.h>
-#include <asm/qe.h>
+#include <soc/fsl/qe/qe.h>
 #include <linux/dma-mapping.h>
 #include <linux/fsl_devices.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/spi/spi.h>
 #include <linux/types.h>
+#include <linux/platform_device.h>
 
 #include "spi-fsl-cpm.h"
 #include "spi-fsl-lib.h"
@@ -68,6 +66,7 @@ void fsl_spi_cpm_reinit_txrx(struct mpc8xxx_spi *mspi)
 		}
 	}
 }
+EXPORT_SYMBOL_GPL(fsl_spi_cpm_reinit_txrx);
 
 static void fsl_spi_cpm_bufs_start(struct mpc8xxx_spi *mspi)
 {
@@ -162,6 +161,7 @@ err_rx_dma:
 		dma_unmap_single(dev, mspi->tx_dma, t->len, DMA_TO_DEVICE);
 	return -ENOMEM;
 }
+EXPORT_SYMBOL_GPL(fsl_spi_cpm_bufs);
 
 void fsl_spi_cpm_bufs_complete(struct mpc8xxx_spi *mspi)
 {
@@ -174,6 +174,7 @@ void fsl_spi_cpm_bufs_complete(struct mpc8xxx_spi *mspi)
 		dma_unmap_single(dev, mspi->rx_dma, t->len, DMA_FROM_DEVICE);
 	mspi->xfer_in_progress = NULL;
 }
+EXPORT_SYMBOL_GPL(fsl_spi_cpm_bufs_complete);
 
 void fsl_spi_cpm_irq(struct mpc8xxx_spi *mspi, u32 events)
 {
@@ -198,6 +199,7 @@ void fsl_spi_cpm_irq(struct mpc8xxx_spi *mspi, u32 events)
 	else
 		complete(&mspi->done);
 }
+EXPORT_SYMBOL_GPL(fsl_spi_cpm_irq);
 
 static void *fsl_spi_alloc_dummy_rx(void)
 {
@@ -224,7 +226,7 @@ static void fsl_spi_free_dummy_rx(void)
 	case 1:
 		kfree(fsl_dummy_rx);
 		fsl_dummy_rx = NULL;
-		/* fall through */
+		fallthrough;
 	default:
 		fsl_dummy_rx_refcnt--;
 		break;
@@ -264,17 +266,6 @@ static unsigned long fsl_spi_cpm_get_pram(struct mpc8xxx_spi *mspi)
 	if (mspi->flags & SPI_CPM2) {
 		pram_ofs = cpm_muram_alloc(SPI_PRAM_SIZE, 64);
 		out_be16(spi_base, pram_ofs);
-	} else {
-		struct spi_pram __iomem *pram = spi_base;
-		u16 rpbase = in_be16(&pram->rpbase);
-
-		/* Microcode relocation patch applied? */
-		if (rpbase) {
-			pram_ofs = rpbase;
-		} else {
-			pram_ofs = cpm_muram_alloc(SPI_PRAM_SIZE, 64);
-			out_be16(spi_base, pram_ofs);
-		}
 	}
 
 	iounmap(spi_base);
@@ -287,7 +278,6 @@ int fsl_spi_cpm_init(struct mpc8xxx_spi *mspi)
 	struct device_node *np = dev->of_node;
 	const u32 *iprop;
 	int size;
-	unsigned long pram_ofs;
 	unsigned long bds_ofs;
 
 	if (!(mspi->flags & SPI_CPM_MODE))
@@ -304,7 +294,7 @@ int fsl_spi_cpm_init(struct mpc8xxx_spi *mspi)
 		switch (mspi->subblock) {
 		default:
 			dev_warn(dev, "cell-index unspecified, assuming SPI1\n");
-			/* fall through */
+			fallthrough;
 		case 0:
 			mspi->subblock = QE_CR_SUBBLOCK_SPI1;
 			break;
@@ -314,8 +304,24 @@ int fsl_spi_cpm_init(struct mpc8xxx_spi *mspi)
 		}
 	}
 
-	pram_ofs = fsl_spi_cpm_get_pram(mspi);
-	if (IS_ERR_VALUE(pram_ofs)) {
+	if (mspi->flags & SPI_CPM1) {
+		void *pram;
+
+		pram = devm_platform_ioremap_resource(to_platform_device(dev),
+						      1);
+		if (IS_ERR(pram))
+			mspi->pram = NULL;
+		else
+			mspi->pram = pram;
+	} else {
+		unsigned long pram_ofs = fsl_spi_cpm_get_pram(mspi);
+
+		if (IS_ERR_VALUE(pram_ofs))
+			mspi->pram = NULL;
+		else
+			mspi->pram = cpm_muram_addr(pram_ofs);
+	}
+	if (mspi->pram == NULL) {
 		dev_err(dev, "can't allocate spi parameter ram\n");
 		goto err_pram;
 	}
@@ -340,8 +346,6 @@ int fsl_spi_cpm_init(struct mpc8xxx_spi *mspi)
 		dev_err(dev, "unable to map dummy rx buffer\n");
 		goto err_dummy_rx;
 	}
-
-	mspi->pram = cpm_muram_addr(pram_ofs);
 
 	mspi->tx_bd = cpm_muram_addr(bds_ofs);
 	mspi->rx_bd = cpm_muram_addr(bds_ofs + sizeof(*mspi->tx_bd));
@@ -370,11 +374,13 @@ err_dummy_rx:
 err_dummy_tx:
 	cpm_muram_free(bds_ofs);
 err_bds:
-	cpm_muram_free(pram_ofs);
+	if (!(mspi->flags & SPI_CPM1))
+		cpm_muram_free(cpm_muram_offset(mspi->pram));
 err_pram:
 	fsl_spi_free_dummy_rx();
 	return -ENOMEM;
 }
+EXPORT_SYMBOL_GPL(fsl_spi_cpm_init);
 
 void fsl_spi_cpm_free(struct mpc8xxx_spi *mspi)
 {
@@ -386,6 +392,10 @@ void fsl_spi_cpm_free(struct mpc8xxx_spi *mspi)
 	dma_unmap_single(dev, mspi->dma_dummy_rx, SPI_MRBLR, DMA_FROM_DEVICE);
 	dma_unmap_single(dev, mspi->dma_dummy_tx, PAGE_SIZE, DMA_TO_DEVICE);
 	cpm_muram_free(cpm_muram_offset(mspi->tx_bd));
-	cpm_muram_free(cpm_muram_offset(mspi->pram));
+	if (!(mspi->flags & SPI_CPM1))
+		cpm_muram_free(cpm_muram_offset(mspi->pram));
 	fsl_spi_free_dummy_rx();
 }
+EXPORT_SYMBOL_GPL(fsl_spi_cpm_free);
+
+MODULE_LICENSE("GPL");

@@ -30,8 +30,6 @@
 #define CIK_RB_BITMAP_WIDTH_PER_SH     2
 #define HAWAII_RB_BITMAP_WIDTH_PER_SH  4
 
-#define RADEON_NUM_OF_VMIDS	8
-
 /* DIDT IND registers */
 #define DIDT_SQ_CTRL0                                     0x0
 #       define DIDT_CTRL_EN                               (1 << 0)
@@ -481,6 +479,10 @@
 #define		SOFT_RESET_REGBB		       	(1 << 22)
 #define		SOFT_RESET_ORB				(1 << 23)
 #define		SOFT_RESET_VCE				(1 << 24)
+
+#define SRBM_READ_ERROR					0xE98
+#define SRBM_INT_CNTL					0xEA0
+#define SRBM_INT_ACK					0xEA8
 
 #define VM_L2_CNTL					0x1400
 #define		ENABLE_L2_CACHE					(1 << 0)
@@ -1331,6 +1333,7 @@
 #       define CNTX_EMPTY_INT_ENABLE                    (1 << 20)
 #       define PRIV_INSTR_INT_ENABLE                    (1 << 22)
 #       define PRIV_REG_INT_ENABLE                      (1 << 23)
+#       define OPCODE_ERROR_INT_ENABLE                  (1 << 24)
 #       define TIME_STAMP_INT_ENABLE                    (1 << 26)
 #       define CP_RINGID2_INT_ENABLE                    (1 << 29)
 #       define CP_RINGID1_INT_ENABLE                    (1 << 30)
@@ -2011,7 +2014,7 @@
 #       define SDMA_COPY_SUB_OPCODE_T2T_SUB_WINDOW        6
 #define	SDMA_OPCODE_WRITE				  2
 #       define SDMA_WRITE_SUB_OPCODE_LINEAR               0
-#       define SDMA_WRTIE_SUB_OPCODE_TILED                1
+#       define SDMA_WRITE_SUB_OPCODE_TILED                1
 #define	SDMA_OPCODE_INDIRECT_BUFFER			  4
 #define	SDMA_OPCODE_FENCE				  5
 #define	SDMA_OPCODE_TRAP				  6
@@ -2064,8 +2067,10 @@
 #define UVD_UDEC_ADDR_CONFIG		0xef4c
 #define UVD_UDEC_DB_ADDR_CONFIG		0xef50
 #define UVD_UDEC_DBW_ADDR_CONFIG	0xef54
+#define UVD_NO_OP			0xeffc
 
 #define UVD_LMI_EXT40_ADDR		0xf498
+#define UVD_GP_SCRATCH4			0xf4e0
 #define UVD_LMI_ADDR_EXT		0xf594
 #define UVD_VCPU_CACHE_OFFSET0		0xf608
 #define UVD_VCPU_CACHE_SIZE0		0xf60c
@@ -2083,6 +2088,8 @@
 #	define CG_DT_MASK				(0xf << 2)
 #	define CLK_OD(x)				((x) << 6)
 #	define CLK_OD_MASK				(0x1f << 6)
+
+#define UVD_STATUS					0xf6bc
 
 /* UVD clocks */
 
@@ -2125,6 +2132,7 @@
 #define VCE_UENC_REG_CLOCK_GATING	0x207c0
 #define VCE_SYS_INT_EN			0x21300
 #	define VCE_SYS_INT_TRAP_INTERRUPT_EN	(1 << 3)
+#define VCE_LMI_VCPU_CACHE_40BIT_BAR	0x2145c
 #define VCE_LMI_CTRL2			0x21474
 #define VCE_LMI_CTRL			0x21498
 #define VCE_LMI_VM_CTRL			0x214a0
@@ -2140,9 +2148,12 @@
 #define VCE_CMD_IB_AUTO		0x00000005
 #define VCE_CMD_SEMAPHORE	0x00000006
 
-#define ATC_VMID0_PASID_MAPPING					0x339Cu
-#define	ATC_VMID_PASID_MAPPING_UPDATE_STATUS	0x3398u
-#define	ATC_VMID_PASID_MAPPING_VALID				(1U << 31)
+#define ATC_VMID_PASID_MAPPING_UPDATE_STATUS		0x3398u
+#define ATC_VMID0_PASID_MAPPING				0x339Cu
+#define ATC_VMID_PASID_MAPPING_PASID_MASK		(0xFFFF)
+#define ATC_VMID_PASID_MAPPING_PASID_SHIFT		0
+#define ATC_VMID_PASID_MAPPING_VALID_MASK		(0x1 << 31)
+#define ATC_VMID_PASID_MAPPING_VALID_SHIFT		31
 
 #define ATC_VM_APERTURE0_CNTL					0x3310u
 #define	ATS_ACCESS_MODE_NEVER						0

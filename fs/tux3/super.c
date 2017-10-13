@@ -12,7 +12,6 @@
 #include <linux/statfs.h>
 #include <linux/parser.h>
 #include <linux/seq_file.h>
-#include "kcompat.h"
 #define trace trace_on
 
 /* FIXME: this should be mount option? */
@@ -66,7 +65,7 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 #endif
 
 	/* uninitialized stuff by alloc_inode() */
-	inode->i_version	= 1;
+	inode_set_iversion(inode, 1);
 	inode->i_atime		= epoch;
 	inode->i_mtime		= epoch;
 	inode->i_ctime		= epoch;
@@ -121,7 +120,7 @@ static int __init tux3_init_inodecache(void)
 {
 	tux_inode_cachep = kmem_cache_create("tux3_inode_cache",
 			sizeof(struct tux3_inode), 0,
-			(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD),
+			(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 			tux3_inode_init_once);
 	if (tux_inode_cachep == NULL)
 		return -ENOMEM;
@@ -424,7 +423,7 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	sb->blocksize = 1 << sb->blockbits;
 	sb->blockmask = (1 << sb->blockbits) - 1;
 #ifdef __KERNEL__
-	sb->blocks_per_page_bits = PAGE_CACHE_SHIFT - sb->blockbits;
+	sb->blocks_per_page_bits = PAGE_SHIFT - sb->blockbits;
 #else
 	sb->blocks_per_page_bits = 0;
 #endif
@@ -476,7 +475,7 @@ static int load_sb(struct sb *sb)
 	if (err)
 		return err;
 
-	err = devio_sync(READ, sb_dev(sb), SB_LOC, super, SB_LEN);
+	err = devio_sync(REQ_OP_READ, 0, sb_dev(sb), SB_LOC, super, SB_LEN);
 	if (err)
 		return err;
 	if (memcmp(super->magic, TUX3_MAGIC_STR, sizeof(super->magic)))
@@ -687,6 +686,16 @@ static void tux3_put_super(struct super_block *sb)
 	kfree(sbi);
 }
 
+/* FIXME: SB_LAZYTIME is not supported yet */
+static unsigned long remove_lazytime(struct sb *sb, unsigned long flags)
+{
+	if (flags & SB_LAZYTIME) {
+		tux3_msg(sb, "lazytime is not supported, ignored");
+		flags &= ~SB_LAZYTIME;
+	}
+	return flags;
+}
+
 static int tux3_remount(struct super_block *sb, int *flags, char *data)
 {
 	struct sb *sbi = tux_sb(sb);
@@ -694,7 +703,7 @@ static int tux3_remount(struct super_block *sb, int *flags, char *data)
 	int err, remount_ro;
 
 	/* Become read-only mount? */
-	remount_ro = (*flags & MS_RDONLY) && !(sb->s_flags & MS_RDONLY);
+	remount_ro = (*flags & SB_RDONLY) && !sb_rdonly(sb);
 
 	err = parse_options(sbi, &mopt, data);
 	if (err)
@@ -706,6 +715,7 @@ static int tux3_remount(struct super_block *sb, int *flags, char *data)
 	}
 
 	sbi->mopt = mopt;
+	*flags = remove_lazytime(sbi, *flags);
 
 	return 0;
 }
@@ -748,12 +758,13 @@ static int tux3_fill_super(struct super_block *sb, void *data, int silent)
 	 * FIXME: atime can insert inode into dirty list unexpectedly.
 	 * For now, doesn't support and disable atime.
 	 */
-	sb->s_flags |= MS_NOATIME;
+	sb->s_flags |= SB_NOATIME;
 	sb->s_magic = TUX3_SUPER_MAGIC;
 	sb->s_op = &tux3_super_ops;
 	sb->s_time_gran = 1;
 	/* Set default mount options */
 	sbi->mopt = tux3_default_mopt;
+	sb->s_flags = remove_lazytime(sbi, sb->s_flags);
 
 	err = parse_options(sbi, &sbi->mopt, data);
 	if (err)

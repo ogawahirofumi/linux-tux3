@@ -55,10 +55,7 @@
 
 MODULE_AUTHOR("YOKOTA Hiroshi <yokota@netlab.is.tsukuba.ac.jp>");
 MODULE_DESCRIPTION("WorkBit NinjaSCSI-3 / NinjaSCSI-32Bi(16bit) PCMCIA SCSI host adapter module");
-MODULE_SUPPORTED_DEVICE("sd,sr,sg,st");
-#ifdef MODULE_LICENSE
 MODULE_LICENSE("GPL");
-#endif
 
 #include "nsp_io.h"
 
@@ -86,8 +83,7 @@ static struct scsi_host_template nsp_driver_template = {
 	.can_queue		 = 1,
 	.this_id		 = NSP_INITIATOR_ID,
 	.sg_tablesize		 = SG_ALL,
-	.cmd_per_lun		 = 1,
-	.use_clustering		 = DISABLE_CLUSTERING,
+	.dma_boundary		 = PAGE_SIZE - 1,
 };
 
 static nsp_hw_data nsp_data_base; /* attach <-> detect glue */
@@ -137,6 +133,7 @@ static inline void nsp_inc_resid(struct scsi_cmnd *SCpnt, int residInc)
 	scsi_set_resid(SCpnt, scsi_get_resid(SCpnt) + residInc);
 }
 
+__printf(4, 5)
 static void nsp_cs_message(const char *func, int line, char *type, char *fmt, ...)
 {
 	va_list args;
@@ -181,11 +178,10 @@ static void nsp_scsi_done(struct scsi_cmnd *SCpnt)
 
 	data->CurrentSC = NULL;
 
-	SCpnt->scsi_done(SCpnt);
+	scsi_done(SCpnt);
 }
 
-static int nsp_queuecommand_lck(struct scsi_cmnd *SCpnt,
-			    void (*done)(struct scsi_cmnd *))
+static int nsp_queuecommand_lck(struct scsi_cmnd *SCpnt)
 {
 #ifdef NSP_DEBUG
 	/*unsigned int host_id = SCpnt->device->host->this_id;*/
@@ -199,8 +195,6 @@ static int nsp_queuecommand_lck(struct scsi_cmnd *SCpnt,
 		SCpnt, target, SCpnt->device->lun, scsi_sglist(SCpnt),
 		scsi_bufflen(SCpnt), scsi_sg_count(SCpnt));
 	//nsp_dbg(NSP_DEBUG_QUEUECOMMAND, "before CurrentSC=0x%p", data->CurrentSC);
-
-	SCpnt->scsi_done	= done;
 
 	if (data->CurrentSC != NULL) {
 		nsp_msg(KERN_DEBUG, "CurrentSC!=NULL this can't be happen");
@@ -224,7 +218,7 @@ static int nsp_queuecommand_lck(struct scsi_cmnd *SCpnt,
 
 	data->CurrentSC		= SCpnt;
 
-	SCpnt->SCp.Status	= CHECK_CONDITION;
+	SCpnt->SCp.Status	= SAM_STAT_CHECK_CONDITION;
 	SCpnt->SCp.Message	= 0;
 	SCpnt->SCp.have_data_in = IO_UNKNOWN;
 	SCpnt->SCp.sent_command = 0;
@@ -692,14 +686,14 @@ static int nsp_fifo_count(struct scsi_cmnd *SCpnt)
 {
 	unsigned int base = SCpnt->device->host->io_port;
 	unsigned int count;
-	unsigned int l, m, h, dummy;
+	unsigned int l, m, h;
 
 	nsp_index_write(base, POINTERCLR, POINTER_CLEAR | ACK_COUNTER);
 
 	l     = nsp_index_read(base, TRANSFERCOUNT);
 	m     = nsp_index_read(base, TRANSFERCOUNT);
 	h     = nsp_index_read(base, TRANSFERCOUNT);
-	dummy = nsp_index_read(base, TRANSFERCOUNT); /* required this! */
+	nsp_index_read(base, TRANSFERCOUNT); /* required this! */
 
 	count = (h << 16) | (m << 8) | (l << 0);
 
@@ -790,7 +784,7 @@ static void nsp_pio_read(struct scsi_cmnd *SCpnt)
 		    SCpnt->SCp.buffers_residual != 0 ) {
 			//nsp_dbg(NSP_DEBUG_DATA_IO, "scatterlist next timeout=%d", time_out);
 			SCpnt->SCp.buffers_residual--;
-			SCpnt->SCp.buffer++;
+			SCpnt->SCp.buffer = sg_next(SCpnt->SCp.buffer);
 			SCpnt->SCp.ptr		 = BUFFER_ADDR;
 			SCpnt->SCp.this_residual = SCpnt->SCp.buffer->length;
 			time_out = 1000;
@@ -888,7 +882,7 @@ static void nsp_pio_write(struct scsi_cmnd *SCpnt)
 		    SCpnt->SCp.buffers_residual != 0 ) {
 			//nsp_dbg(NSP_DEBUG_DATA_IO, "scatterlist next");
 			SCpnt->SCp.buffers_residual--;
-			SCpnt->SCp.buffer++;
+			SCpnt->SCp.buffer = sg_next(SCpnt->SCp.buffer);
 			SCpnt->SCp.ptr		 = BUFFER_ADDR;
 			SCpnt->SCp.this_residual = SCpnt->SCp.buffer->length;
 			time_out = 1000;
@@ -1104,8 +1098,6 @@ static irqreturn_t nspintr(int irq, void *dev_id)
 		nsp_index_write(base, SCSIBUSCTRL, SCSI_ATN | AUTODIRECTION | ACKENB);
 		return IRQ_HANDLED;
 
-		break;
-
 	case PH_RESELECT:
 		//nsp_dbg(NSP_DEBUG_INTR, "phase reselect");
 		// *sync_neg = SYNC_NOT_YET;
@@ -1115,7 +1107,7 @@ static irqreturn_t nspintr(int irq, void *dev_id)
 			nsp_scsi_done(tmpSC);
 			return IRQ_HANDLED;
 		}
-		/* fall thru */
+		fallthrough;
 	default:
 		if ((irq_status & (IRQSTATUS_SCSI | IRQSTATUS_FIFO)) == 0) {
 			return IRQ_HANDLED;
@@ -1135,7 +1127,8 @@ static irqreturn_t nspintr(int irq, void *dev_id)
 
 		//*sync_neg       = SYNC_NOT_YET;
 
-		if ((tmpSC->SCp.Message == MSG_COMMAND_COMPLETE)) {     /* all command complete and return status */
+		/* all command complete and return status */
+		if (tmpSC->SCp.Message == COMMAND_COMPLETE) {
 			tmpSC->result = (DID_OK		             << 16) |
 					((tmpSC->SCp.Message & 0xff) <<  8) |
 					((tmpSC->SCp.Status  & 0xff) <<  0);
@@ -1229,9 +1222,9 @@ static irqreturn_t nspintr(int irq, void *dev_id)
 			data->Sync[target].SyncOffset = 0;
 
 			/**/
-			data->MsgBuffer[i] = MSG_EXTENDED; i++;
+			data->MsgBuffer[i] = EXTENDED_MESSAGE; i++;
 			data->MsgBuffer[i] = 3;            i++;
-			data->MsgBuffer[i] = MSG_EXT_SDTR; i++;
+			data->MsgBuffer[i] = EXTENDED_SDTR; i++;
 			data->MsgBuffer[i] = 0x0c;         i++;
 			data->MsgBuffer[i] = 15;           i++;
 			/**/
@@ -1258,9 +1251,9 @@ static irqreturn_t nspintr(int irq, void *dev_id)
 			//nsp_dbg(NSP_DEBUG_INTR, "sync target=%d,lun=%d",target,lun);
 
 			if (data->MsgLen       >= 5            &&
-			    data->MsgBuffer[0] == MSG_EXTENDED &&
+			    data->MsgBuffer[0] == EXTENDED_MESSAGE &&
 			    data->MsgBuffer[1] == 3            &&
-			    data->MsgBuffer[2] == MSG_EXT_SDTR ) {
+			    data->MsgBuffer[2] == EXTENDED_SDTR ) {
 				data->Sync[target].SyncPeriod = data->MsgBuffer[3];
 				data->Sync[target].SyncOffset = data->MsgBuffer[4];
 				//nsp_dbg(NSP_DEBUG_INTR, "sync ok, %d %d", data->MsgBuffer[3], data->MsgBuffer[4]);
@@ -1278,7 +1271,7 @@ static irqreturn_t nspintr(int irq, void *dev_id)
 		tmp = -1;
 		for (i = 0; i < data->MsgLen; i++) {
 			tmp = data->MsgBuffer[i];
-			if (data->MsgBuffer[i] == MSG_EXTENDED) {
+			if (data->MsgBuffer[i] == EXTENDED_MESSAGE) {
 				i += (1 + data->MsgBuffer[i+1]);
 			}
 		}
@@ -1364,9 +1357,6 @@ static const char *nsp_info(struct Scsi_Host *shpnt)
 	return data->nspinfo;
 }
 
-#undef SPRINTF
-#define SPRINTF(args...) seq_printf(m, ##args)
-
 static int nsp_show_info(struct seq_file *m, struct Scsi_Host *host)
 {
 	int id;
@@ -1378,75 +1368,74 @@ static int nsp_show_info(struct seq_file *m, struct Scsi_Host *host)
 	hostno = host->host_no;
 	data = (nsp_hw_data *)host->hostdata;
 
-	SPRINTF("NinjaSCSI status\n\n");
-	SPRINTF("Driver version:        $Revision: 1.23 $\n");
-	SPRINTF("SCSI host No.:         %d\n",          hostno);
-	SPRINTF("IRQ:                   %d\n",          host->irq);
-	SPRINTF("IO:                    0x%lx-0x%lx\n", host->io_port, host->io_port + host->n_io_port - 1);
-	SPRINTF("MMIO(virtual address): 0x%lx-0x%lx\n", host->base, host->base + data->MmioLength - 1);
-	SPRINTF("sg_tablesize:          %d\n",          host->sg_tablesize);
+	seq_puts(m, "NinjaSCSI status\n\n"
+		"Driver version:        $Revision: 1.23 $\n");
+	seq_printf(m, "SCSI host No.:         %d\n",          hostno);
+	seq_printf(m, "IRQ:                   %d\n",          host->irq);
+	seq_printf(m, "IO:                    0x%lx-0x%lx\n", host->io_port, host->io_port + host->n_io_port - 1);
+	seq_printf(m, "MMIO(virtual address): 0x%lx-0x%lx\n", host->base, host->base + data->MmioLength - 1);
+	seq_printf(m, "sg_tablesize:          %d\n",          host->sg_tablesize);
 
-	SPRINTF("burst transfer mode:   ");
+	seq_puts(m, "burst transfer mode:   ");
 	switch (nsp_burst_mode) {
 	case BURST_IO8:
-		SPRINTF("io8");
+		seq_puts(m, "io8");
 		break;
 	case BURST_IO32:
-		SPRINTF("io32");
+		seq_puts(m, "io32");
 		break;
 	case BURST_MEM32:
-		SPRINTF("mem32");
+		seq_puts(m, "mem32");
 		break;
 	default:
-		SPRINTF("???");
+		seq_puts(m, "???");
 		break;
 	}
-	SPRINTF("\n");
+	seq_putc(m, '\n');
 
 
 	spin_lock_irqsave(&(data->Lock), flags);
-	SPRINTF("CurrentSC:             0x%p\n\n",      data->CurrentSC);
+	seq_printf(m, "CurrentSC:             0x%p\n\n",      data->CurrentSC);
 	spin_unlock_irqrestore(&(data->Lock), flags);
 
-	SPRINTF("SDTR status\n");
+	seq_puts(m, "SDTR status\n");
 	for(id = 0; id < ARRAY_SIZE(data->Sync); id++) {
 
-		SPRINTF("id %d: ", id);
+		seq_printf(m, "id %d: ", id);
 
 		if (id == host->this_id) {
-			SPRINTF("----- NinjaSCSI-3 host adapter\n");
+			seq_puts(m, "----- NinjaSCSI-3 host adapter\n");
 			continue;
 		}
 
 		switch(data->Sync[id].SyncNegotiation) {
 		case SYNC_OK:
-			SPRINTF(" sync");
+			seq_puts(m, " sync");
 			break;
 		case SYNC_NG:
-			SPRINTF("async");
+			seq_puts(m, "async");
 			break;
 		case SYNC_NOT_YET:
-			SPRINTF(" none");
+			seq_puts(m, " none");
 			break;
 		default:
-			SPRINTF("?????");
+			seq_puts(m, "?????");
 			break;
 		}
 
 		if (data->Sync[id].SyncPeriod != 0) {
 			speed = 1000000 / (data->Sync[id].SyncPeriod * 4);
 
-			SPRINTF(" transfer %d.%dMB/s, offset %d",
+			seq_printf(m, " transfer %d.%dMB/s, offset %d",
 				speed / 1000,
 				speed % 1000,
 				data->Sync[id].SyncOffset
 				);
 		}
-		SPRINTF("\n");
+		seq_putc(m, '\n');
 	}
 	return 0;
 }
-#undef SPRINTF
 
 /*---------------------------------------------------------------*/
 /* error handler                                                 */
@@ -1566,7 +1555,7 @@ static int nsp_cs_config_check(struct pcmcia_device *p_dev, void *priv_data)
 			goto next_entry;
 
 		data->MmioAddress = (unsigned long)
-			ioremap_nocache(p_dev->resource[2]->start,
+			ioremap(p_dev->resource[2]->start,
 					resource_size(p_dev->resource[2]));
 		data->MmioLength  = resource_size(p_dev->resource[2]);
 	}
@@ -1747,19 +1736,6 @@ static struct pcmcia_driver nsp_driver = {
 	.suspend	= nsp_cs_suspend,
 	.resume		= nsp_cs_resume,
 };
-
-static int __init nsp_cs_init(void)
-{
-	return pcmcia_register_driver(&nsp_driver);
-}
-
-static void __exit nsp_cs_exit(void)
-{
-	pcmcia_unregister_driver(&nsp_driver);
-}
-
-
-module_init(nsp_cs_init)
-module_exit(nsp_cs_exit)
+module_pcmcia_driver(nsp_driver);
 
 /* end */

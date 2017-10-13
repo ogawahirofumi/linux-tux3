@@ -9,9 +9,18 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+/*
+ * When the first attempt at device initialization fails, we may need to
+ * wait a little bit and retry. This timeout, by default 3 seconds, gives
+ * device time to start up. Required on BCM2708 and a few other chipsets.
+ */
+#define MTD_DEFAULT_TIMEOUT	3
+
 #include <linux/module.h>
+#include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/blkdev.h>
+#include <linux/backing-dev.h>
 #include <linux/bio.h>
 #include <linux/pagemap.h>
 #include <linux/list.h>
@@ -21,6 +30,9 @@
 #include <linux/mount.h>
 #include <linux/slab.h>
 #include <linux/major.h>
+
+/* Maximum number of comma-separated items in the 'block2mtd=' parameter */
+#define BLOCK2MTD_PARAM_MAX_COUNT 3
 
 /* Info for the block device */
 struct block2mtd_dev {
@@ -35,7 +47,7 @@ struct block2mtd_dev {
 static LIST_HEAD(blkmtd_device_list);
 
 
-static struct page *page_read(struct address_space *mapping, int index)
+static struct page *page_read(struct address_space *mapping, pgoff_t index)
 {
 	return read_mapping_page(mapping, index, NULL);
 }
@@ -45,7 +57,7 @@ static int _block2mtd_erase(struct block2mtd_dev *dev, loff_t to, size_t len)
 {
 	struct address_space *mapping = dev->blkdev->bd_inode->i_mapping;
 	struct page *page;
-	int index = to >> PAGE_SHIFT;	// page index
+	pgoff_t index = to >> PAGE_SHIFT;	// page index
 	int pages = len >> PAGE_SHIFT;
 	u_long *p;
 	u_long *max;
@@ -66,7 +78,7 @@ static int _block2mtd_erase(struct block2mtd_dev *dev, loff_t to, size_t len)
 				break;
 			}
 
-		page_cache_release(page);
+		put_page(page);
 		pages--;
 		index++;
 	}
@@ -79,17 +91,12 @@ static int block2mtd_erase(struct mtd_info *mtd, struct erase_info *instr)
 	size_t len = instr->len;
 	int err;
 
-	instr->state = MTD_ERASING;
 	mutex_lock(&dev->write_mutex);
 	err = _block2mtd_erase(dev, from, len);
 	mutex_unlock(&dev->write_mutex);
-	if (err) {
+	if (err)
 		pr_err("erase failed err = %d\n", err);
-		instr->state = MTD_ERASE_FAILED;
-	} else
-		instr->state = MTD_ERASE_DONE;
 
-	mtd_erase_callback(instr);
 	return err;
 }
 
@@ -99,7 +106,7 @@ static int block2mtd_read(struct mtd_info *mtd, loff_t from, size_t len,
 {
 	struct block2mtd_dev *dev = mtd->priv;
 	struct page *page;
-	int index = from >> PAGE_SHIFT;
+	pgoff_t index = from >> PAGE_SHIFT;
 	int offset = from & (PAGE_SIZE-1);
 	int cpylen;
 
@@ -115,7 +122,7 @@ static int block2mtd_read(struct mtd_info *mtd, loff_t from, size_t len,
 			return PTR_ERR(page);
 
 		memcpy(buf, page_address(page) + offset, cpylen);
-		page_cache_release(page);
+		put_page(page);
 
 		if (retlen)
 			*retlen += cpylen;
@@ -133,7 +140,7 @@ static int _block2mtd_write(struct block2mtd_dev *dev, const u_char *buf,
 {
 	struct page *page;
 	struct address_space *mapping = dev->blkdev->bd_inode->i_mapping;
-	int index = to >> PAGE_SHIFT;	// page index
+	pgoff_t index = to >> PAGE_SHIFT;	// page index
 	int offset = to & ~PAGE_MASK;	// page offset
 	int cpylen;
 
@@ -155,7 +162,7 @@ static int _block2mtd_write(struct block2mtd_dev *dev, const u_char *buf,
 			unlock_page(page);
 			balance_dirty_pages_ratelimited(mapping);
 		}
-		page_cache_release(page);
+		put_page(page);
 
 		if (retlen)
 			*retlen += cpylen;
@@ -209,8 +216,12 @@ static void block2mtd_free_device(struct block2mtd_dev *dev)
 }
 
 
-static struct block2mtd_dev *add_device(char *devname, int erase_size)
+static struct block2mtd_dev *add_device(char *devname, int erase_size,
+		char *label, int timeout)
 {
+#ifndef MODULE
+	int i;
+#endif
 	const fmode_t mode = FMODE_READ | FMODE_WRITE | FMODE_EXCL;
 	struct block_device *bdev;
 	struct block2mtd_dev *dev;
@@ -225,15 +236,28 @@ static struct block2mtd_dev *add_device(char *devname, int erase_size)
 
 	/* Get a handle on the device */
 	bdev = blkdev_get_by_path(devname, mode, dev);
+
 #ifndef MODULE
-	if (IS_ERR(bdev)) {
+	/*
+	 * We might not have the root device mounted at this point.
+	 * Try to resolve the device name by other means.
+	 */
+	for (i = 0; IS_ERR(bdev) && i <= timeout; i++) {
+		dev_t devt;
 
-		/* We might not have rootfs mounted at this point. Try
-		   to resolve the device name by other means. */
+		if (i)
+			/*
+			 * Calling wait_for_device_probe in the first loop
+			 * was not enough, sleep for a bit in subsequent
+			 * go-arounds.
+			 */
+			msleep(1000);
+		wait_for_device_probe();
 
-		dev_t devt = name_to_dev_t(devname);
-		if (devt)
-			bdev = blkdev_get_by_dev(devt, mode, dev);
+		devt = name_to_dev_t(devname);
+		if (!devt)
+			continue;
+		bdev = blkdev_get_by_dev(devt, mode, dev);
 	}
 #endif
 
@@ -257,7 +281,10 @@ static struct block2mtd_dev *add_device(char *devname, int erase_size)
 
 	/* Setup the MTD structure */
 	/* make the name contain the block device in */
-	name = kasprintf(GFP_KERNEL, "block2mtd: %s", devname);
+	if (!label)
+		name = kasprintf(GFP_KERNEL, "block2mtd: %s", devname);
+	else
+		name = kstrdup(label, GFP_KERNEL);
 	if (!name)
 		goto err_destroy_mutex;
 
@@ -280,10 +307,11 @@ static struct block2mtd_dev *add_device(char *devname, int erase_size)
 		/* Device didn't get added, so free the entry */
 		goto err_destroy_mutex;
 	}
+
 	list_add(&dev->list, &blkmtd_device_list);
 	pr_info("mtd%d: [%s] erase_size = %dKiB [%d]\n",
 		dev->mtd.index,
-		dev->mtd.name + strlen("block2mtd: "),
+		label ? label : dev->mtd.name + strlen("block2mtd: "),
 		dev->mtd.erasesize >> 10, dev->mtd.erasesize);
 	return dev;
 
@@ -307,8 +335,10 @@ static int ustrtoul(const char *cp, char **endp, unsigned int base)
 	switch (**endp) {
 	case 'G' :
 		result *= 1024;
+		fallthrough;
 	case 'M':
 		result *= 1024;
+		fallthrough;
 	case 'K':
 	case 'k':
 		result *= 1024;
@@ -348,16 +378,20 @@ static inline void kill_final_newline(char *str)
 
 #ifndef MODULE
 static int block2mtd_init_called = 0;
-static char block2mtd_paramline[80 + 12]; /* 80 for device, 12 for erase size */
+/* 80 for device, 12 for erase size */
+static char block2mtd_paramline[80 + 12];
 #endif
 
 static int block2mtd_setup2(const char *val)
 {
-	char buf[80 + 12]; /* 80 for device, 12 for erase size */
+	/* 80 for device, 12 for erase size, 80 for name, 8 for timeout */
+	char buf[80 + 12 + 80 + 8];
 	char *str = buf;
-	char *token[2];
+	char *token[BLOCK2MTD_PARAM_MAX_COUNT];
 	char *name;
+	char *label = NULL;
 	size_t erase_size = PAGE_SIZE;
+	unsigned long timeout = MTD_DEFAULT_TIMEOUT;
 	int i, ret;
 
 	if (strnlen(val, sizeof(buf)) >= sizeof(buf)) {
@@ -368,7 +402,7 @@ static int block2mtd_setup2(const char *val)
 	strcpy(str, val);
 	kill_final_newline(str);
 
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < BLOCK2MTD_PARAM_MAX_COUNT; i++)
 		token[i] = strsep(&str, ",");
 
 	if (str) {
@@ -387,7 +421,8 @@ static int block2mtd_setup2(const char *val)
 		return 0;
 	}
 
-	if (token[1]) {
+	/* Optional argument when custom label is used */
+	if (token[1] && strlen(token[1])) {
 		ret = parse_num(&erase_size, token[1]);
 		if (ret) {
 			pr_err("illegal erase size\n");
@@ -395,13 +430,18 @@ static int block2mtd_setup2(const char *val)
 		}
 	}
 
-	add_device(name, erase_size);
+	if (token[2]) {
+		label = token[2];
+		pr_info("Using custom MTD label '%s' for dev %s\n", label, name);
+	}
+
+	add_device(name, erase_size, label, timeout);
 
 	return 0;
 }
 
 
-static int block2mtd_setup(const char *val, struct kernel_param *kp)
+static int block2mtd_setup(const char *val, const struct kernel_param *kp)
 {
 #ifdef MODULE
 	return block2mtd_setup2(val);
@@ -429,7 +469,7 @@ static int block2mtd_setup(const char *val, struct kernel_param *kp)
 
 
 module_param_call(block2mtd, block2mtd_setup, NULL, NULL, 0200);
-MODULE_PARM_DESC(block2mtd, "Device to use. \"block2mtd=<dev>[,<erasesize>]\"");
+MODULE_PARM_DESC(block2mtd, "Device to use. \"block2mtd=<dev>[,[<erasesize>][,<label>]]\"");
 
 static int __init block2mtd_init(void)
 {
@@ -463,8 +503,7 @@ static void block2mtd_exit(void)
 	}
 }
 
-
-module_init(block2mtd_init);
+late_initcall(block2mtd_init);
 module_exit(block2mtd_exit);
 
 MODULE_LICENSE("GPL");

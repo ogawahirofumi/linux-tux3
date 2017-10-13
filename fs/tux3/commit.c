@@ -377,7 +377,7 @@ unsigned nospc_one_page_cost(struct inode *inode)
  */
 
 /* FIXME: we are using sb for now, should use metablock instead. */
-static int save_metablock(struct sb *sb, int req_flag)
+static int save_metablock(struct sb *sb, unsigned int req_flags)
 {
 	struct disksuper *super = &sb->super;
 
@@ -393,7 +393,7 @@ static int save_metablock(struct sb *sb, int req_flag)
 	super->atomgen = cpu_to_be32(sb->atomgen);
 	/* logchain and logcount are written to super directly */
 
-	return devio_sync(WRITE | REQ_META | req_flag,
+	return devio_sync(REQ_OP_WRITE, REQ_META | req_flags,
 			  sb_dev(sb), SB_LOC, super, SB_LEN);
 }
 
@@ -568,7 +568,7 @@ static int write_log(struct sb *sb)
 
 static int commit_delta(struct sb *sb)
 {
-	int req_flag = tux3_io_req_flag(sb->ioinfo);
+	unsigned int req_flags = tux3_io_req_flags(sb->ioinfo);
 	int err, barrier = TUX3_TEST_MOPT(sb, BARRIER);
 
 	/* Wait I/O was submitted */
@@ -579,8 +579,13 @@ static int commit_delta(struct sb *sb)
 	 * free must be done after commit block was hit to media.
 	 *
 	 * We can optimize by delaying deferred free until after next
-	 * REQ_FLUSH in next delta. Therefore, if make it async, we
+	 * REQ_PREFLUSH in next delta. Therefore, if make it async, we
 	 * can start next delta more early.
+	 *
+	 * (But if data integrity path (sync, fsync, umount, etc.), we
+	 * have to make sure last commit was done. So if those paths,
+	 * we would need REQ_FUA here (or __sync_current_delta() such
+	 * issues REQ_PREFLUSH instead?).
 	 */
 	if (barrier) {
 		/*
@@ -588,11 +593,11 @@ static int commit_delta(struct sb *sb)
 		 * CFQ-queue with previous, and to avoid CFQ's
 		 * idle_slice_timer between CFQ-queues.
 		 */
-		req_flag |= REQ_NOIDLE | REQ_FLUSH | REQ_FUA;
+		req_flags |= REQ_PREFLUSH | REQ_FUA;
 	}
 
 	trace("commit %i logblocks", be32_to_cpu(sb->super.logcount));
-	err = save_metablock(sb, req_flag);
+	err = save_metablock(sb, req_flags);
 	if (err)
 		return err;
 
@@ -829,10 +834,10 @@ static struct delta_ref *delta_get(struct sb *sb)
 		 */
 		barrier();
 		delta_ref = rcu_dereference_check(sb->current_delta, 1);
-	} while (!atomic_inc_not_zero(&delta_ref->refcount));
+	} while (!refcount_inc_not_zero(&delta_ref->refcount));
 
 	trace("delta %u, refcount %u",
-	      delta_ref->delta, atomic_read(&delta_ref->refcount));
+	      delta_ref->delta, refcount_read(&delta_ref->refcount));
 
 	return delta_ref;
 }
@@ -840,20 +845,20 @@ static struct delta_ref *delta_get(struct sb *sb)
 /* Release the reference of delta */
 static void delta_put(struct sb *sb, struct delta_ref *delta_ref)
 {
-	if (atomic_dec_and_test(&delta_ref->refcount))
+	if (refcount_dec_and_test(&delta_ref->refcount))
 		schedule_flush_delta(sb, delta_ref);
 
 	trace("delta %u, refcount %u",
-	      delta_ref->delta, atomic_read(&delta_ref->refcount));
+	      delta_ref->delta, refcount_read(&delta_ref->refcount));
 }
 
 /* Update current delta */
 static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref,
 			       unsigned new_delta)
 {
-	assert(atomic_read(&delta_ref->refcount) == 0);
+	assert(refcount_read(&delta_ref->refcount) == 0);
 	/* Set the initial refcount. */
-	atomic_set(&delta_ref->refcount, 1);
+	refcount_set(&delta_ref->refcount, 1);
 	/* Initialize waitref completion */
 	reinit_completion(&delta_ref->waitref_done);
 	/* Assign the delta number */
@@ -904,17 +909,15 @@ void tux3_delta_init(struct sb *sb)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(sb->delta_refs); i++) {
-		atomic_set(&sb->delta_refs[i].refcount, 0);
+		refcount_set(&sb->delta_refs[i].refcount, 0);
 		init_completion(&sb->delta_refs[i].waitref_done);
 	}
 #ifdef TUX3_FLUSHER_SYNC
 	init_rwsem(&sb->delta_lock);
 #else
 	for (i = 0; i < ARRAY_SIZE(sb->wb_work); i++) {
+		INIT_LIST_HEAD(&sb->wb_work[i].work.list);
 		sb->wb_work[i].flusher_is_waiting = 0;
-		init_completion(&sb->wb_work[i].dummy_done);
-		/* just for debug assert in schedule_flush_delta() */
-		complete(&sb->wb_work[i].dummy_done);
 	}
 #endif
 	init_waitqueue_head(&sb->delta_transition_wq);

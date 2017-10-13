@@ -55,12 +55,12 @@ static void tux3_page_zero_new_buffers(struct page *page, unsigned from,
 
 /*
  * Copy of __block_write_begin() (changed to call __tux3_mark_buffer_dirty(),
- * and to remove unmap_underlying_metadata())
+ * and to remove clean_bdev_bh_alias())
  */
 static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 			      get_block_t *get_block)
 {
-	unsigned from = pos & (PAGE_CACHE_SIZE - 1);
+	unsigned from = pos & (PAGE_SIZE - 1);
 	unsigned to = from + len;
 	struct inode *inode = page->mapping->host;
 	struct sb *sb = tux_sb(inode->i_sb);
@@ -71,8 +71,8 @@ static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 	struct buffer_head *bh, *head, *wait[2], **wait_bh=wait;
 
 	BUG_ON(!PageLocked(page));
-	BUG_ON(from > PAGE_CACHE_SIZE);
-	BUG_ON(to > PAGE_CACHE_SIZE);
+	BUG_ON(from > PAGE_SIZE);
+	BUG_ON(to > PAGE_SIZE);
 	BUG_ON(from > to);
 
 	/* Use blocksize/blockbits in sb, instead of inode->i_blkbits */
@@ -82,16 +82,14 @@ static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 		create_empty_buffers(page, blocksize, 0);
 	head = page_buffers(page);
 
-	block = (sector_t)page->index << (PAGE_CACHE_SHIFT - bbits);
+	block = (sector_t)page->index << (PAGE_SHIFT - bbits);
 
 	for(bh = head, block_start = 0; bh != head || !block_start;
 	    block++, block_start=block_end, bh = bh->b_this_page) {
 		block_end = block_start + blocksize;
 		if (block_end <= from || block_start >= to) {
-			if (PageUptodate(page)) {
-				if (!buffer_uptodate(bh))
-					set_buffer_uptodate(bh);
-			}
+			if (PageUptodate(page))
+				set_buffer_uptodate(bh);
 			continue;
 		}
 		if (buffer_new(bh))
@@ -109,8 +107,7 @@ static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 				break;
 			if (buffer_new(bh)) {
 #if 0
-				unmap_underlying_metadata(bh->b_bdev,
-							bh->b_blocknr);
+				clean_bdev_bh_alias(bh);
 #endif
 				if (PageUptodate(page)) {
 					/* FIXME: do we have to mark this dirty?
@@ -128,14 +125,13 @@ static int __tux3_write_begin(struct page *page, loff_t pos, unsigned len,
 			}
 		}
 		if (PageUptodate(page)) {
-			if (!buffer_uptodate(bh))
-				set_buffer_uptodate(bh);
+			set_buffer_uptodate(bh);
 			continue;
 		}
 		if (!buffer_uptodate(bh) && !buffer_delay(bh) &&
 		    !buffer_unwritten(bh) &&
 		     (block_start < from || block_end > to)) {
-			ll_rw_block(READ, 1, &bh);
+			ll_rw_block(REQ_OP_READ, 0, 1, &bh);
 			*wait_bh++=bh;
 		}
 	}
@@ -164,7 +160,7 @@ static int tux3_write_begin(struct address_space *mapping, loff_t pos,
 			    struct page **pagep, get_block_t *get_block,
 			    int tux3_flags)
 {
-	pgoff_t index = pos >> PAGE_CACHE_SHIFT;
+	pgoff_t index = pos >> PAGE_SHIFT;
 	struct page *page;
 	int status;
 
@@ -186,7 +182,7 @@ retry:
 			change_begin_nocheck(sb);
 		else if (change_begin_nospc(sb, cost, 0)) {
 			unlock_page(page);
-			page_cache_release(page);
+			put_page(page);
 			if (nospc_wait_and_check(sb, cost, 0)) {
 				/* Fail path will truncate page */
 				change_begin_nocheck(sb);
@@ -206,11 +202,11 @@ retry:
 		unsigned delta = tux3_get_current_delta();
 		struct page *tmp;
 
-		tmp = pagefork_for_blockdirty(NULL, page, delta);
+		tmp = pagefork_for_blockdirty(NULL, page, false, delta);
 		if (IS_ERR(tmp)) {
 			int err;
 			unlock_page(page);
-			page_cache_release(page);
+			put_page(page);
 
 			err = PTR_ERR(tmp);
 			if (err == -EAGAIN)
@@ -223,7 +219,7 @@ retry:
 	status = __tux3_write_begin(page, pos, len, get_block);
 	if (unlikely(status)) {
 		unlock_page(page);
-		page_cache_release(page);
+		put_page(page);
 		page = NULL;
 	}
 
@@ -282,7 +278,7 @@ static int __tux3_write_end(struct file *file, struct address_space *mapping,
 	struct inode *inode = mapping->host;
 	unsigned start;
 
-	start = pos & (PAGE_CACHE_SIZE - 1);
+	start = pos & (PAGE_SIZE - 1);
 
 	if (unlikely(copied < len)) {
 		/*
@@ -323,7 +319,7 @@ static int tux3_write_end(struct file *file, struct address_space *mapping,
 
 	/*
 	 * No need to use i_size_read() here, the i_size
-	 * cannot change under us because we hold i_mutex.
+	 * cannot change under us because we hold inode_lock.
 	 *
 	 * But it's important to update i_size while still holding page lock:
 	 * page writeout could otherwise come in and zero beyond i_size.
@@ -335,7 +331,7 @@ static int tux3_write_end(struct file *file, struct address_space *mapping,
 	}
 
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 
 	if (old_size < pos)
 		pagecache_isize_extended(inode, old_size, pos);
@@ -377,7 +373,7 @@ void tux3_try_cancel_dirty_page(struct page *page)
 		tmp = tmp->b_this_page;
 	} while (tmp != head);
 
-	cancel_dirty_page(page, PAGE_CACHE_SIZE);
+	cancel_dirty_page(page);
 }
 
 /*
@@ -408,7 +404,7 @@ static void tux3_invalidatepage(struct page *page, unsigned int offset,
 	/*
 	 * Check for overflow
 	 */
-	BUG_ON(stop > PAGE_CACHE_SIZE || stop < length);
+	BUG_ON(stop > PAGE_SIZE || stop < length);
 
 	head = page_buffers(page);
 	bh = head;
@@ -432,7 +428,7 @@ static void tux3_invalidatepage(struct page *page, unsigned int offset,
 	} while (bh != head);
 
 	if (!has_dirty)
-		cancel_dirty_page(page, length);
+		cancel_dirty_page(page);
 
 	/*
 	 * We release buffers only if the entire page is being invalidated.
@@ -462,8 +458,8 @@ static int __tux3_truncate_partial_block(struct address_space *mapping,
 	struct inode *inode = mapping->host;
 	struct sb *sb = tux_sb(inode->i_sb);
 	unsigned delta = tux3_get_current_delta();
-	pgoff_t index = from >> PAGE_CACHE_SHIFT;
-	unsigned offset = from & (PAGE_CACHE_SIZE - 1);
+	pgoff_t index = from >> PAGE_SHIFT;
+	unsigned offset = from & (PAGE_SIZE - 1);
 	sector_t iblock;
 	unsigned pos, invalid_from;
 	struct page *page, *tmp;
@@ -504,10 +500,10 @@ static int __tux3_truncate_partial_block(struct address_space *mapping,
 retry_find:
 		page = find_lock_page(mapping, index);
 		if (page) {
-			tmp = pagefork_for_blockdirty(NULL, page, delta);
+			tmp = pagefork_for_blockdirty(NULL, page, false, delta);
 			if (IS_ERR(tmp)) {
 				unlock_page(page);
-				page_cache_release(page);
+				put_page(page);
 
 				err = PTR_ERR(tmp);
 				if (err == -EAGAIN)
@@ -529,7 +525,7 @@ dirty_buffer_outside:
 				__tux3_mark_buffer_dirty(bh, delta);
 
 				invalid_from = (pos + 1) << sb->blockbits;
-				invalid_from &= PAGE_CACHE_SIZE - 1;
+				invalid_from &= PAGE_SIZE - 1;
 			}
 
 			goto zero_fill_page;
@@ -545,10 +541,10 @@ retry_grab:
 	if (!page)
 		goto out;
 
-	tmp = pagefork_for_blockdirty(NULL, page, delta);
+	tmp = pagefork_for_blockdirty(NULL, page, false, delta);
 	if (IS_ERR(tmp)) {
 		unlock_page(page);
-		page_cache_release(page);
+		put_page(page);
 
 		err = PTR_ERR(tmp);
 		if (err == -EAGAIN)
@@ -581,7 +577,7 @@ retry_grab:
 			 * last block on the page, we have to check
 			 * whether the page needs buffer fork or not.
 			 */
-			if (pos + 1 < PAGE_CACHE_SIZE >> sb->blockbits) {
+			if (pos + 1 < PAGE_SIZE >> sb->blockbits) {
 				pos++;
 				goto dirty_buffer_outside;
 			}
@@ -595,7 +591,7 @@ retry_grab:
 
 	if (!buffer_uptodate(bh) && !buffer_delay(bh) && !buffer_unwritten(bh)) {
 		err = -EIO;
-		ll_rw_block(READ, 1, &bh);
+		ll_rw_block(REQ_OP_READ, 0, 1, &bh);
 		wait_on_buffer(bh);
 		/* Uhhuh. Read error. Complain and punt. */
 		if (!buffer_uptodate(bh))
@@ -610,18 +606,18 @@ retry_grab:
 	 */
 
 zero_fill_page:
-	zero_user_segment(page, offset, PAGE_CACHE_SIZE);
+	zero_user_segment(page, offset, PAGE_SIZE);
 	cleancache_invalidate_page(mapping, page);
 	if (invalid_from && page_has_buffers(page)) {
 		mapping->a_ops->invalidatepage(page, invalid_from,
-					       PAGE_CACHE_SIZE - invalid_from);
+					       PAGE_SIZE - invalid_from);
 	}
 
 	err = 0;
 
 unlock:
 	unlock_page(page);
-	page_cache_release(page);
+	put_page(page);
 out:
 	return err;
 }
@@ -633,27 +629,24 @@ int tux3_truncate_partial_block(struct inode *inode, loff_t newsize)
 					     tux3_get_block);
 }
 
-/* Handler for ->truncatepage() */
-static void tux3_truncatepage(struct address_space *mapping, struct page *page,
-			      unsigned start, unsigned len, int wait)
+/*
+ * Handler for ->truncatepage_partial()
+ *
+ * This is handled by tux3_truncate_partial_block().  Just call generic.
+ */
+static void tux3_truncatepage_partial(struct address_space *mapping,
+				      struct page *page, unsigned int start,
+				      unsigned int len)
+{
+	generic_truncatepage_partial(mapping, page, start, len);
+}
+
+static void tux3_truncatepage(struct address_space *mapping, struct page *page)
 {
 	/*
-	 * Partial truncate. This is handled by tux3_truncate_partial_block().
-	 * Just call generic.
-	 */
-	if (start != 0 || len != PAGE_CACHE_SIZE) {
-		generic_truncate_partial_page(mapping, page, start, len);
-		return;
-	}
-
-	/*
-	 * Fully truncate. If page was stabled already, we have to do
+	 * Truncate the page. If page was stabled already, we have to do
 	 * page fork.
 	 */
-
-	/* If no wait just return, caller will call this with wait later */
-	if (!wait && PageWriteback(page))
-		return;
 
 	/*
 	 * Unmap page under lock_page(). Without lock_page(), mmap can
@@ -663,9 +656,19 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page,
 	 * we can prevent to recreate page by page fault.
 	 */
 	if (page_mapped(page)) {
+#if 1
+		loff_t holelen;
+
+		holelen = PageTransHuge(page) ? HPAGE_PMD_SIZE : PAGE_SIZE;
 		unmap_mapping_range(mapping,
-				   (loff_t)page->index << PAGE_CACHE_SHIFT,
-				   PAGE_CACHE_SIZE, 0);
+				    (loff_t)page->index << PAGE_SHIFT,
+				    holelen, false);
+#else
+		/* unmap_mapping_pages() is not exported */
+		pgoff_t nr = PageTransHuge(page) ? HPAGE_PMD_NR : 1;
+		unmap_mapping_pages(mapping, page->index, nr, false);
+#endif
+
 	}
 	if (bufferfork_to_invalidate(mapping, page)) {
 		/* Page forked, so truncate page was done */
@@ -673,5 +676,15 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page,
 	}
 
 	/* No need page fork, we can truncate this page */
-	generic_truncate_full_page(mapping, page, wait);
+	generic_truncatepage(mapping, page);
+}
+
+/* Handler for ->truncatepages() */
+static void tux3_truncatepages(struct address_space *mapping,
+			       struct page *pages[], unsigned int nr)
+{
+	/* TODO: optimizing by batch truncate */
+	unsigned int i;
+	for (i = 0; i < nr; i++)
+		tux3_truncatepage(mapping, pages[i]);
 }
