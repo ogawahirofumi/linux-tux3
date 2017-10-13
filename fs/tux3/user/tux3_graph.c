@@ -893,17 +893,14 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 
 	/* draw inode attributes */
 	void *attrs_limit = ileaf_attrs_limit(btree, ileaf);
-	prev = 0;
-	for (at = 0; at < count; at++) {
+	for (at = count - 1; at >= 0; at--) {
 		u16 offset = dict_read(dict + at);
-		u16 size = offset - prev;
+		u16 size = offset - dict_read_prev(dict, at);
 		if (!size)
 			continue;
 
-		prev = offset;
-
 		inum_t inum = ibase + at;
-		void *attrs = attrs_limit -  offset;
+		void *attrs = attrs_limit - offset;
 
 		fprintf(gi->fp,
 			"  <tr>\n"
@@ -931,6 +928,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 		u16 size = offset - prev;
 		if (!size)
 			continue;
+		prev = offset;
 
 		/* write link: ileaf offset -> ileaf attrs */
 		fprintf(gi->fp,
@@ -946,6 +944,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 		u16 size = offset - prev;
 		if (!size)
 			continue;
+		prev = offset;
 
 		struct inode *inode;
 		inum_t inum = ibase + at;
