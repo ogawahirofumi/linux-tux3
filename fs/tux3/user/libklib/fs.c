@@ -138,7 +138,7 @@ void inc_nlink(struct inode *inode)
 
 void drop_nlink(struct inode *inode)
 {
-	assert(inode->i_nlink > 0);
+	BUG_ON(inode->i_nlink == 0);
 	inode->i_nlink--;
 }
 
