@@ -106,7 +106,7 @@ static __always_inline void atomic64_dec(atomic64_t *v)
 static inline bool atomic64_dec_and_test(atomic64_t *v)
 {
 	long long tmp = klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
-	BUG_ON(tmp < 0);
+	WARN_ON(tmp < 0);
 	return tmp == 0;
 }
 
@@ -222,28 +222,34 @@ static inline long long atomic64_dec_if_positive(atomic64_t *v)
 	return dec;
 }
 
-#define ATOMIC64_OP(op)							\
-static inline void atomic64_##op(long long i, atomic64_t *v)		\
-{									\
-	klib_atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST);	\
+static inline void atomic64_and(long long i, atomic64_t *v)
+{
+	klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-#define ATOMIC64_FETCH_OP(op, c_op)					\
-static inline long long atomic64_fetch_##op(long long i, atomic64_t *v)	\
-{									\
-	return klib_atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \
+static inline long long atomic64_fetch_and(long long i, atomic64_t *v)
+{
+	return klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-#define ATOMIC64_OPS(op, c_op)						\
-	ATOMIC64_OP(op)							\
-	ATOMIC64_FETCH_OP(op, c_op)
+static inline void atomic64_or(long long i, atomic64_t *v)
+{
+	klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
+}
 
-ATOMIC64_OPS(and, &)
-ATOMIC64_OPS(or, |)
-ATOMIC64_OPS(xor, ^)
+static inline long long atomic64_fetch_or(long long i, atomic64_t *v)
+{
+	return klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
+}
 
-#undef ATOMIC64_OPS
-#undef ATOMIC64_FETCH_OP
-#undef ATOMIC64_OP
+static inline void atomic64_xor(long long i, atomic64_t *v)
+{
+	klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+static inline long long atomic64_fetch_xor(long long i, atomic64_t *v)
+{
+	return klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
+}
 
 #endif /* LIBKLIB_ASM_ATOMIC64_H */

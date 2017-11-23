@@ -114,7 +114,7 @@ static __always_inline void atomic_dec(atomic_t *v)
 static __always_inline bool atomic_dec_and_test(atomic_t *v)
 {
 	int tmp = klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
-	BUG_ON(tmp < 0);
+	WARN_ON(tmp < 0);
 	return tmp == 0;
 }
 
@@ -198,29 +198,35 @@ static inline int atomic_xchg(atomic_t *v, int new)
 	return xchg(&v->counter, new);
 }
 
-#define ATOMIC_OP(op)							\
-static inline void atomic_##op(int i, atomic_t *v)			\
-{									\
-	klib_atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST);	\
+static inline void atomic_and(int i, atomic_t *v)
+{
+	klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-#define ATOMIC_FETCH_OP(op, c_op)					\
-static inline int atomic_fetch_##op(int i, atomic_t *v)			\
-{									\
-	return klib_atomic_fetch_##op(&v->counter, i, __ATOMIC_SEQ_CST); \
+static inline int atomic_fetch_and(int i, atomic_t *v)
+{
+	return klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-#define ATOMIC_OPS(op, c_op)						\
-	ATOMIC_OP(op)							\
-	ATOMIC_FETCH_OP(op, c_op)
+static inline void atomic_or(int i, atomic_t *v)
+{
+	klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
+}
 
-ATOMIC_OPS(and, &)
-ATOMIC_OPS(or , |)
-ATOMIC_OPS(xor, ^)
+static inline int atomic_fetch_or(int i, atomic_t *v)
+{
+	return klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
+}
 
-#undef ATOMIC_OPS
-#undef ATOMIC_FETCH_OP
-#undef ATOMIC_OP
+static inline void atomic_xor(int i, atomic_t *v)
+{
+	klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
+}
+
+static inline int atomic_fetch_xor(int i, atomic_t *v)
+{
+	return klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
+}
 
 /**
  * __atomic_add_unless - add unless the number is already a given value
@@ -234,10 +240,12 @@ ATOMIC_OPS(xor, ^)
 static __always_inline int __atomic_add_unless(atomic_t *v, int a, int u)
 {
 	int c = atomic_read(v);
+
 	do {
 		if (unlikely(c == u))
 			break;
 	} while (!atomic_try_cmpxchg(v, &c, c + a));
+
 	return c;
 }
 
