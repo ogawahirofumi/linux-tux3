@@ -37,6 +37,7 @@
 
 #define __ALIGN_KERNEL(x, a)		__ALIGN_KERNEL_MASK(x, (typeof(x))(a) - 1)
 #define __ALIGN_KERNEL_MASK(x, mask)	(((x) + (mask)) & ~(mask))
+#define __KERNEL_DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
 
 /* @a is a power of 2 value */
 #define ALIGN(x, a)		__ALIGN_KERNEL((x), (a))
@@ -49,6 +50,10 @@
 #define READ			0
 #define WRITE			1
 
+/**
+ * ARRAY_SIZE - get the number of elements in array @arr
+ * @arr: array to be sized
+ */
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
 
 #define abs64(x)	llabs(x)
@@ -63,27 +68,68 @@
 #define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
 #define round_down(x, y) ((x) & ~__round_mask(x, y))
 
+/**
+ * FIELD_SIZEOF - get the size of a struct's field
+ * @t: the target struct
+ * @f: the target struct's field
+ * Return: the size of @f in the struct definition without having a
+ * declared instance of @t.
+ */
 #define FIELD_SIZEOF(t, f) (sizeof(((t*)0)->f))
-#define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
+
+#define DIV_ROUND_UP __KERNEL_DIV_ROUND_UP
 
 /*
  * min()/max()/clamp() macros that also do
  * strict type-checking.. See the
  * "unnecessary" pointer comparison.
  */
-#define min(x, y) ({				\
-	typeof(x) _min1 = (x);			\
-	typeof(y) _min2 = (y);			\
-	(void) (&_min1 == &_min2);		\
-	_min1 < _min2 ? _min1 : _min2; })
+#define __min(t1, t2, min1, min2, x, y) ({		\
+	t1 min1 = (x);					\
+	t2 min2 = (y);					\
+	(void) (&min1 == &min2);			\
+	min1 < min2 ? min1 : min2; })
 
-#define max(x, y) ({				\
-	typeof(x) _max1 = (x);			\
-	typeof(y) _max2 = (y);			\
-	(void) (&_max1 == &_max2);		\
-	_max1 > _max2 ? _max1 : _max2; })
+/**
+ * min - return minimum of two values of the same or compatible types
+ * @x: first value
+ * @y: second value
+ */
+#define min(x, y)					\
+	__min(typeof(x), typeof(y),			\
+	      __UNIQUE_ID(min1_), __UNIQUE_ID(min2_),	\
+	      x, y)
 
+#define __max(t1, t2, max1, max2, x, y) ({		\
+	t1 max1 = (x);					\
+	t2 max2 = (y);					\
+	(void) (&max1 == &max2);			\
+	max1 > max2 ? max1 : max2; })
+
+/**
+ * max - return maximum of two values of the same or compatible types
+ * @x: first value
+ * @y: second value
+ */
+#define max(x, y)					\
+	__max(typeof(x), typeof(y),			\
+	      __UNIQUE_ID(max1_), __UNIQUE_ID(max2_),	\
+	      x, y)
+
+/**
+ * min3 - return minimum of three values
+ * @x: first value
+ * @y: second value
+ * @z: third value
+ */
 #define min3(x, y, z) min((typeof(x))min(x, y), z)
+
+/**
+ * max3 - return maximum of three values
+ * @x: first value
+ * @y: second value
+ * @z: third value
+ */
 #define max3(x, y, z) max((typeof(x))max(x, y), z)
 
 /**
@@ -102,8 +148,8 @@
  * @lo: lowest allowable value
  * @hi: highest allowable value
  *
- * This macro does strict typechecking of lo/hi to make sure they are of the
- * same type as val.  See the unnecessary pointer comparisons.
+ * This macro does strict typechecking of @lo/@hi to make sure they are of the
+ * same type as @val.  See the unnecessary pointer comparisons.
  */
 #define clamp(val, lo, hi) min((typeof(val))max(val, lo), hi)
 
@@ -113,15 +159,28 @@
  *
  * Or not use min/max/clamp at all, of course.
  */
-#define min_t(type, x, y) ({			\
-	type __min1 = (x);			\
-	type __min2 = (y);			\
-	__min1 < __min2 ? __min1: __min2; })
 
-#define max_t(type, x, y) ({			\
-	type __max1 = (x);			\
-	type __max2 = (y);			\
-	__max1 > __max2 ? __max1: __max2; })
+/**
+ * min_t - return minimum of two values, using the specified type
+ * @type: data type to use
+ * @x: first value
+ * @y: second value
+ */
+#define min_t(type, x, y)				\
+	__min(type, type,				\
+	      __UNIQUE_ID(min1_), __UNIQUE_ID(min2_),	\
+	      x, y)
+
+/**
+ * max_t - return maximum of two values, using the specified type
+ * @type: data type to use
+ * @x: first value
+ * @y: second value
+ */
+#define max_t(type, x, y)				\
+	__max(type, type,				\
+	      __UNIQUE_ID(min1_), __UNIQUE_ID(min2_),	\
+	      x, y)
 
 /**
  * clamp_t - return a value clamped to a given range using a given type
@@ -131,7 +190,7 @@
  * @hi: maximum allowable value
  *
  * This macro does no typechecking and uses temporary variables of type
- * 'type' to make all the comparisons.
+ * @type to make all the comparisons.
  */
 #define clamp_t(type, val, lo, hi) min_t(type, max_t(type, val, lo), hi)
 
@@ -142,8 +201,8 @@
  * @hi: maximum allowable value
  *
  * This macro does no typechecking and uses temporary variables of whatever
- * type the input argument 'val' is.  This is useful when val is an unsigned
- * type and min and max are literals that will otherwise be assigned a signed
+ * type the input argument @val is.  This is useful when @val is an unsigned
+ * type and @lo and @hi are literals that will otherwise be assigned a signed
  * integer type.
  */
 #define clamp_val(val, lo, hi) clamp_t(typeof(val), val, lo, hi)
