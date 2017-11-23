@@ -693,7 +693,7 @@ static int tux3_remount(struct super_block *sb, int *flags, char *data)
 	int err, remount_ro;
 
 	/* Become read-only mount? */
-	remount_ro = (*flags & MS_RDONLY) && !(sb->s_flags & MS_RDONLY);
+	remount_ro = (*flags & MS_RDONLY) && !sb_rdonly(sb);
 
 	err = parse_options(sbi, &mopt, data);
 	if (err)
