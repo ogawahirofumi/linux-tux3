@@ -110,7 +110,7 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 	}
 	assert(bio);	/* GFP_NOFS shouldn't fail to allocate */
 
-	bio->bi_bdev = vfs_sb(sb)->s_bdev;
+	bio_set_dev(bio, vfs_sb(sb)->s_bdev);
 	bio->bi_iter.bi_sector = physical << (sb->blockbits - 9);
 	bio->bi_end_io = end_io;
 

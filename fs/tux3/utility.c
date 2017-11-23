@@ -21,7 +21,7 @@ static int vecio(enum req_opf req_opf, unsigned int req_flags,
 	if (!bio)
 		return -ENOMEM;
 
-	bio->bi_bdev = dev;
+	bio_set_dev(bio, dev);
 	bio->bi_iter.bi_sector = offset >> 9;
 	bio->bi_end_io = endio;
 	bio->bi_private = bio_private;
