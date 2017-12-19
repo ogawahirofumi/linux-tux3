@@ -63,6 +63,9 @@ int test_start(const char *test)
 
 	test_env.test[nest].name = test;
 
+	/* Flush buffering data to avoid duplicate by forking */
+	fflush(NULL);
+
 	test_env.test[nest].child = fork();
 	assert(test_env.test[nest].child >= 0);
 	if (test_env.test[nest].child == 0) {
