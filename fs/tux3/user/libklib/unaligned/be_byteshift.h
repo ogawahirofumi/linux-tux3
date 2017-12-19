@@ -11,7 +11,7 @@ static inline u16 __get_unaligned_be16(const u8 *p)
 
 static inline u32 __get_unaligned_be32(const u8 *p)
 {
-	return p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+	return (u32)p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
 }
 
 static inline u64 __get_unaligned_be64(const u8 *p)

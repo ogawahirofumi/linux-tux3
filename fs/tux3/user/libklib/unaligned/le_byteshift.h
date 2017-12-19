@@ -10,7 +10,7 @@ static inline u16 __get_unaligned_le16(const u8 *p)
 
 static inline u32 __get_unaligned_le32(const u8 *p)
 {
-	return p[0] | p[1] << 8 | p[2] << 16 | p[3] << 24;
+	return p[0] | p[1] << 8 | p[2] << 16 | (u32)p[3] << 24;
 }
 
 static inline u64 __get_unaligned_le64(const u8 *p)
