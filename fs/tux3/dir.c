@@ -93,15 +93,36 @@ enum {
 
 #define STAT_SHIFT 12
 
-static unsigned char tux_type_by_mode[S_IFMT >> STAT_SHIFT] = {
-	[S_IFREG >> STAT_SHIFT] = TUX_REG,
-	[S_IFDIR >> STAT_SHIFT] = TUX_DIR,
-	[S_IFCHR >> STAT_SHIFT] = TUX_CHR,
-	[S_IFBLK >> STAT_SHIFT] = TUX_BLK,
-	[S_IFIFO >> STAT_SHIFT] = TUX_FIFO,
-	[S_IFSOCK >> STAT_SHIFT] = TUX_SOCK,
-	[S_IFLNK >> STAT_SHIFT] = TUX_LNK,
-};
+static inline u8 tux3_mode_to_type(umode_t mode)
+{
+	static u8 type_by_mode[S_IFMT >> STAT_SHIFT] = {
+		[S_IFREG >> STAT_SHIFT] = TUX_REG,
+		[S_IFDIR >> STAT_SHIFT] = TUX_DIR,
+		[S_IFCHR >> STAT_SHIFT] = TUX_CHR,
+		[S_IFBLK >> STAT_SHIFT] = TUX_BLK,
+		[S_IFIFO >> STAT_SHIFT] = TUX_FIFO,
+		[S_IFSOCK >> STAT_SHIFT] = TUX_SOCK,
+		[S_IFLNK >> STAT_SHIFT] = TUX_LNK,
+	};
+	return type_by_mode[(mode & S_IFMT) >> STAT_SHIFT];
+}
+
+static inline unsigned tux3_type_to_dt(u8 type)
+{
+	static u8 dt_by_type[TUX_TYPES] = {
+		[TUX_UNKNOWN]	= DT_UNKNOWN,
+		[TUX_REG]	= DT_REG,
+		[TUX_DIR]	= DT_DIR,
+		[TUX_CHR]	= DT_CHR,
+		[TUX_BLK]	= DT_BLK,
+		[TUX_FIFO]	= DT_FIFO,
+		[TUX_SOCK]	= DT_SOCK,
+		[TUX_LNK]	= DT_LNK,
+	};
+	if (type < TUX_TYPES)
+		return dt_by_type[type];
+	return DT_UNKNOWN;
+}
 
 #define tux_zero_len_error(dir, block)					\
 	tux3_fs_error(tux_sb((dir)->i_sb),				\
@@ -112,7 +133,7 @@ void tux_set_entry(struct buffer_head *buffer, struct tux3_dirent *entry,
 		   inum_t inum, umode_t mode)
 {
 	entry->inum = cpu_to_be64(inum);
-	entry->type = tux_type_by_mode[(mode & S_IFMT) >> STAT_SHIFT];
+	entry->type = tux3_mode_to_type(mode);
 	mark_buffer_dirty_non(buffer);
 	blockput(buffer);
 }
@@ -304,17 +325,6 @@ struct tux3_dirent *tux_find_dirent(struct inode *dir, const struct qstr *qstr,
 			      result, dir->i_size);
 }
 
-static unsigned char filetype[TUX_TYPES] = {
-	[TUX_UNKNOWN] = DT_UNKNOWN,
-	[TUX_REG] = DT_REG,
-	[TUX_DIR] = DT_DIR,
-	[TUX_CHR] = DT_CHR,
-	[TUX_BLK] = DT_BLK,
-	[TUX_FIFO] = DT_FIFO,
-	[TUX_SOCK] = DT_SOCK,
-	[TUX_LNK] = DT_LNK,
-};
-
 /*
  * Return 0 if the directory entry is OK, and 1 if there is a problem
  */
@@ -424,7 +434,7 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 				break;
 			}
 			if (!is_deleted(entry)) {
-				unsigned type = (entry->type < TUX_TYPES) ? filetype[entry->type] : DT_UNKNOWN;
+				unsigned type = tux3_type_to_dt(entry->type);
 				if (!dir_emit(ctx, entry->name, entry->name_len,
 					      be64_to_cpu(entry->inum), type)) {
 					blockput(buffer);
