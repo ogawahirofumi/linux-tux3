@@ -762,8 +762,12 @@ static void test07(struct sb *sb, struct inode *inode)
 	clean_test07(sb, inode, cursor);
 }
 
+#include "btree_bench.c"
+
 int main(int argc, char *argv[])
 {
+	bench(argc, argv);
+
 	test_init(argc, argv);
 
 	struct dev *dev = &(struct dev){ .bits = 6 };
