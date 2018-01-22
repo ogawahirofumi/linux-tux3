@@ -430,7 +430,9 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	sb->blocks_per_page = 1 << sb->blocks_per_page_bits;
 	sb->groupbits = 13; // FIXME: put in disk super?
 	sb->volmask = roundup_pow_of_two64(sb->volblocks) - 1;
-	sb->entries_per_node = calc_entries_per_node(sb->blocksize);
+
+	/* Initialize parameter for btree */
+	btree_init_param(sb);
 	/* Initialize base indexes for atable */
 	atable_init_base(sb);
 

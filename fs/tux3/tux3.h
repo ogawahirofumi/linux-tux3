@@ -224,13 +224,14 @@ struct cursor {
 #define CURSOR_DEBUG
 #ifdef CURSOR_DEBUG
 #define FREE_BUFFER	((void *)0xdbc06505)
-#define FREE_NEXT	((void *)0xdbc06507)
+#define FREE_NEXT	0xdbc06507
 	int maxlevel;
 #endif
 	int level;
 	struct path_level {
 		struct buffer_head *buffer;
-		struct index_entry *next;
+#define CURSOR_LEAF_LEVEL	-2
+		int next;
 	} path[];
 };
 
@@ -408,7 +409,9 @@ struct sb {
 	inum_t nextinum;	/* FIXME: temporary hack to avoid to find
 				 * same area in itree for free inum. */
 
-	unsigned entries_per_node; /* must be per-btree type, get rid of this */
+	unsigned bnode_max_count; /* Maximum count of index in bnode */
+	unsigned bnode_dict_size; /* Size for bnode internal dict */
+
 	unsigned version;	/* Currently mounted volume version view */
 
 	block_t atomref_base;	/* Index of atom refcount base */
@@ -714,25 +717,6 @@ struct replay {
 	block_t blocknrs[];	/* block address of log blocks */
 };
 
-/* Does this root has direct extent? */
-static inline int has_direct_extent(struct btree *btree)
-{
-	return btree->root.direct;
-}
-
-extern struct root no_root;
-/* Does this root has bnode/leaf? */
-static inline int has_root(struct btree *btree)
-{
-	return !has_direct_extent(btree) && btree->root.depth > 0;
-}
-
-/* Doesn't have both btree or direct extent? */
-static inline int has_no_root(struct btree *btree)
-{
-	return btree->root.depth == 0;
-}
-
 /* Redirect ptr which is pointing data of src from src to dst */
 static inline void *ptr_redirect(void *ptr, void *src, void *dst)
 {
@@ -842,7 +826,27 @@ int bfree(struct sb *sb, block_t start, unsigned blocks);
 int replay_update_bitmap(struct replay *rp, block_t start, unsigned blocks, int set);
 
 /* btree.c */
-unsigned calc_entries_per_node(unsigned blocksize);
+extern struct root no_root;
+
+/* Does this root has direct extent? */
+static inline int has_direct_extent(struct btree *btree)
+{
+	return btree->root.direct;
+}
+
+/* Does this root has bnode/leaf? */
+static inline int has_root(struct btree *btree)
+{
+	return !has_direct_extent(btree) && btree->root.depth > 0;
+}
+
+/* Doesn't have both btree or direct extent? */
+static inline int has_no_root(struct btree *btree)
+{
+	return btree->root.depth == 0;
+}
+
+void btree_init_param(struct sb *sb);
 struct buffer_head *cursor_leafbuf(struct cursor *cursor);
 void release_cursor(struct cursor *cursor);
 struct cursor *alloc_cursor(struct btree *btree, int);
