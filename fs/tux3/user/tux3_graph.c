@@ -139,9 +139,9 @@ static void draw_bnode(struct btree *btree, struct buffer_head *buffer,
 		       int level, void *data)
 {
 	struct graph_info *gi = data;
+	struct sb *sb = btree->sb;
 	struct bnode *bnode = bufdata(buffer);
 	block_t blocknr = buffer->index;
-	struct index_entry *index = bnode->entries;
 	int n;
 
 	fprintf(gi->fp,
@@ -155,7 +155,8 @@ static void draw_bnode(struct btree *btree, struct buffer_head *buffer,
 		fprintf(gi->fp,
 			" %c <f%u> key %llu, block %lld",
 			n ? '|' : '{', n,
-			be64_to_cpu(index[n].key), be64_to_cpu(index[n].block));
+			be64_to_cpup(bnode_keyp(bnode, n)),
+			be64_to_cpup(bnode_blockp(sb, bnode, n)));
 	}
 	fprintf(gi->fp,
 		" }}\"\n"
@@ -169,7 +170,7 @@ static void draw_bnode(struct btree *btree, struct buffer_head *buffer,
 		fprintf(gi->fp,
 			"volmap_%llu:f%u -> volmap_%llu:head;\n",
 			blocknr, n,
-			be64_to_cpu(index[n].block));
+			be64_to_cpup(bnode_blockp(sb, bnode, n)));
 	}
 }
 

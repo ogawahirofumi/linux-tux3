@@ -393,19 +393,19 @@ static void dump_bnode(struct btree *btree, struct buffer_head *buffer,
 		       int level, void *data)
 {
 	struct dump_info *di = data;
+	struct sb *sb = btree->sb;
 	struct bnode *bnode = bufdata(buffer);
 	block_t blocknr = buffer->index;
-	struct index_entry *index = bnode->entries;
 	int n;
 
 	if (opt_stats) {
 		for (n = 0; n < bcount(bnode); n++) {
+			__be64 *blockp = bnode_blockp(sb, bnode, n);
 			stats_child_seek_add(di->stats->own, level, blocknr,
-					     be64_to_cpu(index[n].block));
+					     be64_to_cpup(blockp));
 		}
 
-		unsigned bytes = sizeof(*bnode)
-			+ sizeof(*index) * bcount(bnode);
+		unsigned bytes = bnode_used_size(bnode);
 		int empty = !bcount(bnode);
 
 		stats_block_add(di->stats->own, level, blocknr, bytes,

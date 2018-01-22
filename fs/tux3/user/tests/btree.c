@@ -275,7 +275,7 @@ static void test02(struct sb *sb, struct inode *inode)
 	test_assert(cursor);
 
 	/* At least add 1 depth */
-	int keys = sb->entries_per_node * btree->entries_per_leaf + 1;
+	int keys = sb->bnode_max_count * btree->entries_per_leaf + 1;
 	/* Add keys to test tree_expand() until new depth */
 	for (int key = 0; key < keys; key++)
 		btree_write_test(cursor, key);
@@ -328,7 +328,7 @@ static void test03(struct sb *sb, struct inode *inode)
 	test_assert(cursor);
 
 	/* Some depths */
-	int keys = sb->entries_per_node * btree->entries_per_leaf * 100;
+	int keys = sb->bnode_max_count * btree->entries_per_leaf * 100;
 
 	for (int key = keys - 1; key >= 0; key--)
 		btree_write_test(cursor, key);
@@ -344,7 +344,7 @@ static void test03(struct sb *sb, struct inode *inode)
 		release_cursor(cursor);
 	}
 	/* Delete one by one for some keys from end */
-	int left = sb->entries_per_node * btree->entries_per_leaf * 80;
+	int left = sb->bnode_max_count * btree->entries_per_leaf * 80;
 	for (int key = keys - 1; key >= left; key--) {
 		test_assert(btree_chop(btree, key, TUXKEY_LIMIT) == 0);
 
@@ -383,7 +383,7 @@ static void test04(struct sb *sb, struct inode *inode)
 	test_assert(cursor);
 
 	test_assert(!btree_probe(cursor, 0));
-	for (int i = 0; i < sb->entries_per_node - 1; i++) {
+	for (int i = 0; i < sb->bnode_max_count - 1; i++) {
 		struct buffer_head *buffer = new_leaf(btree);
 		trace("buffer: index %Lx", buffer->index);
 		test_assert(!IS_ERR(buffer));
@@ -438,7 +438,7 @@ static void test05(struct sb *sb, struct inode *inode)
 	test_assert(cursor);
 
 	/* Some depths */
-	int keys = sb->entries_per_node * btree->entries_per_leaf * 100;
+	int keys = sb->bnode_max_count * btree->entries_per_leaf * 100;
 	for (int key = keys - 1; key >= 0; key--)
 		btree_write_test(cursor, key);
 	assert(btree->root.depth >= 6); /* this test expects more than 6 */
@@ -465,7 +465,7 @@ static void test05(struct sb *sb, struct inode *inode)
 			test_assert(orig[i].buffer != at->buffer);
 			/* If not leaf, check ->next too */
 			if (i < cursor->level)
-				test_assert(orig[i].next != at->next);
+				test_assert(orig[i].next == at->next);
 		}
 		release_cursor(cursor);
 
@@ -510,7 +510,7 @@ static void test05(struct sb *sb, struct inode *inode)
 			test_assert(orig[i].buffer != at->buffer);
 			/* If not leaf, check ->next too */
 			if (i < cursor->level)
-				test_assert(orig[i].next != at->next);
+				test_assert(orig[i].next == at->next);
 		}
 		release_cursor(cursor);
 
@@ -576,24 +576,23 @@ static void test06(struct sb *sb, struct inode *inode)
 		{ 8, 12, bufindex(leaf[2]), bufindex(leaf[3]), },
 	};
 	for (int i = 0; i < ARRAY_SIZE(node); i++) {
-		node[i] = new_node(btree);
+		node[i] = new_bnode(btree);
 		for (int j = 0; j < 2; j++) {
 			struct bnode *bnode = bufdata(node[i]);
-			struct index_entry *p = bnode->entries;
-			bnode_add_index(bnode, p + j, node_key[i][2 + j],
+			bnode_add_index(sb, bnode, j, node_key[i][2 + j],
 					node_key[i][j]);
 		}
 	}
 	/* fill node with dummy to prevent merge */
-	for (int i = 0; i < sb->entries_per_node - 2; i++) {
+	for (int i = 0; i < sb->bnode_max_count - 2; i++) {
 		struct bnode *bnode = bufdata(node[1]);
-		bnode_add_index(bnode, bnode->entries, 0, 100);
+		bnode_add_index(sb, bnode, 0, 0, 100);
 	}
 
 	/* Fill child pointer in root node */
 	struct bnode *root = bufdata(node[0]);
-	root->entries[0].block = cpu_to_be64(bufindex(node[1]));
-	root->entries[1].block = cpu_to_be64(bufindex(node[2]));
+	*bnode_blockp(sb, root, 0) = cpu_to_be64(bufindex(node[1]));
+	*bnode_blockp(sb, root, 1) = cpu_to_be64(bufindex(node[2]));
 	/* Set root node to btree */
 	btree->root = (struct root){ .block = bufindex(node[0]), .depth = 3 };
 
@@ -627,7 +626,7 @@ static void test06(struct sb *sb, struct inode *inode)
 	/* Check if adjust_parent_sep() changed key from 8 to 12 */
 	test_assert(cursor_read_root(cursor) == 1);
 	root = bufdata(cursor->path[cursor->level].buffer);
-	test_assert(be64_to_cpu(root->entries[1].key) == 12);
+	test_assert(be64_to_cpup(bnode_keyp(root, 1)) == 12);
 	release_cursor(cursor);
 
 	for (int i = 0; i < ARRAY_SIZE(leaf_key); i++) {
@@ -704,34 +703,34 @@ static void test07(struct sb *sb, struct inode *inode)
 			uleaf_insert(btree, bufdata(leaf[i]), j, j + 0x100);
 	}
 
-	test_assert(sb->entries_per_node == 3);	/* this test is assuming 3 */
+	test_assert(sb->bnode_max_count == 3);	/* this test is assuming 3 */
 	/* Create nodes */
 	struct buffer_head *node[2];
 	for (int i = 0; i < ARRAY_SIZE(node); i++) {
-		node[i] = new_node(btree);
+		node[i] = new_bnode(btree);
 		struct bnode *bnode = bufdata(node[i]);
 		/* fill node with dummy to make split node in insert_leaf() */
-		for (int j = 0; j < sb->entries_per_node; j++) {
-			struct index_entry *p = &bnode->entries[bcount(bnode)];
+		for (int j = 0; j < sb->bnode_max_count; j++) {
+			int idx = bcount(bnode);
 			if (i == 0)
-				bnode_add_index(bnode, p, 0, j*100);
+				bnode_add_index(sb, bnode, idx, 0, j*100);
 			else
-				bnode_add_index(bnode, p, 0, j*10);
+				bnode_add_index(sb, bnode, idx, 0, j*10);
 		}
 	}
 
 	/* Set next at left half */
 	struct bnode *bnode;
 	bnode = bufdata(node[0]);
-	bnode->entries[0].block = cpu_to_be64(bufindex(node[1]));
-	cursor_push(cursor, node[0], &bnode->entries[0 + 1]);
+	*bnode_blockp(sb, bnode, 0) = cpu_to_be64(bufindex(node[1]));
+	cursor_push(cursor, node[0], 0 + 1);
 	/* Set next at right half */
-	unsigned right = sb->entries_per_node / 2 + 1;
+	unsigned right = sb->bnode_max_count / 2 + 1;
 	bnode = bufdata(node[1]);
-	bnode->entries[right].block = cpu_to_be64(bufindex(leaf[0]));
-	cursor_push(cursor, node[1], &bnode->entries[right + 1]);
+	*bnode_blockp(sb, bnode, right) = cpu_to_be64(bufindex(leaf[0]));
+	cursor_push(cursor, node[1], right + 1);
 	/* push leaf */
-	cursor_push(cursor, leaf[0], NULL);
+	cursor_push(cursor, leaf[0], CURSOR_LEAF_LEVEL);
 
 	/* Set root node to btree */
 	btree->root = (struct root){ .block = bufindex(node[0]), .depth = 3 };
