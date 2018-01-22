@@ -22,7 +22,7 @@ struct test_env {
 	struct {
 		const char *name;
 		pid_t child;
-		struct timeval start;
+		struct test_elapse elapse;
 		int fail_cnt;
 	} test[TEST_NEST_MAX];
 	int nest;
@@ -130,7 +130,7 @@ int test_start(const char *test)
 	assert(test_env.test[nest].child >= 0);
 	if (test_env.test[nest].child == 0) {
 		test_env.test[nest].fail_cnt = 0;
-		gettimeofday(&test_env.test[nest].start, NULL);
+		test_elapse_start(&test_env.test[nest].elapse);
 		return 1;
 	}
 
@@ -153,9 +153,8 @@ void test_end(void)
 
 	/* Dead as child? */
 	if (!test_env.forked) {
-		struct timeval end, diff;
-		gettimeofday(&end, NULL);
-		timersub(&end, &test_env.test[nest].start, &diff);
+		struct timeval diff;
+		diff = test_elapse_stop(&test_env.test[nest].elapse);
 
 		printf("[%s:%s] time %3ld.%06ld secs\n",
 		       test_env.series, test_env.test[nest].name,

@@ -15,6 +15,23 @@
 	__test_res;							\
 })
 
+struct test_elapse {
+	struct timeval start;
+};
+
+static inline void test_elapse_start(struct test_elapse *e)
+{
+	gettimeofday(&e->start, NULL);
+}
+
+static inline struct timeval test_elapse_stop(struct test_elapse *e)
+{
+	struct timeval end, diff;
+	gettimeofday(&end, NULL);
+	timersub(&end, &e->start, &diff);
+	return diff;
+}
+
 int test_init(int argc, char *argv[]);
 const char *test_series(void);
 const char *test_name(void);
