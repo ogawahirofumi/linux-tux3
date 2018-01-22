@@ -33,11 +33,11 @@ static void clean_main(struct sb *sb, struct inode *inode)
 }
 
 #define ULEAF_MAGIC	0xc0de
-struct uleaf { u32 magic, count; struct uentry { u16 key, val; } entries[]; };
+struct uleaf { u32 magic, count; struct uentry { u32 key, val; } entries[]; };
 
 struct uleaf_req {
 	struct btree_key_range key;	/* key and count */
-	u16 val;
+	u32 val;
 };
 
 static void uleaf_btree_init(struct btree *btree)
@@ -206,14 +206,15 @@ static void test01(struct sb *sb, struct inode *inode)
 	struct buffer_head *buffer = new_leaf(btree);
 	test_assert(!uleaf_sniff(btree, bufdata(buffer)));
 	/* Test of uleaf_insert() */
-	for (int i = 0; i < 7; i++)
+	for (int i = 0; i < btree->entries_per_leaf; i++)
 		uleaf_insert(btree, bufdata(buffer), i, i + 0x100);
-	for (int i = 0; i < 7; i++) {
+	for (int i = 0; i < btree->entries_per_leaf; i++) {
 		struct uentry *uentry = uleaf_lookup(bufdata(buffer), i);
 		test_assert(uentry);
 		test_assert(uentry->val == i + 0x100);
 	}
 	/* Test of uleaf_chop() */
+	test_assert(btree->entries_per_leaf >= 2 + 3);	/* test is assuming */
 	uleaf_chop(btree, 2, 3, bufdata(buffer));
 	for (int i = 0; i < 7; i++) {
 		struct uentry *uentry = uleaf_lookup(bufdata(buffer), i);
