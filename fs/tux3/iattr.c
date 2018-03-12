@@ -167,13 +167,9 @@ static void *encode_attrs(struct btree *btree, void *data, void *attrs,
 	struct tux3_iattr_data *idata = iattr_data->idata;
 	struct btree *attr_btree = iattr_data->btree;
 	void *limit = attrs + size;
-	int kind = -1;
+	int kind;
 
-	while (1) {
-		kind = find_next_bit(iattr_data->present, VAR_ATTRS, kind + 1);
-		if (kind == VAR_ATTRS)
-			break;
-
+	for_each_set_bit(kind, iattr_data->present, VAR_ATTRS) {
 		BUG_ON(attrs + KIND_SIZE + atsize[kind] > limit);
 
 		attrs = encode_kind(attrs, kind, sb->version);
