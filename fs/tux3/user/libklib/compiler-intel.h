@@ -1,4 +1,4 @@
-#ifndef LIBKLIB_COMPILER_H
+#ifndef LIBKLIB_COMPILER_TYPES_H
 #error "Please don't include <libklib/compiler-intel.h> directly, include <linux/compiler.h> instead."
 #endif
 
@@ -7,6 +7,8 @@
 /* Intel ECC compiler doesn't support gcc specific asm stmts.
  * It uses intrinsics to do the equivalent things.
  */
+#undef barrier
+#undef barrier_data
 #undef RELOC_HIDE
 #undef OPTIMIZER_HIDE_VAR
 

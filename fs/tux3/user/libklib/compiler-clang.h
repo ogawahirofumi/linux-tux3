@@ -1,4 +1,4 @@
-#ifndef LIBKLIB_COMPILER_H
+#ifndef LIBKLIB_COMPILER_TYPES_H
 #error "Please don't include <libklib/compiler-clang.h> directly, include <linux/compiler.h> instead."
 #endif
 
@@ -15,3 +15,6 @@
  * with any version that can compile the kernel
  */
 #define __UNIQUE_ID(prefix) __PASTE(__PASTE(__UNIQUE_ID_, prefix), __COUNTER__)
+
+#define randomized_struct_fields_start	struct {
+#define randomized_struct_fields_end	};
