@@ -39,5 +39,6 @@ typedef __u64 __bitwise __le64;
 typedef __u64 __bitwise __be64;
 
 typedef unsigned __bitwise gfp_t;
+typedef unsigned __bitwise slab_flags_t;
 
 #endif /* !LIBKLIB_TYPES_H */

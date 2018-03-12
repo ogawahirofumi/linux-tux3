@@ -22,7 +22,7 @@ void kfree(const void *p)
 }
 
 struct kmem_cache *kmem_cache_create(const char *name, size_t size,
-				     size_t align, unsigned long flags,
+				     size_t align, slab_flags_t flags,
 				     void (*ctor)(void *))
 {
 	struct kmem_cache *cachep;
