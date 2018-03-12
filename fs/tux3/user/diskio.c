@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <linux/fs.h> // for BLKGETSIZE
+#include <sys/mount.h> // for BLKGETSIZE64
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include "libklib/libklib.h"
