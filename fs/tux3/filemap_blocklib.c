@@ -632,27 +632,24 @@ int tux3_truncate_partial_block(struct inode *inode, loff_t newsize)
 					     tux3_get_block);
 }
 
-/* Handler for ->truncatepage() */
-static void tux3_truncatepage(struct address_space *mapping, struct page *page,
-			      unsigned start, unsigned len, bool wait)
+/*
+ * Handler for ->truncatepage_partial()
+ *
+ * This is handled by tux3_truncate_partial_block().  Just call generic.
+ */
+static void tux3_truncatepage_partial(struct address_space *mapping,
+				      struct page *page, unsigned int start,
+				      unsigned int len)
+{
+	generic_truncatepage_partial(mapping, page, start, len);
+}
+
+static void tux3_truncatepage(struct address_space *mapping, struct page *page)
 {
 	/*
-	 * Partial truncate. This is handled by tux3_truncate_partial_block().
-	 * Just call generic.
-	 */
-	if (start != 0 || len != PAGE_SIZE) {
-		generic_truncate_partial_page(mapping, page, start, len);
-		return;
-	}
-
-	/*
-	 * Fully truncate. If page was stabled already, we have to do
+	 * Truncate the page. If page was stabled already, we have to do
 	 * page fork.
 	 */
-
-	/* If no wait just return, caller will call this with wait later */
-	if (!wait && PageWriteback(page))
-		return;
 
 	/*
 	 * Unmap page under lock_page(). Without lock_page(), mmap can
@@ -662,9 +659,12 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page,
 	 * we can prevent to recreate page by page fault.
 	 */
 	if (page_mapped(page)) {
+		loff_t holelen;
+
+		holelen = PageTransHuge(page) ? HPAGE_PMD_SIZE : PAGE_SIZE;
 		unmap_mapping_range(mapping,
-				   (loff_t)page->index << PAGE_SHIFT,
-				   PAGE_SIZE, 0);
+				    (loff_t)page->index << PAGE_SHIFT,
+				    holelen, 0);
 	}
 	if (bufferfork_to_invalidate(mapping, page)) {
 		/* Page forked, so truncate page was done */
@@ -672,5 +672,15 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page,
 	}
 
 	/* No need page fork, we can truncate this page */
-	generic_truncate_full_page(mapping, page, wait);
+	generic_truncatepage(mapping, page);
+}
+
+/* Handler for ->truncatepages() */
+static void tux3_truncatepages(struct address_space *mapping,
+			       struct page *pages[], unsigned int nr)
+{
+	/* TODO: optimizing by batch truncate */
+	unsigned int i;
+	for (i = 0; i < nr; i++)
+		tux3_truncatepage(mapping, pages[i]);
 }

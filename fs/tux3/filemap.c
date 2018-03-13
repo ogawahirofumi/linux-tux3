@@ -965,7 +965,8 @@ const struct address_space_operations tux_file_aops = {
 	.write_end		= tux3_file_write_end,
 	.bmap			= tux3_bmap,
 	.set_page_dirty		= tux3_set_page_dirty_assert,
-	.truncatepage		= tux3_truncatepage,
+	.truncatepages		= tux3_truncatepages,
+	.truncatepage_partial	= tux3_truncatepage_partial,
 	.invalidatepage		= tux3_invalidatepage,
 //	.releasepage		= ext4_releasepage,
 #ifdef TUX3_DIRECT_IO
