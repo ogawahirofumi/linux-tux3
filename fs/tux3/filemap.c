@@ -686,7 +686,7 @@ struct buffer_head *peekblk(struct address_space *mapping, block_t iblock)
 struct buffer_head *blockread(struct address_space *mapping, block_t iblock)
 {
 	struct inode *inode = mapping->host;
-	gfp_t gfp_mask = mapping_gfp_mask(mapping) | __GFP_COLD; /* FIXME(?) */
+	gfp_t gfp_mask = mapping_gfp_mask(mapping);
 	pgoff_t index;
 	struct page *page;
 	struct buffer_head *bh;
