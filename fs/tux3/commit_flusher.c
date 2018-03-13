@@ -213,7 +213,7 @@ long tux3_writeback(struct super_block *super, struct bdi_writeback *wb,
 	int err;
 
 	/* If we didn't finish replay yet, don't flush. */
-	if (!(super->s_flags & MS_ACTIVE))
+	if (!(super->s_flags & SB_ACTIVE))
 		return 0;
 
 	/*

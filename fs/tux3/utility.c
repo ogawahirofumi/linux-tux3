@@ -152,7 +152,7 @@ void __tux3_fs_error(struct sb *sb, const char *func, unsigned int line,
 	       vfs_sb(sb)->s_id, func, line, &vaf);
 	va_end(args);
 
-	BUG();		/* FIXME: maybe panic() or MS_RDONLY */
+	BUG();		/* FIXME: maybe panic() or SB_RDONLY */
 }
 
 void __tux3_dbg(const char *fmt, ...)

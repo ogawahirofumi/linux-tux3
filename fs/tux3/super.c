@@ -693,7 +693,7 @@ static int tux3_remount(struct super_block *sb, int *flags, char *data)
 	int err, remount_ro;
 
 	/* Become read-only mount? */
-	remount_ro = (*flags & MS_RDONLY) && !sb_rdonly(sb);
+	remount_ro = (*flags & SB_RDONLY) && !sb_rdonly(sb);
 
 	err = parse_options(sbi, &mopt, data);
 	if (err)
@@ -747,7 +747,7 @@ static int tux3_fill_super(struct super_block *sb, void *data, int silent)
 	 * FIXME: atime can insert inode into dirty list unexpectedly.
 	 * For now, doesn't support and disable atime.
 	 */
-	sb->s_flags |= MS_NOATIME;
+	sb->s_flags |= SB_NOATIME;
 	sb->s_magic = TUX3_SUPER_MAGIC;
 	sb->s_op = &tux3_super_ops;
 	sb->s_time_gran = 1;
