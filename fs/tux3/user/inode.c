@@ -329,7 +329,7 @@ void iput(struct inode *inode)
 		assert(!(inode->i_state & I_NEW));
 
 		drop = tux3_drop_inode(inode);
-		if (!drop && (inode->i_sb->s_flags & MS_ACTIVE)) {
+		if (!drop && (inode->i_sb->s_flags & SB_ACTIVE)) {
 			/* Keep the inode on dirty list */
 			spin_unlock(&inode->i_lock);
 			return;

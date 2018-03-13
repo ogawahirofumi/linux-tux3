@@ -34,7 +34,7 @@ void __destroy_inode(struct inode *inode)
 
 void put_super(struct sb *sb)
 {
-	vfs_sb(sb)->s_flags &= ~MS_ACTIVE;
+	vfs_sb(sb)->s_flags &= ~SB_ACTIVE;
 
 	__tux3_put_super(sb);
 	inode_leak_check();
@@ -51,7 +51,7 @@ int setup_sb(struct sb *sb, struct disksuper *super)
 
 	__setup_sb(sb, super);
 
-	/* This setup doesn't add MS_ACTIVE. */
+	/* This setup doesn't add SB_ACTIVE. */
 
 	return 0;
 }
@@ -68,7 +68,7 @@ struct replay *__load_fs(struct sb *sb)
 	struct replay *rp = tux3_init_fs(sb);
 	if (!IS_ERR(rp)) {
 		/* Now, sb setup was done. */
-		vfs_sb(sb)->s_flags |= MS_ACTIVE;
+		vfs_sb(sb)->s_flags |= SB_ACTIVE;
 	}
 	return rp;
 }
@@ -253,7 +253,7 @@ int __mkfs_tux3(struct sb *sb)
 		return err;
 
 	/* Now, sb setup was done. */
-	vfs_sb(sb)->s_flags |= MS_ACTIVE;
+	vfs_sb(sb)->s_flags |= SB_ACTIVE;
 
 	return 0;
 }

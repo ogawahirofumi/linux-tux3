@@ -12,7 +12,7 @@
 #define RENAME_WHITEOUT		(1 << 2)	/* Whiteout source */
 
 /* These sb flags are internal to the kernel */
-#define MS_ACTIVE	(1<<30)
+#define SB_ACTIVE	(1<<30)
 
 struct nameidata {
 };
