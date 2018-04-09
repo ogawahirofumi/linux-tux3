@@ -659,12 +659,19 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page)
 	 * we can prevent to recreate page by page fault.
 	 */
 	if (page_mapped(page)) {
+#if 1
 		loff_t holelen;
 
 		holelen = PageTransHuge(page) ? HPAGE_PMD_SIZE : PAGE_SIZE;
 		unmap_mapping_range(mapping,
 				    (loff_t)page->index << PAGE_SHIFT,
-				    holelen, 0);
+				    holelen, false);
+#else
+		/* unmap_mapping_pages() is not exported */
+		pgoff_t nr = PageTransHuge(page) ? HPAGE_PMD_NR : 1;
+		unmap_mapping_pages(mapping, page->index, nr, false);
+#endif
+
 	}
 	if (bufferfork_to_invalidate(mapping, page)) {
 		/* Page forked, so truncate page was done */
