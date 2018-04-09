@@ -109,7 +109,7 @@ struct inode {
 	struct timespec		i_mtime;
 	struct timespec		i_ctime;
 	spinlock_t		i_lock;
-	u64			i_version;
+	atomic64_t		i_version;
 
 	map_t			*map;
 	struct hlist_node	i_hash;

@@ -26,6 +26,7 @@
 #include "libklib/slab.h"
 #include "libklib/fs.h"
 #include "libklib/parser.h"
+#include "libklib/iversion.h"
 #include "writeback.h"
 
 #ifndef XATTR_CREATE
@@ -110,7 +111,7 @@ static inline struct dev *sb_dev(struct sb *sb)
 /* struct file initializer */
 #define FILE_INIT(i, p)		{		\
 	.f_inode	= i,			\
-	.f_version	= (i)->i_version,	\
+	.f_version	= 0,			\
 	.f_pos		= p,			\
 }
 

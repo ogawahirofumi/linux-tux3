@@ -1302,7 +1302,7 @@ static void test12(struct sb *sb)
 		test_assert(e->inode.i_mtime.tv_nsec == inode->i_mtime.tv_nsec);
 		test_assert(e->inode.i_ctime.tv_sec == inode->i_ctime.tv_sec);
 		test_assert(e->inode.i_ctime.tv_nsec == inode->i_ctime.tv_nsec);
-		test_assert(e->inode.i_version == inode->i_version);
+		test_assert(inode_peek_iversion(&e->inode) == inode_peek_iversion(inode));
 
 		iput(inode);
 	}
