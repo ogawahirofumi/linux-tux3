@@ -183,7 +183,7 @@ static inline void mutex_unlock(struct mutex *lock)
 {
 	up_write(&lock->sem);
 }
-static inline int mutex_is_locked(struct mutex *lock)
+static inline bool mutex_is_locked(struct mutex *lock)
 {
 	return rwsem_is_locked(&lock->sem);
 }
