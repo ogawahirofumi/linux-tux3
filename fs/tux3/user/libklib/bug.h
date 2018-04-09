@@ -17,6 +17,7 @@
 #define BUG() do {						\
 	fprintf(stderr, "BUG: failure at %s:%d: %s()!\n",	\
 		__FILE__, __LINE__, __func__);			\
+	barrier_before_unreachable();				\
 	{ int *__p = NULL; *__p = 1; }				\
 } while (0)
 
