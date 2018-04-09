@@ -116,8 +116,7 @@ int tux3_set_buffer_dirty_list(struct address_space *mapping,
 	int dirtied = 0;
 
 	/* FIXME: we better to set this by caller? */
-	if (!buffer_uptodate(buffer))
-		set_buffer_uptodate(buffer);
+	set_buffer_uptodate(buffer);
 
 	/*
 	 * Basically, open code of mark_buffer_dirty() without mark
