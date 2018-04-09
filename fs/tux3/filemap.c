@@ -63,7 +63,8 @@ enum map_mode {
 void show_segs(struct block_segment seg[], unsigned segs)
 {
 	__tux3_dbg("%i segs: ", segs);
-	for (int i = 0; i < segs; i++)
+	int i;
+	for (i = 0; i < segs; i++)
 		__tux3_dbg("%Lx/%i ", seg[i].block, seg[i].count);
 	__tux3_dbg("\n");
 }
@@ -475,18 +476,18 @@ static int filemap_extent_io(enum map_mode mode, struct bufvec *bufvec)
 	struct inode *inode = bufvec_inode(bufvec);
 	block_t block, index = bufvec_contig_index(bufvec);
 	unsigned count = bufvec_contig_count(bufvec);
-	int err;
+	int err, i, segs;
 	struct block_segment seg[10];
 
 	/* FIXME: For now, this is only for write */
 	assert(mode != MAP_READ);
 
-	int segs = filemap(inode, index, count, seg, ARRAY_SIZE(seg), mode);
+	segs = filemap(inode, index, count, seg, ARRAY_SIZE(seg), mode);
 	if (segs < 0)
 		return segs;
 	assert(segs);
 
-	for (int i = 0; i < segs; i++) {
+	for (i = 0; i < segs; i++) {
 		block = seg[i].block;
 		count = seg[i].count;
 

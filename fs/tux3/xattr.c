@@ -389,7 +389,8 @@ void dump_atoms(struct inode *atable)
 	unsigned blocks = (sb->atomgen + (sb->blockmask >> ATOMREF_BLKBITS))
 		>> (sb->blockbits - ATOMREF_BLKBITS);
 
-	for (unsigned j = 0; j < blocks; j++) {
+	unsigned j;
+	for (j = 0; j < blocks; j++) {
 		unsigned block = sb->atomref_base + ATOMREF_SIZE * j;
 		struct buffer_head *lobuf, *hibuf;
 		lobuf = blockread(mapping(atable), block);
@@ -401,7 +402,8 @@ void dump_atoms(struct inode *atable)
 			goto eek;
 		}
 		__be16 *lorefs = bufdata(lobuf), *hirefs = bufdata(hibuf);
-		for (unsigned i = 0; i < (sb->blocksize >> ATOMREF_BLKBITS); i++) {
+		unsigned i;
+		for (i = 0; i < (sb->blocksize >> ATOMREF_BLKBITS); i++) {
 			unsigned refs = (be16_to_cpu(hirefs[i]) << 16) | be16_to_cpu(lorefs[i]);
 			if (!refs)
 				continue;

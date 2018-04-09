@@ -416,7 +416,8 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 			need_revalidate = false;
 		}
 		struct tux3_dirent *limit = base + sb->blocksize - TUX_REC_LEN(1);
-		for (struct tux3_dirent *entry = base + offset; entry <= limit; entry = next_entry(entry)) {
+		struct tux3_dirent *entry;
+		for (entry = base + offset; entry <= limit; entry = next_entry(entry)) {
 			if (check_dir_entry(dir, buffer, entry)) {
 				/* On error, skip to next block */
 				ctx->pos = (ctx->pos | sb->blockmask) + 1;

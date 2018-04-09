@@ -255,7 +255,8 @@ void release_cursor(struct cursor *cursor)
 void show_cursor(struct cursor *cursor, int depth)
 {
 	__tux3_dbg(">>> cursor %p/%i:", cursor, depth);
-	for (int i = 0; i < depth; i++) {
+	int i;
+	for (i = 0; i < depth; i++) {
 		__tux3_dbg(" [%Lx/%i]",
 			   bufindex(cursor->path[i].buffer),
 			   bufcount(cursor->path[i].buffer));
@@ -279,7 +280,8 @@ struct cursor *alloc_cursor(struct btree *btree, int extra)
 		cursor->level = -1;
 #ifdef CURSOR_DEBUG
 		cursor->maxlevel = extra_depth - 1;
-		for (int i = 0; i < extra_depth; i++) {
+		int i;
+		for (i = 0; i < extra_depth; i++) {
 			cursor->path[i].buffer = FREE_BUFFER; /* for debug */
 			cursor->path[i].next = FREE_NEXT; /* for debug */
 		}
@@ -787,7 +789,7 @@ int btree_chop(struct btree *btree, tuxkey_t start, u64 len)
 	struct chopped_index_info *cii;
 	struct cursor *cursor;
 	tuxkey_t limit;
-	int ret, done = 0;
+	int i, ret, done = 0;
 
 	if (!has_root(btree))
 		return 0;
@@ -940,7 +942,7 @@ chop_root:
 	ret = 0;
 
 out:
-	for (int i = 0; i < btree->root.depth; i++) {
+	for (i = 0; i < btree->root.depth; i++) {
 		if (prev[i])
 			blockput(prev[i]);
 	}
