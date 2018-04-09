@@ -317,7 +317,7 @@ struct tux3_wb_work {
 
 /* Refcount for delta */
 struct delta_ref {
-	atomic_t refcount;
+	refcount_t refcount;
 	unsigned delta;
 	struct completion waitref_done;
 };

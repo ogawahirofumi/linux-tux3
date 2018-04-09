@@ -834,10 +834,10 @@ static struct delta_ref *delta_get(struct sb *sb)
 		 */
 		barrier();
 		delta_ref = rcu_dereference_check(sb->current_delta, 1);
-	} while (!atomic_inc_not_zero(&delta_ref->refcount));
+	} while (!refcount_inc_not_zero(&delta_ref->refcount));
 
 	trace("delta %u, refcount %u",
-	      delta_ref->delta, atomic_read(&delta_ref->refcount));
+	      delta_ref->delta, refcount_read(&delta_ref->refcount));
 
 	return delta_ref;
 }
@@ -845,20 +845,20 @@ static struct delta_ref *delta_get(struct sb *sb)
 /* Release the reference of delta */
 static void delta_put(struct sb *sb, struct delta_ref *delta_ref)
 {
-	if (atomic_dec_and_test(&delta_ref->refcount))
+	if (refcount_dec_and_test(&delta_ref->refcount))
 		schedule_flush_delta(sb, delta_ref);
 
 	trace("delta %u, refcount %u",
-	      delta_ref->delta, atomic_read(&delta_ref->refcount));
+	      delta_ref->delta, refcount_read(&delta_ref->refcount));
 }
 
 /* Update current delta */
 static void __delta_transition(struct sb *sb, struct delta_ref *delta_ref,
 			       unsigned new_delta)
 {
-	assert(atomic_read(&delta_ref->refcount) == 0);
+	assert(refcount_read(&delta_ref->refcount) == 0);
 	/* Set the initial refcount. */
-	atomic_set(&delta_ref->refcount, 1);
+	refcount_set(&delta_ref->refcount, 1);
 	/* Initialize waitref completion */
 	reinit_completion(&delta_ref->waitref_done);
 	/* Assign the delta number */
@@ -909,7 +909,7 @@ void tux3_delta_init(struct sb *sb)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(sb->delta_refs); i++) {
-		atomic_set(&sb->delta_refs[i].refcount, 0);
+		refcount_set(&sb->delta_refs[i].refcount, 0);
 		init_completion(&sb->delta_refs[i].waitref_done);
 	}
 #ifdef TUX3_FLUSHER_SYNC

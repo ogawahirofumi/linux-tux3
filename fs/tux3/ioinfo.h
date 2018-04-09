@@ -19,7 +19,7 @@ enum {
 };
 
 struct ioinfo {
-	atomic_t inflight;		/* In-flight I/O count */
+	refcount_t inflight;		/* In-flight I/O count */
 	struct completion done;		/* completion for in-flight I/O */
 
 	int flush_flags;		/* Flush type */
@@ -28,12 +28,12 @@ struct ioinfo {
 
 static inline void tux3_io_inflight_inc(struct ioinfo *ioinfo)
 {
-	atomic_inc(&ioinfo->inflight);
+	refcount_inc(&ioinfo->inflight);
 }
 
 static inline void tux3_io_inflight_dec(struct ioinfo *ioinfo)
 {
-	if (atomic_dec_and_test(&ioinfo->inflight))
+	if (refcount_dec_and_test(&ioinfo->inflight))
 		complete(&ioinfo->done);
 }
 
@@ -47,7 +47,7 @@ static inline void tux3_io_init(struct ioinfo *ioinfo, int flush_flags)
 	 * submitted
 	 */
 	init_completion(&ioinfo->done);
-	atomic_set(&ioinfo->inflight, 1);
+	refcount_set(&ioinfo->inflight, 1);
 }
 
 static inline void tux3_io_wait(struct ioinfo *ioinfo)
