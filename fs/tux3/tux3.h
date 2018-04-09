@@ -406,8 +406,8 @@ struct sb {
 	unsigned entries_per_node; /* must be per-btree type, get rid of this */
 	unsigned version;	/* Currently mounted volume version view */
 
-	unsigned atomref_base;	/* Index of atom refcount base */
-	unsigned unatom_base;	/* Index of unatom base */
+	block_t atomref_base;	/* Index of atom refcount base */
+	block_t unatom_base;	/* Index of unatom base */
 	loff_t atomdictsize;	/* Atom dictionary size */
 	unsigned freeatom;	/* Start of free atom list in atom table */
 	unsigned atomgen;	/* Next atom number to allocate if no free atoms */

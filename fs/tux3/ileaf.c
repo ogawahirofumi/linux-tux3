@@ -92,7 +92,11 @@ static inline inum_t ileaf_ibase(struct ileaf *ileaf)
 
 static void ileaf_btree_init(struct btree *btree)
 {
-	btree->entries_per_leaf = 1 << (btree->sb->blockbits - 6);
+	/* FIXME: 1<<6 is sane inode size? */
+	if (btree->sb->blockbits <= 6)
+		btree->entries_per_leaf = 0; /* only for testing */
+	else
+		btree->entries_per_leaf = 1 << (btree->sb->blockbits - 6);
 }
 
 static int ileaf_init(struct btree *btree, void *leaf)
@@ -898,7 +902,10 @@ static inline void *ileaf_attrs_start(struct btree *btree, struct ileaf *ileaf)
 static void ileaf_btree_init(struct btree *btree)
 {
 	/* FIXME: 1<<6 is sane inode size? */
-	btree->entries_per_leaf = 1 << (btree->sb->blockbits - 6);
+	if (btree->sb->blockbits <= 6)
+		btree->entries_per_leaf = 0; /* only for testing */
+	else
+		btree->entries_per_leaf = 1 << (btree->sb->blockbits - 6);
 }
 
 static int ileaf_init(struct btree *btree, void *leaf)

@@ -65,9 +65,9 @@ typedef u32 atom_t;
 /* Initialize base address for dictionaries on atable */
 void atable_init_base(struct sb *sb)
 {
-	sb->atomref_base = 1U << (ATOM_DICT_BITS - sb->blockbits);
-	sb->unatom_base =
-		sb->atomref_base + (1U << (ATOMREF_TABLE_BITS - sb->blockbits));
+	sb->atomref_base = (block_t)1 << (ATOM_DICT_BITS - sb->blockbits);
+	sb->unatom_base = sb->atomref_base
+		+ ((block_t)1 << (ATOMREF_TABLE_BITS - sb->blockbits));
 }
 
 static inline atom_t entry_atom(struct tux3_dirent *entry)
@@ -297,7 +297,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 {
 	struct sb *sb = tux_sb(atable->i_sb);
 	unsigned shift = sb->blockbits - ATOMREF_BLKBITS;
-	unsigned block = sb->atomref_base + ATOMREF_SIZE * (atom >> shift);
+	block_t block = sb->atomref_base + ATOMREF_SIZE * (atom >> shift);
 	unsigned offset = atom & ((1U << shift) - 1), kill = 0;
 	struct buffer_head *buffer;
 	__be16 *refcount;
@@ -309,7 +309,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 
 	refcount = bufdata(buffer);
 	int low = be16_to_cpu(refcount[offset]) + use;
-	trace("inc atom %x by %d, offset %x[%x], low = %d",
+	trace("inc atom %x by %d, offset %llx[%x], low = %d",
 	      atom, use, block, offset, low);
 
 	/* This releases buffer */
@@ -327,7 +327,7 @@ static int atomref(struct inode *atable, atom_t atom, int use)
 		if (!low)
 			blockput(buffer);
 		else {
-			trace("carry %d, offset %x[%x], high = %d",
+			trace("carry %d, offset %llx[%x], high = %d",
 			      (low >> 16), block, offset, high);
 			high += (low >> 16);
 			assert(high >= 0); /* paranoia check */
@@ -391,7 +391,7 @@ void dump_atoms(struct inode *atable)
 
 	unsigned j;
 	for (j = 0; j < blocks; j++) {
-		unsigned block = sb->atomref_base + ATOMREF_SIZE * j;
+		block_t block = sb->atomref_base + ATOMREF_SIZE * j;
 		struct buffer_head *lobuf, *hibuf;
 		lobuf = blockread(mapping(atable), block);
 		if (!lobuf)
