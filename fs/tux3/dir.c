@@ -378,7 +378,7 @@ static bool tux3_dir_emit_dots(struct file *file, struct dir_context *ctx)
 int tux_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct inode *dir = file_inode(file);
-	int revalidate = file->f_version != dir->i_version;
+	bool need_revalidate = !inode_eq_iversion(dir, file->f_version);
 	struct sb *sb = tux_sb(dir->i_sb);
 	unsigned blockbits = sb->blockbits;
 	block_t block, blocks = dir->i_size >> blockbits;
@@ -405,15 +405,15 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 		if (!buffer)
 			return -EIO;
 		void *base = bufdata(buffer);
-		if (revalidate) {
+		if (need_revalidate) {
 			if (offset) {
 				offset = tux_validate_entry(base, offset);
 				ctx->pos = (block << blockbits) + offset;
 				/* Adjust pos for fake "." and ".." */
 				ctx->pos = max_t(loff_t, ctx->pos, 2);
 			}
-			file->f_version = dir->i_version;
-			revalidate = 0;
+			file->f_version = inode_query_iversion(dir);
+			need_revalidate = false;
 		}
 		struct tux3_dirent *limit = base + sb->blocksize - TUX_REC_LEN(1);
 		for (struct tux3_dirent *entry = base + offset; entry <= limit; entry = next_entry(entry)) {

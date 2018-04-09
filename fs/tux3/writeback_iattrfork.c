@@ -40,7 +40,7 @@ static void idata_copy(struct inode *inode, struct tux3_iattr_data *idata)
 //	idata->i_atime		= inode->i_atime;
 	idata->i_mtime		= inode->i_mtime;
 	idata->i_ctime		= inode->i_ctime;
-	idata->i_version	= inode->i_version;
+	idata->i_version	= inode_peek_iversion(inode);
 	idata->generic		= iattr_encode_generic(inode);
 }
 

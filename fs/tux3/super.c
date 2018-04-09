@@ -65,7 +65,7 @@ static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 #endif
 
 	/* uninitialized stuff by alloc_inode() */
-	inode->i_version	= 1;
+	inode_set_iversion(inode, 1);
 	inode->i_atime		= epoch;
 	inode->i_mtime		= epoch;
 	inode->i_ctime		= epoch;

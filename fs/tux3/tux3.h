@@ -18,6 +18,7 @@
 #include <linux/slab.h>
 #include <linux/xattr.h>
 #include <linux/list_sort.h>
+#include <linux/iversion.h>
 #include <asm/unaligned.h>
 
 #include "trace.h"
