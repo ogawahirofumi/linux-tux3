@@ -38,6 +38,14 @@ struct kmem_cache *kmem_cache_create(const char *name, size_t size,
 	return cachep;
 }
 
+struct kmem_cache *kmem_cache_create_usercopy(const char *name,
+			size_t size, size_t align, slab_flags_t flags,
+			size_t useroffset, size_t usersize,
+			void (*ctor)(void *))
+{
+	return kmem_cache_create(name, size, align, flags, ctor);
+}
+
 void kmem_cache_destroy(struct kmem_cache *cachep)
 {
 	kfree(cachep);
