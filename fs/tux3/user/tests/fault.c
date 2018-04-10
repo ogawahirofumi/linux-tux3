@@ -145,10 +145,12 @@ static void test01(struct sb *sb)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2)
+	int argi = test_init(argc, argv);
+
+	if (argi >= argc)
 		error_exit("usage: %s <volname>", argv[0]);
 
-	int fd = open(argv[1], O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR);
+	int fd = open(argv[argi], O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR);
 	assert(fd >= 0);
 	u64 volsize = 1 << 24;
 	int err = ftruncate(fd, volsize);
@@ -160,8 +162,6 @@ int main(int argc, char *argv[])
 	struct dev *dev = &(struct dev){ .fd = fd, .bits = 8 };
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, volsize >> dev->bits);
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01(sb);

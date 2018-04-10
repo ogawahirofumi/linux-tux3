@@ -283,13 +283,15 @@ static void test02(struct sb *sb)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2)
+	int argi = test_init(argc, argv);
+
+	if (argi >= argc)
 		error_exit("usage: %s <volname>", argv[0]);
 
 	size_t volsize = 1 << 24;
 	int fd, err;
 
-	fd = open(argv[1], O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR);
+	fd = open(argv[argi], O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR);
 	assert(!ftruncate(fd, volsize));
 
 	err = tux3_init_mem(volsize, 2);
@@ -304,8 +306,6 @@ int main(int argc, char *argv[])
 
 	sb->atomref_base = 1 << 10;
 	sb->unatom_base = 1 << 11;
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01(sb);

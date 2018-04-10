@@ -1248,6 +1248,8 @@ static void test06(struct sb *sb, struct btree *btree)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	struct dev *dev = &(struct dev){ .bits = 10 };
 
 	int err = tux3_init_mem(1 << 20, 2);
@@ -1260,8 +1262,6 @@ int main(int argc, char *argv[])
 
 	sb->logmap = tux_new_logmap(sb);
 	assert(sb->logmap);
-
-	test_init(argv[0]);
 
 	struct inode *inode = rapid_new_inode(sb, NULL, S_IFREG);
 	struct btree *btree = &tux_inode(inode)->btree;

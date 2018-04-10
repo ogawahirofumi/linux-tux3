@@ -146,6 +146,8 @@ static void test02(struct sb *sb, struct inode *dir)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	struct dev *dev = &(struct dev){ .bits = 8 };
 
 	int err = tux3_init_mem(1 << 20, 2);
@@ -157,8 +159,6 @@ int main(int argc, char *argv[])
 	assert(!set_blocksize(sb->blocksize));
 
 	struct inode *dir = rapid_new_inode(sb, NULL, S_IFDIR);
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01(sb, dir);

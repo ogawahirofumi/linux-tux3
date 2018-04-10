@@ -93,6 +93,8 @@ static void test01(struct sb *sb)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	struct dev *dev = &(struct dev){ .bits = 9 };
 
 	int err = tux3_init_mem(1 << 20, 2);
@@ -101,8 +103,6 @@ int main(int argc, char *argv[])
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, 100);
 	assert(!setup_sb(sb, &sb->super));
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01(sb);

@@ -94,6 +94,8 @@ static void test01(struct sb *sb)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	struct dev *dev = &(struct dev){ .bits = 8 };
 
 	int err = tux3_init_mem(1 << 20, 2);
@@ -106,8 +108,6 @@ int main(int argc, char *argv[])
 
 	sb->logmap = tux_new_logmap(sb);
 	assert(sb->logmap);
-
-	test_init(argv[0]);
 
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);

@@ -190,10 +190,10 @@ static void test03(void)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	int err = tux3_init_mem(1 << 20, 2);
 	assert(!err);
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01();

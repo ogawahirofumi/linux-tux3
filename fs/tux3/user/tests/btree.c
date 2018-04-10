@@ -763,6 +763,8 @@ static void test07(struct sb *sb, struct inode *inode)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	struct dev *dev = &(struct dev){ .bits = 6 };
 
 	int err = tux3_init_mem(1 << 20, 2);
@@ -780,8 +782,6 @@ int main(int argc, char *argv[])
 
 	struct inode *inode = rapid_new_inode(sb, dev_errio, 0);
 	assert(inode);
-
-	test_init(argv[0]);
 
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);

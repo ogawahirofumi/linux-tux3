@@ -355,6 +355,8 @@ static void initialize_buffer(struct inode *inode, block_t block)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	enum { BITMAP_BLOCKS = 10, groupbits = 5 };
 	struct dev *dev = &(struct dev){ .bits = 3 };
 
@@ -368,8 +370,6 @@ int main(int argc, char *argv[])
 	assert(!setup_sb(sb, &sb->super));
 	assert(!set_blocksize(sb->blocksize));
 	sb->groupbits = groupbits;
-
-	test_init(argv[0]);
 
 	sb->bitmap = rapid_new_inode(sb, NULL, 0);
 	sb->countmap = rapid_new_inode(sb, NULL, 0);

@@ -15,7 +15,7 @@
 	__test_res;							\
 })
 
-void test_init(const char *argv0);
+int test_init(int argc, char *argv[]);
 const char *test_series(void);
 const char *test_name(void);
 void test_assert_failed(void);

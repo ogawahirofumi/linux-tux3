@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -7,10 +8,12 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <assert.h>
+#include <fnmatch.h>
 
 #include "test.h"
 
 #define TEST_NEST_MAX		10
+#define TEST_FILTER_MAX		10
 
 struct test_env {
 	const char *series;
@@ -24,12 +27,60 @@ struct test_env {
 	} test[TEST_NEST_MAX];
 	int nest;
 	int forked;
+	bool filtered;
 };
 
 static struct test_env test_env;
+struct filter {
+	const char *inc[TEST_FILTER_MAX];
+	int nr_inc;
+	const char *exc[TEST_FILTER_MAX];
+	int nr_exc;
+};
+static struct filter opt_filter;
 
-void test_init(const char *argv0)
+/*
+ * - If test matched to "include" filter, return false even if included
+ *   in "exclude" filter.
+ * - If test matched to "exclude" filter, return true.
+ * - If not matched, return false.
+ */
+static bool test_is_filtered(const char *test)
 {
+	int i;
+
+	for (i = 0; i < opt_filter.nr_inc; i++) {
+		if (fnmatch(opt_filter.inc[i], test, 0) == 0)
+			return false;
+	}
+	for (i = 0; i < opt_filter.nr_exc; i++) {
+		if (fnmatch(opt_filter.exc[i], test, 0) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+int test_init(int argc, char *argv[])
+{
+	const char *argv0 = argv[0];
+	int opt;
+
+	while ((opt = getopt(argc, argv, "i:x:")) != -1) {
+		switch (opt) {
+		case 'i':
+			opt_filter.inc[opt_filter.nr_inc] = optarg;
+			opt_filter.nr_inc++;
+			break;
+		case 'x':
+			opt_filter.exc[opt_filter.nr_exc] = optarg;
+			opt_filter.nr_exc++;
+			break;
+		default: /* '?' */
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	test_env.series = strrchr(argv0, '/');
 	if (test_env.series == NULL)
 		test_env.series = argv0;
@@ -39,6 +90,9 @@ void test_init(const char *argv0)
 	test_env.test_fail_count = 0;
 	test_env.nest = -1;
 	test_env.forked = 0;
+	test_env.filtered = false;
+
+	return optind;
 }
 
 const char *test_series(void)
@@ -58,6 +112,12 @@ void test_assert_failed(void)
 
 int test_start(const char *test)
 {
+	/* Need to run test? */
+	if (test_is_filtered(test)) {
+		test_env.filtered = true;
+		return 0;
+	}
+
 	int nest = ++test_env.nest;
 	assert(nest < TEST_NEST_MAX);
 
@@ -80,6 +140,12 @@ int test_start(const char *test)
 
 void test_end(void)
 {
+	/* Test is filtered? */
+	if (test_env.filtered) {
+		test_env.filtered = false;
+		return;
+	}
+
 	int nest = test_env.nest;
 	int test_fail_count = test_env.test_fail_count;
 	pid_t err;

@@ -799,6 +799,8 @@ static void test05(struct sb *sb, struct btree *btree)
 
 int main(int argc, char *argv[])
 {
+	test_init(argc, argv);
+
 	struct dev *dev = &(struct dev){ .bits = 12 };
 
 	int err = tux3_init_mem(1 << 20, 2);
@@ -810,8 +812,6 @@ int main(int argc, char *argv[])
 
 	struct btree btree;
 	init_btree(&btree, sb, no_root, &itree_ops);
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01(sb, &btree);

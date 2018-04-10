@@ -188,10 +188,12 @@ static void test03(struct sb *sb)
 
 int main(int argc, char *argv[])
 {
-	if (argc < 2)
+	int argi = test_init(argc, argv);
+
+	if (argi >= argc)
 		error_exit("usage: %s <volname>", argv[0]);
 
-	char *name = argv[1];
+	char *name = argv[argi];
 	int fd = open(name, O_CREAT|O_TRUNC|O_RDWR, S_IRUSR|S_IWUSR);
 	assert(!ftruncate(fd, 1 << 24));
 	loff_t size = 0;
@@ -207,8 +209,6 @@ int main(int argc, char *argv[])
 
 	err = mkfs_tux3(sb);
 	assert(!err);
-
-	test_init(argv[0]);
 
 	if (test_start("test01"))
 		test01(sb);
