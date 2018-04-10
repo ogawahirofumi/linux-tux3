@@ -12,6 +12,14 @@ endif
 VGFLAGS	+= --error-exitcode=200
 VGFLAGS	+= --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all
 
+# disable color diagnostic messages if run under emacs
+ifeq ($(TERM),dumb)
+ASAN_OPTIONS = color=never
+export ASAN_OPTIONS
+UBSAN_OPTIONS = color=never
+export UBSAN_OPTIONS
+endif
+
 # test rules
 .NOTPARALLEL: tests
 # The "tests" run in order, otherwise those will output the result mixed.
