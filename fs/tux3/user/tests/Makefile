@@ -1,4 +1,14 @@
-VG	= valgrind $(VGFLAGS)
+ifeq ($(ASAN),1)
+WITH_SANITIZER = 1
+endif
+ifeq ($(UBSAN),1)
+WITH_SANITIZER = 1
+endif
+
+# valgrind and ASAN/UBSAN are incompatible, so disable valgrind for tests
+ifneq ($(WITH_SANITIZER),1)
+VG	?= valgrind $(VGFLAGS)
+endif
 VGFLAGS	+= --error-exitcode=200
 VGFLAGS	+= --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all
 
@@ -32,7 +42,12 @@ test_dleaf: dleaf
 	$(VG) ./dleaf
 
 test_fault: fault
+# ASAN/UBSAN are incompatible for dlsym hook of malloc, etc.
+ifneq ($(WITH_SANITIZER),1)
 	$(VG) ./fault foodev
+else
+	@echo "skip fault test: incompatible with ASAN/UBSAN"
+endif
 
 test_filemap: filemap
 	$(VG) ./filemap foodev
