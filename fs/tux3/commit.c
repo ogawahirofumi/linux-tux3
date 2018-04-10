@@ -740,6 +740,8 @@ static int do_commit(struct sb *sb, int flags)
 	 */
 	err = commit_delta(sb); /* FIXME: err */
 out:
+	/* Set to NULL for debugging */
+	sb->ioinfo = NULL;
 	/* FIXME: what to do if error? */
 	tux3_end_backend();
 	trace("<<<<<<<<< commit done %u: err %d", delta, err);

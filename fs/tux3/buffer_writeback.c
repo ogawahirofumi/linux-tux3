@@ -746,8 +746,8 @@ int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
 	list_move_tail(&buffer->b_assoc_buffers, &sb->phase2_buffers);
 
 	tux3_io_inflight_inc(sb->ioinfo);
-	err = blockio(req_opf, req_flags, sb, buffer, bufindex(buffer),
-		      vol_early_end_io, buffer);
+	err = blockio(req_opf, req_flags | tux3_io_req_flags(sb->ioinfo),
+		      sb, buffer, bufindex(buffer), vol_early_end_io, buffer);
 	if (err)
 		tux3_io_inflight_dec(sb->ioinfo);
 
