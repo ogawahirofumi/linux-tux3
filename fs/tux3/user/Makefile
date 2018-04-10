@@ -39,7 +39,8 @@ CFLAGS	+= -DSMALL_PAGE_SIZE_DEBUG=1
 # alignment checker
 #ALIGN_CHECK = 1
 ifeq ($(ALIGN_CHECK),1)
-CFLAGS	+= -DALIGN_CHECK=1 -ldl
+CFLAGS	+= -DALIGN_CHECK=1
+LIBS += -ldl
 # prevent unaligned error
 NEED_MEMMOVE_UNALIGNED = 1
 endif
@@ -76,9 +77,9 @@ CFLAGS	+= $(CFLAGS_$(basetarget).o)
 # user flags
 CFLAGS	+= $(UCFLAGS)
 
-LDFLAGS =
-# Per target LDFLAGS
+# Per target LDFLAGS/LIBS
 LDFLAGS	+= $(LDFLAGS_$@)
+LIBS	+= $(LIBS_$@)
 
 AFLAGS	= rcs
 
@@ -125,7 +126,7 @@ TUX3_BIN	= tux3
 ifeq ($(shell pkg-config fuse && echo found), found)
 	FUSE_BIN = tux3fuse
 	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse)
-	LDFLAGS_tux3fuse = -lfuse
+	LIBS_tux3fuse = -lfuse
 endif
 TEST_BIN	= tests/balloc tests/btree tests/buffer tests/commit \
 	tests/dir tests/dleaf tests/fault tests/filemap tests/iattr \
@@ -169,7 +170,7 @@ ALL_OBJS	= $(COMMON_OBJS) $(KERN_OBJS)
 OBJS_DIRS := $(sort $(dir $(ALL_OBJS)))
 
 # Per target flags
-LDFLAGS_tests/fault = -ldl
+LIBS_tests/fault = -ldl
 
 .PHONY: tests
 all: $(ALL_BIN)
@@ -249,7 +250,7 @@ $(LIBTUX3) $(LIBKLIB):
 # build binaries rules
 $(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN):
 	$(call cmd,"LINK      $@",\
-		$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@)
+		$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@)
 
 clean:
 	$(call cmd,"CLEAN")
