@@ -128,9 +128,9 @@ ifeq ($(shell pkg-config fuse && echo found), found)
 	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse)
 	LIBS_tux3fuse = -lfuse
 endif
-TEST_BIN	= tests/balloc tests/btree tests/buffer tests/commit \
-	tests/dir tests/dleaf tests/fault tests/filemap tests/iattr \
-	tests/ileaf tests/inode tests/log tests/xattr
+TEST_BIN	= tests/balloc tests/bdict_fixed tests/btree tests/buffer \
+	tests/commit tests/dir tests/dleaf tests/fault tests/filemap \
+	tests/iattr tests/ileaf tests/inode tests/log tests/xattr
 ALL_BIN		= $(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN)
 
 # libraries
@@ -156,10 +156,10 @@ LIBKLIB_OBJS	= libklib/find_bit.o libklib/fs.o libklib/list_sort.o \
 # binary objects
 OBJS		= tux3.o
 FUSE_OBJS	= tux3fuse.o
-TEST_OBJS	= tests/balloc.o tests/btree.o tests/buffer.o tests/commit.o \
-	tests/dir.o tests/dleaf.o tests/fault.o tests/filemap.o \
-	tests/iattr.o tests/ileaf.o tests/inode.o tests/log.o \
-	tests/xattr.o
+TEST_OBJS	= tests/balloc.o tests/bdict_fixed.o tests/btree.o \
+	tests/buffer.o tests/commit.o tests/dir.o tests/dleaf.o \
+	tests/fault.o tests/filemap.o tests/iattr.o tests/ileaf.o \
+	tests/inode.o tests/log.o tests/xattr.o
 
 # objects for common build rules
 COMMON_OBJS	= $(USER_OBJS) $(TEST_LIB_OBJS) $(LIBKLIB_OBJS) $(OBJS) \
@@ -181,6 +181,7 @@ $(LIBKLIB): $(LIBKLIB_OBJS)
 tux3: tux3.o $(ALL_LIBS)
 tux3fuse: $(FUSE_OBJS) $(ALL_LIBS)
 tests/balloc: tests/balloc.o $(ALL_LIBS)
+tests/bdict_fixed: tests/bdict_fixed.o $(ALL_LIBS)
 tests/btree: tests/btree.o $(ALL_LIBS)
 tests/buffer: tests/buffer.o $(ALL_LIBS)
 tests/commit: tests/commit.o $(ALL_LIBS)

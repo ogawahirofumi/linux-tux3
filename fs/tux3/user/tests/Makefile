@@ -28,15 +28,18 @@ export ASAN_OPTIONS UBSAN_OPTIONS
 .NOTPARALLEL: tests
 # The "tests" run in order, otherwise those will output the result mixed.
 
-all: test_balloc test_btree test_buffer test_commit test_dir test_dleaf \
-	test_dleaf test_fault test_filemap test_iattr test_ileaf test_inode \
-	test_log test_xattr
+all: test_balloc test_bdict_fixed test_btree test_buffer test_commit \
+	test_dir test_dleaf test_dleaf test_fault test_filemap test_iattr \
+	test_ileaf test_inode test_log test_xattr
 
 clean:
 	$(Q)rm -f foodev
 
 test_balloc: balloc
 	$(VG) ./balloc
+
+test_bdict_fixed: bdict_fixed
+	$(VG) ./bdict_fixed
 
 test_btree: btree
 	$(VG) ./btree foodev
