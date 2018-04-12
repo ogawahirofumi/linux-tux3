@@ -403,8 +403,7 @@ void remember_dleaf(struct sb *sb, struct buffer_head *leafbuf)
 {
 	if (leafbuf != sb->last_dleaf) {
 		if (sb->last_dleaf) {
-			vol_early_io(REQ_OP_WRITE,
-				     REQ_META | tux3_io_req_flags(sb->ioinfo),
+			vol_early_io(REQ_OP_WRITE, REQ_META,
 				     sb, sb->last_dleaf);
 		}
 
