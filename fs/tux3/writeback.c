@@ -21,6 +21,9 @@
 #if I_DIRTY != ((1 << 0) | (1 << 1) | (1 << 2))
 #error "I_DIRTY was changed"
 #endif
+#if I_DIRTY_ALL != (I_DIRTY | I_DIRTY_TIME)
+#error "I_DIRTY_ALL was changed"
+#endif
 
 /*
  * tuxnode->state usage from LSB:
@@ -108,10 +111,14 @@ void tux3_dirty_inode(struct inode *inode, int flags)
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	unsigned delta = tux3_inode_delta(inode);
-	unsigned mask = tux3_dirty_mask(flags, delta);
 	struct sb_delta_dirty *s_ddc;
 	struct inode_delta_dirty *uninitialized_var(i_ddc);
 	int re_dirtied = 0;
+	unsigned mask;
+
+	/* FIXME: SB_LAZYTIME is not supported yet */
+	flags &= I_DIRTY;
+	mask = tux3_dirty_mask(flags, delta);
 
 	if ((tuxnode->state & mask) == mask)
 		return;
@@ -204,8 +211,10 @@ static void tux3_clear_dirty_inode_nolock(struct inode *inode, unsigned delta,
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct tux3_inode *tuxnode = tux_inode(inode);
-	unsigned mask = tux3_dirty_mask(I_DIRTY, delta);
-	unsigned old_dirty;
+	unsigned mask, old_dirty;
+
+	/* FIXME: SB_LAZYTIME is not supported yet */
+	mask = tux3_dirty_mask(I_DIRTY, delta);
 
 	old_dirty = tuxnode->state & (TUX3_DIRTY_BTREE | mask);
 	/* Clear dirty flags for delta */

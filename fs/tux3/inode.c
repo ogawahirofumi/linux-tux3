@@ -956,6 +956,7 @@ int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 static int tux3_file_update_time(struct inode *inode, struct timespec *time,
 				 int flags)
 {
+	int iflags = I_DIRTY_TIME;
 	bool dirty = false;
 
 	/* FIXME: atime is not supported yet */
@@ -976,7 +977,8 @@ static int tux3_file_update_time(struct inode *inode, struct timespec *time,
 		dirty = true;
 
 	if (dirty)
-		mark_inode_dirty_sync(inode);
+		iflags |= I_DIRTY_SYNC;
+	__mark_inode_dirty(inode, iflags);
 	return 0;
 }
 
@@ -1008,6 +1010,7 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 				    int flags)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
+	int iflags = I_DIRTY_TIME;
 	bool dirty = false;
 
 	/* FIXME: atime is not supported yet */
@@ -1030,7 +1033,8 @@ static int tux3_special_update_time(struct inode *inode, struct timespec *time,
 		dirty = true;
 
 	if (dirty)
-		mark_inode_dirty_sync(inode);
+		iflags |= I_DIRTY_SYNC;
+	__mark_inode_dirty(inode, iflags);
 	change_end(sb);
 
 	return 0;

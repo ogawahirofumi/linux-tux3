@@ -686,6 +686,16 @@ static void tux3_put_super(struct super_block *sb)
 	kfree(sbi);
 }
 
+/* FIXME: SB_LAZYTIME is not supported yet */
+static unsigned long remove_lazytime(struct sb *sb, unsigned long flags)
+{
+	if (flags & SB_LAZYTIME) {
+		tux3_msg(sb, "lazytime is not supported, ignored");
+		flags &= ~SB_LAZYTIME;
+	}
+	return flags;
+}
+
 static int tux3_remount(struct super_block *sb, int *flags, char *data)
 {
 	struct sb *sbi = tux_sb(sb);
@@ -705,6 +715,7 @@ static int tux3_remount(struct super_block *sb, int *flags, char *data)
 	}
 
 	sbi->mopt = mopt;
+	*flags = remove_lazytime(sbi, *flags);
 
 	return 0;
 }
@@ -753,6 +764,7 @@ static int tux3_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_time_gran = 1;
 	/* Set default mount options */
 	sbi->mopt = tux3_default_mopt;
+	sb->s_flags = remove_lazytime(sbi, sb->s_flags);
 
 	err = parse_options(sbi, &sbi->mopt, data);
 	if (err)
