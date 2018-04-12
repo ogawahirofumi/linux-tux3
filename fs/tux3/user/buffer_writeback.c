@@ -196,13 +196,20 @@ static inline int tux3_call_io(struct inode *inode, struct bufvec *bufvec)
 
 #include "../buffer_writeback_common.c"
 
+/* FIXME: hack to disable vol_early_io for testing purpose. (we would
+ * want to remove vol_early_io itself.) */
+bool disable_vol_early_io;
+
 /* 1st phase I/O for volmap by random order */
 int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
 		 struct sb *sb, struct buffer_head *buffer)
 {
 	int err;
+	if (disable_vol_early_io)
+		return 0;
 	assert(buffer_dirty(buffer));
-	err = blockio_sync(req_opf, req_flags, sb, buffer, bufindex(buffer));
+	err = blockio_sync(req_opf, req_flags | tux3_io_req_flags(sb->ioinfo),
+			   sb, buffer, bufindex(buffer));
 	buffer_io_done(buffer, err, __clear_buffer_dirty_for_endio);
 	return err;
 }

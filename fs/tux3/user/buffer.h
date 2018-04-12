@@ -235,6 +235,7 @@ void bufvec_complete_without_io(struct bufvec *bufvec, unsigned count);
 int bufvec_contig_add(struct bufvec *bufvec, struct buffer_head *buffer);
 int flush_list(struct inode *inode, struct tux3_iattr_data *idata,
 	       struct list_head *head, unsigned int req_flags);
+extern bool disable_vol_early_io;
 int vol_early_io(enum req_opf req_opf, unsigned int req_flags,
 		 struct sb *sb, struct buffer_head *buffer);
 int tux3_volmap_clean_io(struct inode *inode);
