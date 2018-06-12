@@ -96,7 +96,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 		struct backing_dev_info *bdi = inode_to_bdi(inode);
 		unsigned long flags;
 
-		spin_lock_irqsave(&mapping->tree_lock, flags);
+		xa_lock_irqsave(&mapping->i_pages, flags);
 		if (!old_writeback) {
 			bool on_wblist;
 
@@ -107,7 +107,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 			on_wblist = mapping_tagged(mapping,
 						   PAGECACHE_TAG_WRITEBACK);
 
-			radix_tree_tag_set(&mapping->page_tree,
+			radix_tree_tag_set(&mapping->i_pages,
 					   page_index(page),
 					   PAGECACHE_TAG_WRITEBACK);
 
@@ -128,14 +128,14 @@ skip_tag_set:
 		}
 		/* If PageForked(), don't touch tag */
 		if (!PageDirty(page) && !PageForked(page))
-			radix_tree_tag_clear(&mapping->page_tree,
+			radix_tree_tag_clear(&mapping->i_pages,
 						page_index(page),
 						PAGECACHE_TAG_DIRTY);
 		if (!keep_write)
-			radix_tree_tag_clear(&mapping->page_tree,
+			radix_tree_tag_clear(&mapping->i_pages,
 					     page_index(page),
 					     PAGECACHE_TAG_TOWRITE);
-		spin_unlock_irqrestore(&mapping->tree_lock, flags);
+		xa_unlock_irqrestore(&mapping->i_pages, flags);
 	} else {
 		BUG();
 	}
