@@ -11,6 +11,12 @@
 
 #include "tux3user.h"
 
+static void d_instantiate_new(struct dentry *dentry, struct inode *inode)
+{
+	d_instantiate(dentry, inode);
+	unlock_new_inode(inode);
+}
+
 #include "../namei.c"
 
 static int tuxlookup(struct inode *dir, struct dentry *dentry)
