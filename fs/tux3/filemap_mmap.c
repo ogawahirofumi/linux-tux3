@@ -4,22 +4,6 @@
  * Copyright (c) 2008-2014 OGAWA Hirofumi
  */
 
-/* Copy of __set_page_dirty(). */
-void __tux3_set_page_dirty(struct page *page,
-			   struct address_space *mapping, int warn)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&mapping->tree_lock, flags);
-	if (page->mapping) {	/* Race with truncate? */
-		WARN_ON_ONCE(warn && !PageUptodate(page));
-		account_page_dirtied(page, mapping);
-		radix_tree_tag_set(&mapping->page_tree,
-				page_index(page), PAGECACHE_TAG_DIRTY);
-	}
-	spin_unlock_irqrestore(&mapping->tree_lock, flags);
-}
-
 static int tux3_set_page_dirty_buffers(struct page *page)
 {
 #if 0
@@ -80,7 +64,7 @@ static int tux3_set_page_dirty_buffers(struct page *page)
 	lock_page_memcg(page);
 	newly_dirty = 0;
 	if (!TestSetPageDirty(page)) {
-		__tux3_set_page_dirty(page, mapping, 1);
+		__set_page_dirty(page, mapping, 1);
 		newly_dirty = 1;
 	}
 	unlock_page_memcg(page);
@@ -158,14 +142,15 @@ static int tux3_set_page_dirty_bug(struct page *page)
  * NOTE: This keeps refcount of original vmf->page, refcount is
  * released by caller.
  */
-static int tux3_page_mkwrite(struct vm_fault *vmf)
+static vm_fault_t tux3_page_mkwrite(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
 	struct inode *inode = file_inode(vma->vm_file);
 	struct sb *sb = tux_sb(inode->i_sb);
 	struct page *clone, *page = vmf->page;
 	unsigned delta;
-	int cost, ret;
+	int cost;
+	vm_fault_t ret;
 
 	sb_start_pagefault(inode->i_sb);
 	down_read(&tux_inode(inode)->truncate_lock);

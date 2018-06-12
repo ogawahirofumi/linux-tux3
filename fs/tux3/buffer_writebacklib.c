@@ -30,7 +30,7 @@ static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 	if (mapping && mapping_cap_account_dirty(mapping)) {
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
-		bool locked;
+		struct wb_lock_cookie cookie = {};
 
 		/*
 		 * Yes, Virginia, this is indeed insane.
@@ -71,14 +71,14 @@ static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 		 * always locked coming in here, so we get the desired
 		 * exclusion.
 		 */
-		wb = unlocked_inode_to_wb_begin(inode, &locked);
+		wb = unlocked_inode_to_wb_begin(inode, &cookie);
 		if (TestClearPageDirty(page)) {
 			dec_lruvec_page_state(page, NR_FILE_DIRTY);
 			dec_zone_page_state(page, NR_ZONE_WRITE_PENDING);
 			dec_wb_stat(wb, WB_RECLAIMABLE);
 			ret = 1;
 		}
-		unlocked_inode_to_wb_end(inode, locked);
+		unlocked_inode_to_wb_end(inode, &cookie);
 		return ret;
 	}
 	return TestClearPageDirty(page);
@@ -96,7 +96,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 		struct backing_dev_info *bdi = inode_to_bdi(inode);
 		unsigned long flags;
 
-		spin_lock_irqsave(&mapping->tree_lock, flags);
+		xa_lock_irqsave(&mapping->i_pages, flags);
 		if (!old_writeback) {
 			bool on_wblist;
 
@@ -107,7 +107,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 			on_wblist = mapping_tagged(mapping,
 						   PAGECACHE_TAG_WRITEBACK);
 
-			radix_tree_tag_set(&mapping->page_tree,
+			radix_tree_tag_set(&mapping->i_pages,
 					   page_index(page),
 					   PAGECACHE_TAG_WRITEBACK);
 
@@ -128,14 +128,14 @@ skip_tag_set:
 		}
 		/* If PageForked(), don't touch tag */
 		if (!PageDirty(page) && !PageForked(page))
-			radix_tree_tag_clear(&mapping->page_tree,
+			radix_tree_tag_clear(&mapping->i_pages,
 						page_index(page),
 						PAGECACHE_TAG_DIRTY);
 		if (!keep_write)
-			radix_tree_tag_clear(&mapping->page_tree,
+			radix_tree_tag_clear(&mapping->i_pages,
 					     page_index(page),
 					     PAGECACHE_TAG_TOWRITE);
-		spin_unlock_irqrestore(&mapping->tree_lock, flags);
+		xa_unlock_irqrestore(&mapping->i_pages, flags);
 	} else {
 		BUG();
 	}

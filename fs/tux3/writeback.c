@@ -512,7 +512,7 @@ int tux3_flush_inode(struct inode *inode, unsigned delta,
 	if (!deleted)
 		dirty = tux3_dirty_flags(inode, delta);
 
-	if (dirty & (TUX3_DIRTY_BTREE | I_DIRTY_SYNC | I_DIRTY_DATASYNC)) {
+	if (dirty & (TUX3_DIRTY_BTREE | I_DIRTY_INODE)) {
 		err = tux3_save_inode(inode, &idata, delta);
 		if (err && !ret)
 			ret = err;

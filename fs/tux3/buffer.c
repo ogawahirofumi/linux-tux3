@@ -132,7 +132,7 @@ int tux3_set_buffer_dirty_list(struct address_space *mapping,
 		if (!TestSetPageDirty(page)) {
 			struct address_space *mapping = page->mapping;
 			if (mapping)
-				__tux3_set_page_dirty(page, mapping, 0);
+				__set_page_dirty(page, mapping, 0);
 			dirtied = 1;
 		}
 		unlock_page_memcg(page);

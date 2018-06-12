@@ -58,9 +58,9 @@ static void free_forked_page(struct page *page)
 		assert(ret);
 	}
 	/* Lock is to make sure end_page_writeback() was done completely */
-	spin_lock_irq(&mapping->tree_lock);
+	xa_lock_irq(&mapping->i_pages);
 	page->mapping = NULL;
-	spin_unlock_irq(&mapping->tree_lock);
+	xa_unlock_irq(&mapping->i_pages);
 	unlock_page(page);
 
 	/* Drop the radix-tree reference */
