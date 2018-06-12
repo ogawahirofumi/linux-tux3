@@ -49,8 +49,7 @@ static int __tux3_mknod(struct inode *dir, struct dentry *dentry,
 		goto out;
 	}
 
-	d_instantiate(dentry, inode);
-	unlock_new_inode(inode);
+	d_instantiate_new(dentry, inode);
 	if (S_ISDIR(inode->i_mode))
 		inode_inc_link_count(dir);
 	err = 0;
@@ -145,8 +144,7 @@ static int __tux3_symlink(struct inode *dir, struct dentry *dentry,
 	/* FIXME: we may want to initialize symlink earlier */
 	err = page_symlink(inode, symname, len);
 	if (!err) {
-		d_instantiate(dentry, inode);
-		unlock_new_inode(inode);
+		d_instantiate_new(dentry, inode);
 		goto out;
 	}
 
