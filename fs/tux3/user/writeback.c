@@ -13,7 +13,7 @@ void clear_inode(struct inode *inode)
 
 void __mark_inode_dirty(struct inode *inode, unsigned flags)
 {
-	if (flags & (I_DIRTY_SYNC | I_DIRTY_DATASYNC))
+	if (flags & I_DIRTY_INODE)
 		tux3_dirty_inode(inode, flags);
 
 	if ((inode->i_state & flags) != flags)
