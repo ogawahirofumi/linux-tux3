@@ -21,54 +21,58 @@ typedef struct {
 #define ATOMIC_INIT(i)	{ (i) }
 
 /**
- * atomic_read - read atomic variable
+ * arch_atomic_read - read atomic variable
  * @v: pointer of type atomic_t
  *
  * Atomically reads the value of @v.
  */
-static __always_inline int atomic_read(const atomic_t *v)
+static __always_inline int arch_atomic_read(const atomic_t *v)
 {
+	/*
+	 * Note for KASAN: we deliberately don't use READ_ONCE_NOCHECK() here,
+	 * it's non-inlined function that increases binary size and stack usage.
+	 */
 	return READ_ONCE((v)->counter);
 }
 
 /**
- * atomic_set - set atomic variable
+ * arch_atomic_set - set atomic variable
  * @v: pointer of type atomic_t
  * @i: required value
  *
  * Atomically sets the value of @v to @i.
  */
-static __always_inline void atomic_set(atomic_t *v, int i)
+static __always_inline void arch_atomic_set(atomic_t *v, int i)
 {
 	WRITE_ONCE(v->counter, i);
 }
 
 /**
- * atomic_add - add integer to atomic variable
+ * arch_atomic_add - add integer to atomic variable
  * @i: integer value to add
  * @v: pointer of type atomic_t
  *
  * Atomically adds @i to @v.
  */
-static __always_inline void atomic_add(int i, atomic_t *v)
+static __always_inline void arch_atomic_add(int i, atomic_t *v)
 {
 	klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
 /**
- * atomic_sub - subtract integer from atomic variable
+ * arch_atomic_sub - subtract integer from atomic variable
  * @i: integer value to subtract
  * @v: pointer of type atomic_t
  *
  * Atomically subtracts @i from @v.
  */
-static __always_inline void atomic_sub(int i, atomic_t *v)
+static __always_inline void arch_atomic_sub(int i, atomic_t *v)
 {
 	klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
 /**
- * atomic_sub_and_test - subtract value from variable and test result
+ * arch_atomic_sub_and_test - subtract value from variable and test result
  * @i: integer value to subtract
  * @v: pointer of type atomic_t
  *
@@ -76,63 +80,61 @@ static __always_inline void atomic_sub(int i, atomic_t *v)
  * true if the result is zero, or false for all
  * other cases.
  */
-static __always_inline bool atomic_sub_and_test(int i, atomic_t *v)
+static __always_inline bool arch_atomic_sub_and_test(int i, atomic_t *v)
 {
 	return klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST) == 0;
 }
 
 /**
- * atomic_inc - increment atomic variable
+ * arch_atomic_inc - increment atomic variable
  * @v: pointer of type atomic_t
  *
  * Atomically increments @v by 1.
  */
-static __always_inline void atomic_inc(atomic_t *v)
+static __always_inline void arch_atomic_inc(atomic_t *v)
 {
 	klib_atomic_add_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
 }
 
 /**
- * atomic_dec - decrement atomic variable
+ * arch_atomic_dec - decrement atomic variable
  * @v: pointer of type atomic_t
  *
  * Atomically decrements @v by 1.
  */
-static __always_inline void atomic_dec(atomic_t *v)
+static __always_inline void arch_atomic_dec(atomic_t *v)
 {
 	klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
 }
 
 /**
- * atomic_dec_and_test - decrement and test
+ * arch_atomic_dec_and_test - decrement and test
  * @v: pointer of type atomic_t
  *
  * Atomically decrements @v by 1 and
  * returns true if the result is 0, or false for all other
  * cases.
  */
-static __always_inline bool atomic_dec_and_test(atomic_t *v)
+static __always_inline bool arch_atomic_dec_and_test(atomic_t *v)
 {
-	int tmp = klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST);
-	WARN_ON(tmp < 0);
-	return tmp == 0;
+	return klib_atomic_sub_fetch(&v->counter, 1, __ATOMIC_SEQ_CST) == 0;
 }
 
 /**
- * atomic_inc_and_test - increment and test
+ * arch_atomic_inc_and_test - increment and test
  * @v: pointer of type atomic_t
  *
  * Atomically increments @v by 1
  * and returns true if the result is zero, or false for all
  * other cases.
  */
-static __always_inline bool atomic_inc_and_test(atomic_t *v)
+static __always_inline bool arch_atomic_inc_and_test(atomic_t *v)
 {
 	return klib_atomic_add_fetch(&v->counter, 1, __ATOMIC_SEQ_CST) == 0;
 }
 
 /**
- * atomic_add_negative - add and test if negative
+ * arch_atomic_add_negative - add and test if negative
  * @i: integer value to add
  * @v: pointer of type atomic_t
  *
@@ -140,96 +142,96 @@ static __always_inline bool atomic_inc_and_test(atomic_t *v)
  * if the result is negative, or false when
  * result is greater than or equal to zero.
  */
-static __always_inline bool atomic_add_negative(int i, atomic_t *v)
+static __always_inline bool arch_atomic_add_negative(int i, atomic_t *v)
 {
 	return klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST) < 0;
 }
 
 /**
- * atomic_add_return - add integer and return
+ * arch_atomic_add_return - add integer and return
  * @i: integer value to add
  * @v: pointer of type atomic_t
  *
  * Atomically adds @i to @v and returns @i + @v
  */
-static __always_inline int atomic_add_return(int i, atomic_t *v)
+static __always_inline int arch_atomic_add_return(int i, atomic_t *v)
 {
 	return klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
 /**
- * atomic_sub_return - subtract integer and return
+ * arch_atomic_sub_return - subtract integer and return
  * @v: pointer of type atomic_t
  * @i: integer value to subtract
  *
  * Atomically subtracts @i from @v and returns @v - @i
  */
-static __always_inline int atomic_sub_return(int i, atomic_t *v)
+static __always_inline int arch_atomic_sub_return(int i, atomic_t *v)
 {
 	return klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-#define atomic_inc_return(v)  (atomic_add_return(1, v))
-#define atomic_dec_return(v)  (atomic_sub_return(1, v))
+#define arch_atomic_inc_return(v)  (arch_atomic_add_return(1, v))
+#define arch_atomic_dec_return(v)  (arch_atomic_sub_return(1, v))
 
-static __always_inline int atomic_fetch_add(int i, atomic_t *v)
+static __always_inline int arch_atomic_fetch_add(int i, atomic_t *v)
 {
 	return klib_atomic_fetch_add(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static __always_inline int atomic_fetch_sub(int i, atomic_t *v)
+static __always_inline int arch_atomic_fetch_sub(int i, atomic_t *v)
 {
 	return klib_atomic_fetch_sub(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static __always_inline int atomic_cmpxchg(atomic_t *v, int old, int new)
+static __always_inline int arch_atomic_cmpxchg(atomic_t *v, int old, int new)
 {
-	return cmpxchg(&v->counter, old, new);
+	return arch_cmpxchg(&v->counter, old, new);
 }
 
-#define atomic_try_cmpxchg atomic_try_cmpxchg
-static __always_inline bool atomic_try_cmpxchg(atomic_t *v, int *old, int new)
+#define arch_atomic_try_cmpxchg arch_atomic_try_cmpxchg
+static __always_inline bool arch_atomic_try_cmpxchg(atomic_t *v, int *old, int new)
 {
 	return try_cmpxchg(&v->counter, old, new);
 }
 
-static inline int atomic_xchg(atomic_t *v, int new)
+static inline int arch_atomic_xchg(atomic_t *v, int new)
 {
 	return xchg(&v->counter, new);
 }
 
-static inline void atomic_and(int i, atomic_t *v)
+static inline void arch_atomic_and(int i, atomic_t *v)
 {
 	klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline int atomic_fetch_and(int i, atomic_t *v)
+static inline int arch_atomic_fetch_and(int i, atomic_t *v)
 {
 	return klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline void atomic_or(int i, atomic_t *v)
+static inline void arch_atomic_or(int i, atomic_t *v)
 {
 	klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline int atomic_fetch_or(int i, atomic_t *v)
+static inline int arch_atomic_fetch_or(int i, atomic_t *v)
 {
 	return klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline void atomic_xor(int i, atomic_t *v)
+static inline void arch_atomic_xor(int i, atomic_t *v)
 {
 	klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline int atomic_fetch_xor(int i, atomic_t *v)
+static inline int arch_atomic_fetch_xor(int i, atomic_t *v)
 {
 	return klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
 /**
- * __atomic_add_unless - add unless the number is already a given value
+ * __arch_atomic_add_unless - add unless the number is already a given value
  * @v: pointer of type atomic_t
  * @a: the amount to add to v...
  * @u: ...unless v is equal to u.
@@ -237,18 +239,20 @@ static inline int atomic_fetch_xor(int i, atomic_t *v)
  * Atomically adds @a to @v, so long as @v was not already @u.
  * Returns the old value of @v.
  */
-static __always_inline int __atomic_add_unless(atomic_t *v, int a, int u)
+static __always_inline int __arch_atomic_add_unless(atomic_t *v, int a, int u)
 {
-	int c = atomic_read(v);
+	int c = arch_atomic_read(v);
 
 	do {
 		if (unlikely(c == u))
 			break;
-	} while (!atomic_try_cmpxchg(v, &c, c + a));
+	} while (!arch_atomic_try_cmpxchg(v, &c, c + a));
 
 	return c;
 }
 
 #include <libklib/atomic64.h>
+
+#include <libklib/atomic-instrumented.h>
 
 #endif /* LIBKLIB_ASM_ATOMIC32_H */
