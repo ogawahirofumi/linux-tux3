@@ -4,22 +4,6 @@
  * Copyright (c) 2008-2014 OGAWA Hirofumi
  */
 
-/* Copy of __set_page_dirty(). */
-void __tux3_set_page_dirty(struct page *page,
-			   struct address_space *mapping, int warn)
-{
-	unsigned long flags;
-
-	xa_lock_irqsave(&mapping->i_pages, flags);
-	if (page->mapping) {	/* Race with truncate? */
-		WARN_ON_ONCE(warn && !PageUptodate(page));
-		account_page_dirtied(page, mapping);
-		radix_tree_tag_set(&mapping->i_pages,
-				page_index(page), PAGECACHE_TAG_DIRTY);
-	}
-	xa_unlock_irqrestore(&mapping->i_pages, flags);
-}
-
 static int tux3_set_page_dirty_buffers(struct page *page)
 {
 #if 0
@@ -80,7 +64,7 @@ static int tux3_set_page_dirty_buffers(struct page *page)
 	lock_page_memcg(page);
 	newly_dirty = 0;
 	if (!TestSetPageDirty(page)) {
-		__tux3_set_page_dirty(page, mapping, 1);
+		__set_page_dirty(page, mapping, 1);
 		newly_dirty = 1;
 	}
 	unlock_page_memcg(page);
