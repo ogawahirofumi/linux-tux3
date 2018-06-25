@@ -5,6 +5,21 @@
 #include <libklib/compiler.h>
 #include <libklib/build_bug.h>
 
+#ifndef BUILD_BUG_ON_MSG
+#define BUILD_BUG_ON_MSG(condition, msg)	\
+	((void)sizeof(char[1 - 2*!!(condition)]))
+#endif
+#ifndef READ_ONCE
+#define READ_ONCE(x)		(x)
+#endif
+#ifndef WRITE_ONCE
+#define WRITE_ONCE(x, val)	do { x = val; } while (0)
+#endif
+/* Are two types/vars the same type (ignoring qualifiers)? */
+#ifndef __same_type
+# define __same_type(a, b) __builtin_types_compatible_p(typeof(a), typeof(b))
+#endif
+
 #define container_of(ptr, type, member) ({				\
 	void *__mptr = (void *)(ptr);					\
 	BUILD_BUG_ON_MSG(!__same_type(*(ptr), ((type *)0)->member) &&	\
