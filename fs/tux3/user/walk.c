@@ -117,7 +117,7 @@ static int walk_ileaf_enum_callback(struct btree *btree, inum_t inum,
 	struct walk_ileaf_enum_data *d = data;
 	struct inode *inode;
 
-	inode = tux3_iget(btree->sb, inum);
+	inode = __tux3_iget(btree->sb, inum);
 	if (IS_ERR(inode)) {
 		tux3_fs_error(btree->sb,
 			      "inode couldn't get: inum %Lu: %ld",

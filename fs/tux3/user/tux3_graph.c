@@ -949,7 +949,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 
 		struct inode *inode;
 		inum_t inum = ibase + at;
-		inode = tux3_iget(btree->sb, inum);
+		inode = __tux3_iget(btree->sb, inum);
 		if (IS_ERR(inode)) {
 			tux3_fs_error(btree->sb,
 				      "inode couldn't get: inum %Lu: %ld",
@@ -1098,7 +1098,7 @@ static void __draw_ileaf(struct graph_info *gi, struct btree *btree,
 
 		if (len) {
 			struct inode *inode;
-			inode = tux3_iget(btree->sb, inum);
+			inode = __tux3_iget(btree->sb, inum);
 			if (IS_ERR(inode)) {
 				tux3_fs_error(btree->sb,
 					"inode couldn't get: inum %Lu: %ld",
