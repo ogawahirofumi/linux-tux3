@@ -28,10 +28,12 @@ static int opt_verbose;
 static int drawn;
 static LIST_HEAD(tmpfile_head);
 
+#define TAG_NAME_MAX	32
+
 struct graph_info {
 	FILE *fp;
-	char subgraph[32];	/* subgraph name */
-	char filedata[32];	/* filedata name */
+	char subgraph[TAG_NAME_MAX];		/* subgraph name */
+	char filedata[TAG_NAME_MAX + 32];	/* filedata name */
 	const char *bname;	/* btree name */
 	const char *lname;	/* leaf name */
 	struct list_head link_head;
@@ -583,7 +585,7 @@ static struct draw_data_ops draw_symlink = {
 
 static const char *get_dleaf_name(struct buffer_head *dleaf_buf)
 {
-	static char name[32];
+	static char name[TAG_NAME_MAX];
 	block_t blocknr = dleaf_buf->index;
 	snprintf(name, sizeof(name), "volmap_%llu", blocknr);
 	return name;
@@ -746,7 +748,7 @@ static void draw_ileaf_cb(struct buffer_head *ileafbuf, int at,
 	block_t blocknr = bufindex(ileafbuf);	/* blocknr of ileaf */
 
 	struct draw_data_ops *draw_data_ops;
-	char bname[64];
+	char bname[TAG_NAME_MAX];
 	int special_inode;
 	if (inum < ARRAY_SIZE(dtree_types) && dtree_types[inum].name) {
 		sprintf(bname, "%s_dtree", dtree_types[inum].name);
