@@ -42,18 +42,15 @@ static inline struct inode *buffer_inode(struct buffer_head *buffer)
 	return buffer->map->inode;
 }
 
-static inline struct timespec gettime(void)
-{
-	struct timeval now;
-	gettimeofday(&now, NULL);
-	return (struct timespec){ .tv_sec = now.tv_sec, .tv_nsec = now.tv_usec * 1000 };
-}
-
 struct super_block {
 	struct dev *dev;		/* userspace block device */
 	loff_t s_maxbytes;		/* maximum file size */
 	unsigned long s_flags;
+	unsigned long s_magic;
 	unsigned int s_max_links;	/* maximum link counts */
+	/* Granularity of c/m/atime in ns.
+	   Cannot be worse than a second */
+	u32 s_time_gran;
 };
 
 static inline struct sb *tux_sb(struct super_block *sb);
@@ -108,6 +105,7 @@ static inline struct dev *sb_dev(struct sb *sb)
 	.mopt = tux3_default_mopt,		\
 	.vfs_sb = {				\
 		.dev = x,			\
+		.s_time_gran = TUX3_TIME_GRAN,	\
 	},					\
 })
 

@@ -242,7 +242,7 @@ static int tuxio(struct file *file, void *data, unsigned len, int write)
 
 	if (write) {
 		tux3_iattrdirty(inode);
-		inode->i_mtime = inode->i_ctime = gettime();
+		inode->i_mtime = inode->i_ctime = current_time(inode);
 	}
 
 	unsigned bbits = sb->blockbits;
