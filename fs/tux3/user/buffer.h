@@ -3,7 +3,6 @@
 
 #ifdef TUX3_BUILD
 #include "tux3user.h"
-#include "trace.h"
 
 static inline unsigned tux3_delta(unsigned delta);
 
@@ -20,6 +19,7 @@ static inline unsigned tux3_delta(unsigned delta);
 #define BUFFER_INIT_DELTA	0	/* initial delta number */
 #endif /* !TUX3_BUILD */
 
+#include "trace.h"
 #include "../tux3_fork.h"
 #include "libklib/list.h"
 #include "libklib/blk_types.h"

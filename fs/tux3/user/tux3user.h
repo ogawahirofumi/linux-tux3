@@ -13,12 +13,11 @@
 #include <fcntl.h>
 #include <time.h>
 #include <errno.h>
-#include "buffer.h"
-#include "trace.h"
-#include "current_task.h"
-#include "options.h"
 
+/* libklib/libklib.h is before others, because defines "inline" etc. */
 #include "libklib/libklib.h"
+#include "buffer.h"		/* include early for map_t */
+
 #include "libklib/lockdebug.h"
 #include "libklib/atomic.h"
 #include "libklib/refcount.h"
@@ -27,6 +26,10 @@
 #include "libklib/fs.h"
 #include "libklib/parser.h"
 #include "libklib/iversion.h"
+
+#include "trace.h"
+#include "current_task.h"
+#include "options.h"
 #include "writeback.h"
 
 #ifndef XATTR_CREATE
