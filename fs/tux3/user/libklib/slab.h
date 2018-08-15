@@ -2,6 +2,7 @@
 #define LIBKLIB_SLAB_H
 
 #include <libklib/mm.h>
+#include <libklib/overflow.h>
 
 /*
  * Flags to pass to kmem_cache_create().
@@ -138,9 +139,11 @@ static inline void *kmalloc(size_t size, gfp_t flags)
 
 static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags)
 {
-	if (size != 0 && n > SIZE_MAX / size)
+	size_t bytes;
+
+	if (unlikely(check_mul_overflow(n, size, &bytes)))
 		return NULL;
-	return __kmalloc(n * size, flags);
+	return __kmalloc(bytes, flags);
 }
 
 static inline void *kcalloc(size_t n, size_t size, gfp_t flags)
