@@ -797,11 +797,11 @@ int btree_chop(struct btree *btree, tuxkey_t start, u64 len)
 	/* Chop all range if len >= TUXKEY_LIMIT */
 	limit = (len >= TUXKEY_LIMIT) ? TUXKEY_LIMIT : start + len;
 
-	prev = kzalloc(sizeof(*prev) * btree->root.depth, GFP_NOFS);
+	prev = kcalloc(btree->root.depth, sizeof(*prev), GFP_NOFS);
 	if (prev == NULL)
 		return -ENOMEM;
 
-	cii = kzalloc(sizeof(*cii) * btree->root.depth, GFP_NOFS);
+	cii = kcalloc(btree->root.depth, sizeof(*cii), GFP_NOFS);
 	if (cii == NULL) {
 		ret = -ENOMEM;
 		goto error_cii;

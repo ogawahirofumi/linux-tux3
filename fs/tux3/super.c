@@ -52,7 +52,7 @@ static void tux3_inode_init_once(void *mem)
 
 static void tux3_inode_init_always(struct tux3_inode *tuxnode)
 {
-	static struct timespec epoch;
+	static struct timespec64 epoch;
 	struct inode *inode = &tuxnode->vfs_inode;
 
 	tuxnode->btree		= (struct btree){ };

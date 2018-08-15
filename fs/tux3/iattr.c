@@ -36,14 +36,14 @@ const unsigned atsize[MAX_ATTRS] = {
  * It is not clear whether the saved space is worth the lower precision.
  */
 
-static inline struct timespec spectime(const s64 time)
+static inline struct timespec64 spectime(const s64 time)
 {
-	return ns_to_timespec(time);
+	return ns_to_timespec64(time);
 }
 
-static inline s64 tuxtime(const struct timespec ts)
+static inline s64 tuxtime(const struct timespec64 ts)
 {
-	return timespec_to_ns(&ts);
+	return timespec64_to_ns(&ts);
 }
 
 /* unused */
@@ -93,8 +93,7 @@ static int cond_encode_asize(struct iattr_req_data *iattr_data)
 	}
 
 	/* same with ctime by default */
-	if (idata->i_ctime.tv_sec != idata->i_mtime.tv_sec ||
-	    idata->i_ctime.tv_nsec != idata->i_mtime.tv_nsec) {
+	if (!timespec64_equal(&idata->i_ctime, &idata->i_mtime)) {
 		__set_bit(MTIME_ATTR, iattr_data->present);
 		size += KIND_SIZE + atsize[MTIME_ATTR];
 	}

@@ -112,9 +112,14 @@ static inline void *decode48(void *at, u64 *val)
 #define TUX3_MAGIC_STR					\
 	((typeof(((struct disksuper *)0)->magic))TUX3_MAGIC)
 
+/*
+ * Magic numbers should not conflict with well known magic number,
+ * and probably should not use the ascii magic number.
+ * (e.g. \0177ELF is bad)
+ */
 #define TUX3_MAGIC_LOG		0x10ad
 #define TUX3_MAGIC_BNODE	0xb4de
-#define TUX3_MAGIC_DLEAF	0xbeaf
+#define TUX3_MAGIC_DLEAF	0xda7a
 #define TUX3_MAGIC_ILEAF	0x90de
 #define TUX3_MAGIC_OLEAF	0x6eaf
 
@@ -471,17 +476,17 @@ struct block_segment {
 
 /* Inode attributes data */
 struct tux3_iattr_data {
-	umode_t		i_mode;
-	uid_t		i_uid;
-	gid_t		i_gid;
-	unsigned int	i_nlink;
-	loff_t		i_size;
-//	struct timespec	i_atime;
-	struct timespec	i_mtime;
-	struct timespec	i_ctime;
-	u64		i_version;
+	umode_t			i_mode;
+	uid_t			i_uid;
+	gid_t			i_gid;
+	unsigned int		i_nlink;
+	loff_t			i_size;
+//	struct timespec64	i_atime;
+	struct timespec64	i_mtime;
+	struct timespec64	i_ctime;
+	u64			i_version;
 	/* inode type specific field */
-	u64		generic;
+	u64			generic;
 };
 
 /* Per-delta data structure for inode */
@@ -785,7 +790,7 @@ extern const struct address_space_operations tux_vol_aops;
 int tux3_getattr(const struct path *path, struct kstat *stat,
 		 u32 request_mask, unsigned int flags);
 int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync);
-int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags);
+int tux3_no_update_time(struct inode *inode, struct timespec64 *time, int flags);
 
 /* symlink.c */
 extern const struct inode_operations tux_symlink_iops;
