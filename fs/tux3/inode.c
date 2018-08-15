@@ -953,7 +953,7 @@ int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 /*
  * Timestamp handler for regular file.
  */
-static int tux3_file_update_time(struct inode *inode, struct timespec *time,
+static int tux3_file_update_time(struct inode *inode, struct timespec64 *time,
 				 int flags)
 {
 	int iflags = I_DIRTY_TIME;
@@ -986,7 +986,7 @@ static int tux3_file_update_time(struct inode *inode, struct timespec *time,
  * Timestamp handler for directory/symlink. Timestamp is updated by
  * directly, so this should not be called except atime.
  */
-int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags)
+int tux3_no_update_time(struct inode *inode, struct timespec64 *time, int flags)
 {
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
@@ -1006,8 +1006,8 @@ int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags)
  *
  * FIXME: special file should also handle timestamp as transaction?
  */
-static int tux3_special_update_time(struct inode *inode, struct timespec *time,
-				    int flags)
+static int tux3_special_update_time(struct inode *inode,
+				    struct timespec64 *time, int flags)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
 	int iflags = I_DIRTY_TIME;

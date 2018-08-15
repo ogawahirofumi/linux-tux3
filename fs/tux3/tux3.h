@@ -471,17 +471,17 @@ struct block_segment {
 
 /* Inode attributes data */
 struct tux3_iattr_data {
-	umode_t		i_mode;
-	uid_t		i_uid;
-	gid_t		i_gid;
-	unsigned int	i_nlink;
-	loff_t		i_size;
-//	struct timespec	i_atime;
-	struct timespec	i_mtime;
-	struct timespec	i_ctime;
-	u64		i_version;
+	umode_t			i_mode;
+	uid_t			i_uid;
+	gid_t			i_gid;
+	unsigned int		i_nlink;
+	loff_t			i_size;
+//	struct timespec64	i_atime;
+	struct timespec64	i_mtime;
+	struct timespec64	i_ctime;
+	u64			i_version;
 	/* inode type specific field */
-	u64		generic;
+	u64			generic;
 };
 
 /* Per-delta data structure for inode */
@@ -785,7 +785,7 @@ extern const struct address_space_operations tux_vol_aops;
 int tux3_getattr(const struct path *path, struct kstat *stat,
 		 u32 request_mask, unsigned int flags);
 int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync);
-int tux3_no_update_time(struct inode *inode, struct timespec *time, int flags);
+int tux3_no_update_time(struct inode *inode, struct timespec64 *time, int flags);
 
 /* symlink.c */
 extern const struct inode_operations tux_symlink_iops;
