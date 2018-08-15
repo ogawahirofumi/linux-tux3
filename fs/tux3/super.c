@@ -272,7 +272,7 @@ static struct inode *iget_or_create_inode(struct sb *sbi, inum_t inum)
 {
 	struct inode *inode;
 
-	inode = tux3_iget(sbi, inum);
+	inode = __tux3_iget(sbi, inum);
 	if (IS_ERR(inode) && PTR_ERR(inode) == -ENOENT)
 		inode = create_internal_inode(sbi, inum, NULL);
 	return inode;
@@ -318,21 +318,21 @@ struct replay *tux3_init_fs(struct sb *sbi)
 	}
 	sbi->countmap = inode;
 #if 0
-	inode = tux3_iget(sbi, TUX_VTABLE_INO);
+	inode = __tux3_iget(sbi, TUX_VTABLE_INO);
 	if (IS_ERR(inode)) {
 		name = "vtable";
 		goto error_inode;
 	}
 	sbi->vtable = inode;
 #endif
-	inode = tux3_iget(sbi, TUX_ATABLE_INO);
+	inode = __tux3_iget(sbi, TUX_ATABLE_INO);
 	if (IS_ERR(inode)) {
 		name = "atable";
 		goto error_inode;
 	}
 	sbi->atable = inode;
 
-	inode = tux3_iget(sbi, TUX_ROOTDIR_INO);
+	inode = __tux3_iget(sbi, TUX_ROOTDIR_INO);
 	if (IS_ERR(inode)) {
 		name = "rootdir";
 		goto error_inode;
@@ -437,6 +437,8 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	atable_init_base(sb);
 
 	/* vfs fields */
+	vfs_sb(sb)->s_magic = TUX3_SUPER_MAGIC;
+	vfs_sb(sb)->s_time_gran = TUX3_TIME_GRAN;
 	vfs_sb(sb)->s_maxbytes = calc_maxbytes(sb->blocksize);
 	vfs_sb(sb)->s_max_links = TUX_MAX_LINKS;
 
@@ -761,9 +763,7 @@ static int tux3_fill_super(struct super_block *sb, void *data, int silent)
 	 * For now, doesn't support and disable atime.
 	 */
 	sb->s_flags |= SB_NOATIME;
-	sb->s_magic = TUX3_SUPER_MAGIC;
 	sb->s_op = &tux3_super_ops;
-	sb->s_time_gran = 1;
 	/* Set default mount options */
 	sbi->mopt = tux3_default_mopt;
 	sb->s_flags = remove_lazytime(sbi, sb->s_flags);

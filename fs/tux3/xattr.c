@@ -650,7 +650,7 @@ static int xcache_update(struct inode *inode, unsigned atom, const void *data,
 	xcache_fill_entry(xattr, atom, data, len);
 
 	tux3_iattrdirty(inode);
-	inode->i_ctime = gettime();
+	inode->i_ctime = current_time(inode);
 	tux3_mark_inode_dirty(inode);
 
 	use++;
@@ -774,7 +774,7 @@ int del_xattr(struct inode *inode, const char *name, unsigned len)
 		int used = remove_old(xcache, xattr);
 		if (used) {
 			tux3_iattrdirty(inode);
-			inode->i_ctime = gettime();
+			inode->i_ctime = current_time(inode);
 			tux3_mark_inode_dirty(inode);
 			/* FIXME: error check */
 			atomref(atable, atom, -used);

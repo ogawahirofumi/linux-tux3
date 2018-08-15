@@ -94,7 +94,7 @@ static int tux3_link(struct dentry *old_dentry, struct inode *dir,
 	if (change_begin(sb, 5))
 		return -ENOSPC;
 	tux3_iattrdirty(inode);
-	inode->i_ctime = gettime();
+	inode->i_ctime = current_time(inode);
 	inode_inc_link_count(inode);
 	ihold(inode);
 	err = tux_create_dirent(dir, &dentry->d_name, inode);

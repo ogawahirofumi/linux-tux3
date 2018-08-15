@@ -148,7 +148,7 @@ void tux_update_dirent(struct inode *dir, struct buffer_head *buffer,
 	tux_set_entry(buffer, entry, tux_inode(inode)->inum, inode->i_mode);
 
 	tux3_iattrdirty(dir);
-	dir->i_mtime = dir->i_ctime = gettime();
+	dir->i_mtime = dir->i_ctime = current_time(dir);
 	tux3_mark_inode_dirty(dir);
 }
 
@@ -267,7 +267,7 @@ struct inode *__tux_create_dirent(struct inode *dir, const struct qstr *qstr,
 	if (dir->i_size != i_size)
 		i_size_write(dir, i_size);
 
-	dir->i_mtime = dir->i_ctime = gettime();
+	dir->i_mtime = dir->i_ctime = current_time(dir);
 	tux3_mark_inode_dirty(dir);
 
 	return inode;
@@ -510,7 +510,7 @@ int tux_delete_dirent(struct inode *dir, struct buffer_head *buffer,
 	err = tux_delete_entry(dir, buffer, entry); /* this releases buffer */
 	if (!err) {
 		tux3_iattrdirty(dir);
-		dir->i_ctime = dir->i_mtime = gettime();
+		dir->i_ctime = dir->i_mtime = current_time(dir);
 		tux3_mark_inode_dirty(dir);
 	}
 
