@@ -25,7 +25,6 @@ struct timespec timespec_trunc(struct timespec t, unsigned gran)
 	return t;
 }
 
-#if BITS_PER_LONG == 32
 /**
  * ns_to_timespec - Convert nanoseconds to timespec
  * @nsec:       the nanoseconds value to be converted
@@ -49,7 +48,6 @@ struct timespec ns_to_timespec(const s64 nsec)
 
 	return ts;
 }
-#endif
 
 /**
  * ns_to_timeval - Convert nanoseconds to timeval

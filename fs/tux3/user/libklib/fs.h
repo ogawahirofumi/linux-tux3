@@ -73,9 +73,9 @@ struct iattr {
 	kuid_t		ia_uid;
 	kgid_t		ia_gid;
 	loff_t		ia_size;
-	struct timespec	ia_atime;
-	struct timespec	ia_mtime;
-	struct timespec	ia_ctime;
+	struct timespec64 ia_atime;
+	struct timespec64 ia_mtime;
+	struct timespec64 ia_ctime;
 #ifdef __KERNEL__
 	/*
 	 * Not an attribute, but an auxiliary info for filesystems wanting to
@@ -105,9 +105,9 @@ struct inode {
 	unsigned int		i_nlink;
 	dev_t			i_rdev;
 	loff_t			i_size;
-	struct timespec		i_atime;
-	struct timespec		i_mtime;
-	struct timespec		i_ctime;
+	struct timespec64	i_atime;
+	struct timespec64	i_mtime;
+	struct timespec64	i_ctime;
 	spinlock_t		i_lock;
 	atomic64_t		i_version;
 
@@ -184,7 +184,8 @@ static inline void i_gid_write(struct inode *inode, gid_t gid)
 	inode->i_gid = make_kgid(&init_user_ns, gid);
 }
 
-extern struct timespec current_time(struct inode *inode);
+struct timespec64 timespec64_trunc(struct timespec64 t, unsigned gran);
+extern struct timespec64 current_time(struct inode *inode);
 
 /*
  * dentry stuff

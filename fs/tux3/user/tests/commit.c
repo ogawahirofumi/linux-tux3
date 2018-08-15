@@ -1295,13 +1295,10 @@ static void test12(struct sb *sb)
 		test_assert(e->inode.i_rdev == inode->i_rdev);
 		test_assert(e->inode.i_size == inode->i_size);
 #if 0 /* FIXME: atime is not supported yet */
-		test_assert(e->inode.i_atime.tv_sec == inode->i_atime.tv_sec);
-		test_assert(e->inode.i_atime.tv_nsec == inode->i_atime.tv_nsec);
+		test_assert(timespec64_equal(&e->inode.i_atime, &inode->i_atime));
 #endif
-		test_assert(e->inode.i_mtime.tv_sec == inode->i_mtime.tv_sec);
-		test_assert(e->inode.i_mtime.tv_nsec == inode->i_mtime.tv_nsec);
-		test_assert(e->inode.i_ctime.tv_sec == inode->i_ctime.tv_sec);
-		test_assert(e->inode.i_ctime.tv_nsec == inode->i_ctime.tv_nsec);
+		test_assert(timespec64_equal(&e->inode.i_mtime, &inode->i_mtime));
+		test_assert(timespec64_equal(&e->inode.i_ctime, &inode->i_ctime));
 		test_assert(inode_peek_iversion(&e->inode) == inode_peek_iversion(inode));
 
 		iput(inode);

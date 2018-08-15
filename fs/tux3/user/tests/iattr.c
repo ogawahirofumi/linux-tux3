@@ -77,10 +77,8 @@ static void test01(struct sb *sb)
 	test_assert(gid_eq(inode1->i_gid, inode2->i_gid));
 	test_assert(inode1->i_size == inode2->i_size);
 	test_assert(inode1->i_nlink == inode2->i_nlink);
-	test_assert(inode1->i_ctime.tv_sec == inode2->i_ctime.tv_sec);
-	test_assert(inode1->i_ctime.tv_nsec == inode2->i_ctime.tv_nsec);
-	test_assert(inode1->i_mtime.tv_sec == inode2->i_mtime.tv_sec);
-	test_assert(inode1->i_mtime.tv_nsec == inode2->i_mtime.tv_nsec);
+	test_assert(timespec64_equal(&inode1->i_ctime, &inode2->i_ctime));
+	test_assert(timespec64_equal(&inode1->i_mtime, &inode2->i_mtime));
 	test_assert(tuxnode1->btree.root.block == tuxnode2->btree.root.block);
 	test_assert(tuxnode1->btree.root.depth == tuxnode2->btree.root.depth);
 	test_assert(tuxnode1->generic == tuxnode2->generic);

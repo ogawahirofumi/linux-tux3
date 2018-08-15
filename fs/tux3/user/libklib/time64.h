@@ -6,16 +6,17 @@
 typedef __s64 time64_t;
 typedef __u64 timeu64_t;
 
-#if BITS_PER_LONG == 64
-/* this trick allows us to optimize out timespec64_to_timespec */
-# define timespec64 timespec
-#define itimerspec64 itimerspec
-#else
+/* CONFIG_64BIT_TIME enables new 64 bit time_t syscalls in the compat path
+ * and 32-bit emulation.
+ */
+#ifndef CONFIG_64BIT_TIME
+#define __kernel_timespec timespec
+#endif
+
 struct timespec64 {
 	time64_t	tv_sec;			/* seconds */
 	long		tv_nsec;		/* nanoseconds */
 };
-#endif
 
 /* Parameters used to convert the timespec values: */
 #define MSEC_PER_SEC	1000L

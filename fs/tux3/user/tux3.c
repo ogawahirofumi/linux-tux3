@@ -294,10 +294,10 @@ static void print_inode(struct inode *inode)
 
 	printf("mode %07ho uid %x gid %x ",
 	       inode->i_mode, i_uid_read(inode), i_gid_read(inode));
-	printf("ctime %ld.%09ld size %Lx ",
+	printf("ctime %lld.%09ld size %Lx ",
 	       inode->i_ctime.tv_sec, inode->i_ctime.tv_nsec,
 	       (s64)inode->i_size);
-	printf("mtime %ld.%09ld ",
+	printf("mtime %lld.%09ld ",
 	       inode->i_mtime.tv_sec, inode->i_mtime.tv_nsec);
 	printf("links %u ", inode->i_nlink);
 	printf("xattr(s) %p ", tuxnode->xcache);

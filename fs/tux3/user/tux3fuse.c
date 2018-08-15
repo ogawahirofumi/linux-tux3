@@ -139,9 +139,9 @@ static void tux3fuse_fill_stat(struct stat *stat, struct inode *inode)
 		.st_blksize	= sb->blocksize,
 		/* FIXME: need to implement ->i_blocks? */
 		.st_blocks	= ALIGN(inode->i_size, sb->blocksize) >> 9,
-		.st_atim	= inode->i_atime,
-		.st_mtim	= inode->i_mtime,
-		.st_ctim	= inode->i_ctime,
+		.st_atim	= timespec64_to_timespec(inode->i_atime),
+		.st_mtim	= timespec64_to_timespec(inode->i_mtime),
+		.st_ctim	= timespec64_to_timespec(inode->i_ctime),
 	};
 }
 
@@ -232,13 +232,13 @@ static void tux3fuse_to_iattr(struct iattr *iattr, struct stat *attr, int to_set
 		if (!(to_set & FUSE_SET_ATTR_ATIME_NOW))
 			iattr->ia_valid |= ATTR_ATIME_SET;
 		iattr->ia_valid |= ATTR_ATIME;
-		iattr->ia_atime = attr->st_atim;
+		iattr->ia_atime = timespec_to_timespec64(attr->st_atim);
 	}
 	if (to_set & FUSE_SET_ATTR_MTIME) {
 		if (!(to_set & FUSE_SET_ATTR_MTIME_NOW))
 			iattr->ia_valid |= ATTR_MTIME_SET;
 		iattr->ia_valid |= ATTR_MTIME;
-		iattr->ia_mtime = attr->st_mtim;
+		iattr->ia_mtime = timespec_to_timespec64(attr->st_mtim);
 	}
 }
 
