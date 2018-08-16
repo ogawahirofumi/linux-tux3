@@ -1,0 +1,4 @@
+# tux3_inode has to be 8byte alignment, but in the case of empty list,
+# list_for_each_entry_safe() may make dummy unaligned tux3_inode
+# pointer and dereference by list_next_entry(pos, member).
+alignment:replay_iput_orphan_inodes

@@ -12,13 +12,17 @@ endif
 VGFLAGS	+= --error-exitcode=200
 VGFLAGS	+= --leak-check=full --show-leak-kinds=all --errors-for-leak-kinds=all
 
+# helper to make colon separated string
+concat_colon = $(if $(1),$(1):$(2),$(2))
+
+# suppressions file for UBSAN false positive
+UBSAN_OPTIONS := $(call concat_colon,$(UBSAN_OPTIONS),suppressions=.ubsan.supp)
 # disable color diagnostic messages if run under emacs
 ifeq ($(TERM),dumb)
-ASAN_OPTIONS = color=never
-export ASAN_OPTIONS
-UBSAN_OPTIONS = color=never
-export UBSAN_OPTIONS
+ASAN_OPTIONS := $(call concat_colon,$(ASAN_OPTIONS),color=never)
+UBSAN_OPTIONS := $(call concat_colon,$(UBSAN_OPTIONS),color=never)
 endif
+export ASAN_OPTIONS UBSAN_OPTIONS
 
 # test rules
 .NOTPARALLEL: tests
