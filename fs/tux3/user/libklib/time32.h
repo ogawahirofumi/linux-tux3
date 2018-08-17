@@ -16,12 +16,12 @@
 /* timespec64 is defined as timespec here */
 static inline struct timespec timespec64_to_timespec(const struct timespec64 ts64)
 {
-	return *(const struct timespec *)&ts64;
+	return (const struct timespec){ ts64.tv_sec, ts64.tv_nsec, };
 }
 
 static inline struct timespec64 timespec_to_timespec64(const struct timespec ts)
 {
-	return *(const struct timespec64 *)&ts;
+	return (const struct timespec64){ ts.tv_sec, ts.tv_nsec, };
 }
 
 #else
