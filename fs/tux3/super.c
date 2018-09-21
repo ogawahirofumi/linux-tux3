@@ -272,7 +272,7 @@ static struct inode *iget_or_create_inode(struct sb *sbi, inum_t inum)
 {
 	struct inode *inode;
 
-	inode = tux3_iget(sbi, inum);
+	inode = __tux3_iget(sbi, inum);
 	if (IS_ERR(inode) && PTR_ERR(inode) == -ENOENT)
 		inode = create_internal_inode(sbi, inum, NULL);
 	return inode;
@@ -318,21 +318,21 @@ struct replay *tux3_init_fs(struct sb *sbi)
 	}
 	sbi->countmap = inode;
 #if 0
-	inode = tux3_iget(sbi, TUX_VTABLE_INO);
+	inode = __tux3_iget(sbi, TUX_VTABLE_INO);
 	if (IS_ERR(inode)) {
 		name = "vtable";
 		goto error_inode;
 	}
 	sbi->vtable = inode;
 #endif
-	inode = tux3_iget(sbi, TUX_ATABLE_INO);
+	inode = __tux3_iget(sbi, TUX_ATABLE_INO);
 	if (IS_ERR(inode)) {
 		name = "atable";
 		goto error_inode;
 	}
 	sbi->atable = inode;
 
-	inode = tux3_iget(sbi, TUX_ROOTDIR_INO);
+	inode = __tux3_iget(sbi, TUX_ROOTDIR_INO);
 	if (IS_ERR(inode)) {
 		name = "rootdir";
 		goto error_inode;

@@ -27,6 +27,8 @@
 
 #include "link.h"
 
+#define EFSCORRUPTED	EUCLEAN		/* Filesystem is corrupted */
+
 #define fieldtype(compound, field) typeof(((compound *)NULL)->field)
 #define vecset(d, v, n) memset((d), (v), (n) * sizeof(*(d)))
 #define veccopy(d, s, n) memcpy((d), (s), (n) * sizeof(*(d)))
@@ -995,6 +997,13 @@ struct inode *tux_create_inode(struct inode *dir, loff_t dir_pos,
 			       struct tux_iattr *iattr);
 struct inode *tux_create_specific_inode(struct sb *sb, struct inode *dir,
 					inum_t inum, struct tux_iattr *iattr);
+struct inode *__tux3_iget(struct sb *sb, inum_t inum);
+static inline struct inode *tux3_iget(struct sb *sb, inum_t inum)
+{
+	if (inum != TUX_ROOTDIR_INO && inum < TUX_NORMAL_INO)
+		return ERR_PTR(-EFSCORRUPTED);
+	return __tux3_iget(sb, inum);
+}
 struct inode *tux3_iget(struct sb *sb, inum_t inum);
 struct inode *tux3_ilookup_nowait(struct sb *sb, inum_t inum);
 struct inode *tux3_ilookup(struct sb *sb, inum_t inum);

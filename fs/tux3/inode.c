@@ -432,7 +432,7 @@ out:
 	return err;
 }
 
-struct inode *tux3_iget(struct sb *sb, inum_t inum)
+struct inode *__tux3_iget(struct sb *sb, inum_t inum)
 {
 	struct inode *inode;
 	int err;
