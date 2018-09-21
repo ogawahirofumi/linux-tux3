@@ -112,9 +112,14 @@ static inline void *decode48(void *at, u64 *val)
 #define TUX3_MAGIC_STR					\
 	((typeof(((struct disksuper *)0)->magic))TUX3_MAGIC)
 
+/*
+ * Magic numbers should not conflict with well known magic number,
+ * and probably should not use the ascii magic number.
+ * (e.g. \0177ELF is bad)
+ */
 #define TUX3_MAGIC_LOG		0x10ad
 #define TUX3_MAGIC_BNODE	0xb4de
-#define TUX3_MAGIC_DLEAF	0xbeaf
+#define TUX3_MAGIC_DLEAF	0xda7a
 #define TUX3_MAGIC_ILEAF	0x90de
 #define TUX3_MAGIC_OLEAF	0x6eaf
 
