@@ -717,25 +717,6 @@ struct replay {
 	block_t blocknrs[];	/* block address of log blocks */
 };
 
-/* Does this root has direct extent? */
-static inline int has_direct_extent(struct btree *btree)
-{
-	return btree->root.direct;
-}
-
-extern struct root no_root;
-/* Does this root has bnode/leaf? */
-static inline int has_root(struct btree *btree)
-{
-	return !has_direct_extent(btree) && btree->root.depth > 0;
-}
-
-/* Doesn't have both btree or direct extent? */
-static inline int has_no_root(struct btree *btree)
-{
-	return btree->root.depth == 0;
-}
-
 /* Redirect ptr which is pointing data of src from src to dst */
 static inline void *ptr_redirect(void *ptr, void *src, void *dst)
 {
@@ -845,6 +826,26 @@ int bfree(struct sb *sb, block_t start, unsigned blocks);
 int replay_update_bitmap(struct replay *rp, block_t start, unsigned blocks, int set);
 
 /* btree.c */
+extern struct root no_root;
+
+/* Does this root has direct extent? */
+static inline int has_direct_extent(struct btree *btree)
+{
+	return btree->root.direct;
+}
+
+/* Does this root has bnode/leaf? */
+static inline int has_root(struct btree *btree)
+{
+	return !has_direct_extent(btree) && btree->root.depth > 0;
+}
+
+/* Doesn't have both btree or direct extent? */
+static inline int has_no_root(struct btree *btree)
+{
+	return btree->root.depth == 0;
+}
+
 void btree_init_param(struct sb *sb);
 struct buffer_head *cursor_leafbuf(struct cursor *cursor);
 void release_cursor(struct cursor *cursor);
