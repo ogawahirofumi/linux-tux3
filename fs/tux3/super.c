@@ -437,6 +437,8 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	atable_init_base(sb);
 
 	/* vfs fields */
+	vfs_sb(sb)->s_magic = TUX3_SUPER_MAGIC;
+	vfs_sb(sb)->s_time_gran = TUX3_TIME_GRAN;
 	vfs_sb(sb)->s_maxbytes = calc_maxbytes(sb->blocksize);
 	vfs_sb(sb)->s_max_links = TUX_MAX_LINKS;
 
@@ -761,9 +763,7 @@ static int tux3_fill_super(struct super_block *sb, void *data, int silent)
 	 * For now, doesn't support and disable atime.
 	 */
 	sb->s_flags |= SB_NOATIME;
-	sb->s_magic = TUX3_SUPER_MAGIC;
 	sb->s_op = &tux3_super_ops;
-	sb->s_time_gran = 1;
 	/* Set default mount options */
 	sbi->mopt = tux3_default_mopt;
 	sb->s_flags = remove_lazytime(sbi, sb->s_flags);

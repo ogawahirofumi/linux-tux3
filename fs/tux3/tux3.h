@@ -147,6 +147,9 @@ static inline void *decode48(void *at, u64 *val)
 #define TUX_ROOTDIR_INO		63
 #define TUX_NORMAL_INO		64	/* until this ino, reserved ino */
 
+/* Timestamp granularity */
+#define TUX3_TIME_GRAN		1	/* nanoseconds */
+
 struct disksuper {
 	/* Update magic on any incompatible format change */
 	char magic[8];		/* Contains TUX3_LABEL magic string */
@@ -728,11 +731,6 @@ static inline void *ptr_redirect(void *ptr, void *src, void *dst)
 }
 
 #ifdef __KERNEL__
-static inline struct timespec gettime(void)
-{
-	return current_kernel_time();
-}
-
 static inline struct inode *buffer_inode(struct buffer_head *buffer)
 {
 	return buffer->b_page->mapping->host;

@@ -73,7 +73,7 @@ struct inode *tux_new_inode(struct sb *sb, struct inode *dir,
 
 	tux_inode_init_owner(inode, dir, iattr);
 
-	inode->i_mtime = inode->i_ctime = inode->i_atime = gettime();
+	inode->i_mtime = inode->i_ctime = inode->i_atime = current_time(inode);
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFBLK:
 	case S_IFCHR:
@@ -593,7 +593,7 @@ static int tux3_truncate(struct inode *inode, loff_t newsize)
 	if (!is_expand)
 		err = tux3_add_truncate_hole(inode, newsize);
 
-	inode->i_mtime = inode->i_ctime = gettime();
+	inode->i_mtime = inode->i_ctime = current_time(inode);
 	tux3_mark_inode_dirty(inode);
 error:
 
