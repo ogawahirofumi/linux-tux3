@@ -224,13 +224,14 @@ struct cursor {
 #define CURSOR_DEBUG
 #ifdef CURSOR_DEBUG
 #define FREE_BUFFER	((void *)0xdbc06505)
-#define FREE_NEXT	((void *)0xdbc06507)
+#define FREE_NEXT	0xdbc06507
 	int maxlevel;
 #endif
 	int level;
 	struct path_level {
 		struct buffer_head *buffer;
-		struct index_entry *next;
+#define CURSOR_LEAF_LEVEL	-2
+		int next;
 	} path[];
 };
 
@@ -408,7 +409,9 @@ struct sb {
 	inum_t nextinum;	/* FIXME: temporary hack to avoid to find
 				 * same area in itree for free inum. */
 
-	unsigned entries_per_node; /* must be per-btree type, get rid of this */
+	unsigned bnode_max_count; /* Maximum count of index in bnode */
+	unsigned bnode_dict_size; /* Size for bnode internal dict */
+
 	unsigned version;	/* Currently mounted volume version view */
 
 	block_t atomref_base;	/* Index of atom refcount base */
@@ -842,7 +845,7 @@ int bfree(struct sb *sb, block_t start, unsigned blocks);
 int replay_update_bitmap(struct replay *rp, block_t start, unsigned blocks, int set);
 
 /* btree.c */
-unsigned calc_entries_per_node(unsigned blocksize);
+void btree_init_param(struct sb *sb);
 struct buffer_head *cursor_leafbuf(struct cursor *cursor);
 void release_cursor(struct cursor *cursor);
 struct cursor *alloc_cursor(struct btree *btree, int);
