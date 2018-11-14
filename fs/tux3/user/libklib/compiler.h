@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef LIBKLIB_COMPILER_H
 #define LIBKLIB_COMPILER_H
 
@@ -160,6 +161,15 @@ unsigned long read_word_at_a_time(const void *addr)
 	__u.__val;					\
 })
 
+/**
+ * offset_to_ptr - convert a relative memory offset to an absolute pointer
+ * @off:	the address of the 32-bit offset value
+ */
+static inline void *offset_to_ptr(const int *off)
+{
+	return (void *)((unsigned long)off + *off);
+}
+
 #endif /* __ASSEMBLY__ */
 
 #ifndef __optimize
@@ -193,7 +203,7 @@ unsigned long read_word_at_a_time(const void *addr)
 #ifdef __OPTIMIZE__
 # define __compiletime_assert(condition, msg, prefix, suffix)		\
 	do {								\
-		bool __cond = !(condition);				\
+		int __cond = !(condition);				\
 		extern void prefix ## suffix(void) __compiletime_error(msg); \
 		if (__cond)						\
 			prefix ## suffix();				\
