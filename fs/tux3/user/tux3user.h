@@ -136,6 +136,7 @@ void inode_leak_check(void);
 void remove_inode_hash(struct inode *inode);
 void inode_init_once(struct inode *inode);
 void unlock_new_inode(struct inode *inode);
+void discard_new_inode(struct inode *inode);
 void __iget(struct inode *inode);
 void ihold(struct inode *inode);
 loff_t i_size_read(const struct inode *inode);

@@ -129,8 +129,15 @@ static int is_bad_inode(struct inode *inode)
 
 void unlock_new_inode(struct inode *inode)
 {
-	assert(inode->i_state & I_NEW);
+	WARN_ON(!(inode->i_state & I_NEW));
+	inode->i_state &= ~I_NEW & ~I_CREATING;
+}
+
+void discard_new_inode(struct inode *inode)
+{
+	WARN_ON(!(inode->i_state & I_NEW));
 	inode->i_state &= ~I_NEW;
+	iput(inode);
 }
 
 static void iget_failed(struct inode *inode)
@@ -183,6 +190,10 @@ repeat:
 			assert(0);	/* On userland, shouldn't happen */
 			spin_unlock(&inode->i_lock);
 			goto repeat;
+		}
+		if (unlikely(inode->i_state & I_CREATING)) {
+			spin_unlock(&inode->i_lock);
+			return ERR_PTR(-ESTALE);
 		}
 		__iget(inode);
 		spin_unlock(&inode->i_lock);
@@ -281,7 +292,10 @@ static struct inode *iget5_locked(struct super_block *sb, inum_t inum,
 static int insert_inode_locked4(struct inode *inode, inum_t inum,
 			 int (*test)(struct inode *, void *), void *data)
 {
-	struct inode *old = inode_insert5(inode, inum, test, NULL, data);
+	struct inode *old;
+
+	inode->i_state |= I_CREATING;
+	old = inode_insert5(inode, inum, test, NULL, data);
 
 	if (old != inode) {
 		iput(old);
