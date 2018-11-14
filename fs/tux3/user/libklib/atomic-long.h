@@ -12,7 +12,6 @@
  */
 
 #include <libklib/types.h>
-#include <libklib/bitops.h>
 
 /*
  * Suppport for atomic_long_t

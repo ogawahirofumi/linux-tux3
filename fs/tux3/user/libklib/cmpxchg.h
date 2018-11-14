@@ -3,7 +3,7 @@
 
 #include <libklib/atomic-gcc.h>
 
-#define xchg(ptr, v)	klib_atomic_exchange_n(ptr, v, __ATOMIC_SEQ_CST)
+#define arch_xchg(ptr, v)	klib_atomic_exchange_n(ptr, v, __ATOMIC_SEQ_CST)
 
 #define arch_cmpxchg(ptr, old, new)	({				\
 	__typeof__ (*(ptr)) __exp = (old);				\
