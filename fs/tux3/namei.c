@@ -153,8 +153,7 @@ static int __tux3_symlink(struct inode *dir, struct dentry *dentry,
 		tux3_fs_error(sb, "Failed to recover dir entry (err %d)", err2);
 	clear_nlink(inode);
 	tux3_mark_inode_dirty(inode);
-	unlock_new_inode(inode);
-	iput(inode);
+	discard_new_inode(inode);
 out:
 	change_end(sb);
 
