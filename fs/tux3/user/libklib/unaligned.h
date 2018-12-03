@@ -17,7 +17,7 @@
 # include <libklib/unaligned/access_ok.h>
 #endif
 
-#if defined(__LITTLE_ENDIAN)
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 # ifndef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
 #  ifdef CONFIG_MEMMOVE_UNALIGNED_ACCESS
 #   include <libklib/unaligned/le_memmove.h>
@@ -30,7 +30,7 @@
 # include <libklib/unaligned/generic.h>
 # define get_unaligned	__get_unaligned_le
 # define put_unaligned	__put_unaligned_le
-#elif defined(__BIG_ENDIAN)
+#elif __BYTE_ORDER == __BIG_ENDIAN
 # ifndef CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS
 #  ifdef CONFIG_MEMMOVE_UNALIGNED_ACCESS
 #   include <libklib/unaligned/be_memmove.h>
