@@ -4,6 +4,8 @@ ARCH	= $(shell uname -m)
 
 CC	= gcc
 AR	= ar
+ARFLAGS	= rcs
+INSTALL	= install
 
 # Target name for per target flags
 basetarget = $(basename $@)
@@ -81,7 +83,10 @@ CFLAGS	+= $(UCFLAGS)
 LDFLAGS	+= $(LDFLAGS_$@)
 LIBS	+= $(LIBS_$@)
 
-AFLAGS	= rcs
+AFLAGS	= $(CFLAGS) -D__ASSEMBLY__
+# .S default is not noexecstack
+AFLAGS	+= -Wa,--noexecstack
+AFLAGS	+= $(AFLAGS_$(basetarget).o)
 
 CHECKER	   = sparse
 CHECKFLAGS = -gcc-base-dir $(shell $(CC) -print-file-name=)
@@ -93,8 +98,6 @@ CHECKFLAGS += -Wsparse-all -Wno-transparent-union
 CHECKFLAGS += -Wno-declaration-after-statement
 CHECKFLAGS += -Wno-decl
 CHECKFLAGS += -Wno-ptr-subtraction-blows
-
-INSTALL	= install
 
 TESTDIR	= $(TOPDIR)
 OWNER	= root
@@ -121,24 +124,12 @@ PREFIX	= /usr/local
 SBINDIR	= $(PREFIX)/sbin
 LIBEXECDIR = $(PREFIX)/libexec/tux3
 
-# binaries
-TUX3_BIN	= tux3
-ifeq ($(shell pkg-config fuse && echo found), found)
-	FUSE_BIN = tux3fuse
-	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse)
-	LIBS_tux3fuse = -lfuse
-endif
-TEST_BIN	= tests/balloc tests/bdict_fixed tests/btree tests/buffer \
-	tests/commit tests/dir tests/dleaf tests/fault tests/filemap \
-	tests/iattr tests/ileaf tests/inode tests/log tests/xattr
-ALL_BIN		= $(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN)
+# binary or shared library
+all-bin		:=
+# static library
+all-static	:=
 
 # libraries
-LIBTUX3		= libtux3.a
-LIBKLIB		= libklib/libklib.a
-ALL_LIBS	= $(LIBTUX3) $(LIBKLIB)
-
-# LIBTUX3 objects
 USER_OBJS	= commit.o current_task.o dir.o diskio.o filemap.o inode.o \
 	namei.o options.o super.o utility.o writeback.o
 ifeq ($(ALIGN_CHECK),1)
@@ -148,55 +139,60 @@ KERN_OBJS	= ../balloc.o ../btree.o ../dleaf.o ../iattr.o ../ileaf.o \
 	../log.o ../orphan.o ../policy.o ../replay.o ../xattr.o
 TEST_LIB_OBJS	= tests/test.o
 
-# LIBKLIB objects
-LIBKLIB_OBJS	= libklib/find_bit.o libklib/fs.o libklib/list_sort.o \
+all-static	+= libtux3.a
+libtux3.a-objs	= $(USER_OBJS) $(KERN_OBJS) $(TEST_LIB_OBJS)
+# use -include tux3user.h to compile ../* without any change
+$(KERN_OBJS): CFLAGS += -include tux3user.h
+
+all-static	+= libklib/libklib.a
+libklib/libklib.a-objs = libklib/find_bit.o libklib/fs.o libklib/list_sort.o \
 	libklib/parser.o libklib/refcount.o libklib/seq_file.o libklib/slab.o \
 	libklib/string.o libklib/time.o libklib/uidgid.o
 
-# binary objects
-OBJS		= tux3.o
-FUSE_OBJS	= tux3fuse.o
-TEST_OBJS	= tests/balloc.o tests/bdict_fixed.o tests/btree.o \
-	tests/buffer.o tests/commit.o tests/dir.o tests/dleaf.o \
-	tests/fault.o tests/filemap.o tests/iattr.o tests/ileaf.o \
-	tests/inode.o tests/log.o tests/xattr.o
+# binaries
+all-bin		+= tux3
+tux3-objs	= tux3.o $(all-static)
 
-# objects for common build rules
-COMMON_OBJS	= $(USER_OBJS) $(TEST_LIB_OBJS) $(LIBKLIB_OBJS) $(OBJS) \
-	$(TEST_OBJS) $(FUSE_OBJS)
-# all objects
-ALL_OBJS	= $(COMMON_OBJS) $(KERN_OBJS)
-# directories includes objects
-OBJS_DIRS := $(sort $(dir $(ALL_OBJS)))
+ifeq ($(shell pkg-config fuse && echo found), found)
+	all-bin += tux3fuse
+	tux3fuse-objs = tux3fuse.o $(all-static)
+	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse)
+	LIBS_tux3fuse = -lfuse
+endif
 
-# Per target flags
-LIBS_tests/fault = -ldl
+# tests/*
+TEST_BIN	= tests/balloc tests/bdict_fixed tests/btree tests/buffer \
+	tests/commit tests/dir tests/dleaf tests/fault tests/filemap \
+	tests/iattr tests/ileaf tests/inode tests/log tests/xattr
 
-.PHONY: tests
-all: $(ALL_BIN)
+LIBS_tests/fault	= -ldl
+
+# make define for binary that compiled from one source file
+define onefile_bin_template =
+all-bin += $(1)
+$(1)-objs = $(1).o $$(all-static)
+endef
+$(foreach bin,$(TEST_BIN),$(eval $(call onefile_bin_template,$(bin))))
+
 
 # objects dependency
-$(LIBTUX3): $(USER_OBJS) $(KERN_OBJS) $(TEST_LIB_OBJS)
-$(LIBKLIB): $(LIBKLIB_OBJS)
-tux3: tux3.o $(ALL_LIBS)
-tux3fuse: $(FUSE_OBJS) $(ALL_LIBS)
-tests/balloc: tests/balloc.o $(ALL_LIBS)
-tests/bdict_fixed: tests/bdict_fixed.o $(ALL_LIBS)
-tests/btree: tests/btree.o $(ALL_LIBS)
-tests/buffer: tests/buffer.o $(ALL_LIBS)
-tests/commit: tests/commit.o $(ALL_LIBS)
-tests/dir: tests/dir.o $(ALL_LIBS)
-tests/dleaf: tests/dleaf.o $(ALL_LIBS)
-tests/fault: tests/fault.o $(ALL_LIBS)
-tests/filemap: tests/filemap.o $(ALL_LIBS)
-tests/iattr: tests/iattr.o $(ALL_LIBS)
-tests/ileaf: tests/ileaf.o $(ALL_LIBS)
-tests/inode: tests/inode.o $(ALL_LIBS)
-tests/log: tests/log.o $(ALL_LIBS)
-tests/xattr: tests/xattr.o $(ALL_LIBS)
+ALL_TARGETS	:= $(all-bin) $(all-static)
+ALL_OBJS	:=
+
+.PHONY: all tests
+all: $(ALL_TARGETS)
+
+define dep_template =
+$(1): $$($(1)-objs)
+ALL_OBJS += $$(filter-out $$(all-static),$$($(1)-objs))
+endef
+$(foreach bin,$(ALL_TARGETS),$(eval $(call dep_template,$(bin))))
+
+# directories includes objects
+OBJS_DIRS	:= $(sort $(dir $(ALL_OBJS)))
 
 # dependency generation
-DEPDIR	  := .deps
+DEPDIR    := .deps
 DEP_FILES := $(foreach f,$(ALL_OBJS),$(dir $f)$(DEPDIR)/$(notdir $f).d)
 DEP_DIRS  := $(addsuffix $(DEPDIR),$(OBJS_DIRS))
 MISSING_DEP_DIRS := $(filter-out $(wildcard $(DEP_DIRS)),$(DEP_DIRS))
@@ -213,13 +209,12 @@ DEP_FILES_PRESENT := $(wildcard $(DEP_FILES))
 
 # verbose or quiet
 ifeq ($(V),1)
-Q =
+Q :=
 cmd =	$(2)
 else
-Q =	@
+Q :=	@
 cmd =	@echo "  "$(1); $(2)
 endif
-export Q
 
 # run checker or nothing
 C ?= $(CHECK)
@@ -229,33 +224,30 @@ else
 chk =
 endif
 
-# common build rules
-$(COMMON_OBJS): %.o: %.c $(MISSING_DEP_DIRS)
+# binary or shared library rules
+$(all-bin):
+	$(call cmd,"LINK      $@",\
+		$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ $(LIBS))
+
+%.o: %.S $(MISSING_DEP_DIRS)
+	$(call cmd,"CC        $@",\
+		$(CC) $(DEP_ARGS) $(AFLAGS) -c -o $@ $<)
+
+%.o: %.c $(MISSING_DEP_DIRS)
 	$(call cmd,"CC        $@",\
 		$(CC) $(DEP_ARGS) $(CFLAGS) -c -o $@ $<)
 	$(call chk,"CHECK     $<",\
 		$(CHECKER) $(CHECKFLAGS) $(CFLAGS) -c $<)
 
-# use -include tux3user.h to compile ../* without any change
-$(KERN_OBJS): %.o: %.c $(MISSING_DEP_DIRS)
-	$(call cmd,"CC        $@",\
-		$(CC) $(DEP_ARGS) $(CFLAGS) -include tux3user.h -c -o $@ $<)
-	$(call chk,"CHECK     $<",\
-		$(CHECKER) $(CHECKFLAGS) $(CFLAGS) -include tux3user.h -c $<)
-
-# build libraries rules
-$(LIBTUX3) $(LIBKLIB):
+# static library rules
+$(all-static):
 	$(call cmd,"AR        $@",\
-		rm -f $@ && $(AR) $(AFLAGS) $@ $^)
+		rm -f $@ && $(AR) $(ARFLAGS) $@ $^)
 
-# build binaries rules
-$(TEST_BIN) $(TUX3_BIN) $(FUSE_BIN):
-	$(call cmd,"LINK      $@",\
-		$(CC) $(CFLAGS) $(LDFLAGS) $^ $(LIBS) -o $@)
-
+.PHONY: clean
 clean:
 	$(call cmd,"CLEAN")
-	$(Q)rm -f $(ALL_BIN) $(ALL_LIBS) $(ALL_OBJS)
+	$(Q)rm -f $(ALL_TARGETS) $(ALL_OBJS)
 	$(Q)rm -f a.out $(TESTDIR)/testdev
 	$(Q)rm -f $(addsuffix *.gcda,$(OBJS_DIRS))
 	$(Q)rm -f $(addsuffix *.gcno,$(OBJS_DIRS))
