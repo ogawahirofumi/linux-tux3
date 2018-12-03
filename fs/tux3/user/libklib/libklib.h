@@ -33,6 +33,7 @@
 #include <libklib/wait.h>
 #include <libklib/completion.h>
 #include <libklib/time.h>
+#include <libklib/string.h>
 #include <libklib/stringify.h>
 
 #define sizeof_field(TYPE, MEMBER) sizeof((((TYPE *)0)->MEMBER))
@@ -43,6 +44,14 @@
 #define __ALIGN_KERNEL(x, a)		__ALIGN_KERNEL_MASK(x, (typeof(x))(a) - 1)
 #define __ALIGN_KERNEL_MASK(x, mask)	(((x) + (mask)) & ~(mask))
 #define __KERNEL_DIV_ROUND_UP(n, d) (((n) + (d) - 1) / (d))
+
+/**
+ * REPEAT_BYTE - repeat the value @x multiple times as an unsigned long value
+ * @x: value to repeat
+ *
+ * NOTE: @x is not checked for > 0xff; larger values produce odd results.
+ */
+#define REPEAT_BYTE(x)	((~0ul / 0xff) * (x))
 
 /* @a is a power of 2 value */
 #define ALIGN(x, a)		__ALIGN_KERNEL((x), (a))
