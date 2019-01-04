@@ -84,8 +84,6 @@ static inline s64 timespec_to_ns(const struct timespec *ts)
  */
 extern struct timespec ns_to_timespec(const s64 nsec);
 
-extern struct timespec timespec_trunc(struct timespec t, unsigned int gran);
-
 /**
  * timeval_to_ns - Convert timeval to nanoseconds
  * @ts:		pointer to the timeval variable to be converted
