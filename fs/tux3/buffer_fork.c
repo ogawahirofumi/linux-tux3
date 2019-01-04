@@ -63,7 +63,7 @@ static void free_forked_page(struct page *page)
 	xa_unlock_irq(&mapping->i_pages);
 	unlock_page(page);
 
-	/* Drop the radix-tree reference */
+	/* Drop the ->i_pages reference */
 	put_page(page);
 	/* Drop the final reference */
 	trace_on("page %p, count %u", page, page_count(page));
@@ -110,7 +110,7 @@ static int is_freeable_forked(struct buffer_head *buffer, struct page *page)
 		set_buffer_freeable(buffer);
 	}
 
-	/* Page is freeable? (radix-tree + ->private + own) */
+	/* Page is freeable? (->i_pages + ->private + own) */
 	return page_count(page) == 3;
 }
 
@@ -382,7 +382,7 @@ need_fork(struct page *page, struct buffer_head *buffer, unsigned delta)
 }
 
 /*
- * Clone page, then replace slot by newpage in radix-tree
+ * Clone page, then replace slot by newpage in ->i_pages
  *
  * need_unmap: need to unmap from PTE.
  * keep_refcnt: keep refcount of oldpage after fork.
@@ -411,18 +411,18 @@ tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
 	/*
 	 * We keep page->mapping as is for writeback. If keep_refcnt==true,
 	 * keep refcount of oldpage. If not, inherit refcount of caller
-	 * for radix-tree.
+	 * for ->i_pages.
 	 */
 	if (keep_refcnt)
 		get_page(oldpage);
 
-	/* Replace oldpage on radix-tree with newpage */
+	/* Replace oldpage on ->i_pages with newpage */
 	err = pagefork_replace_page_cache(oldpage, newpage); /* FIXME: error */
 
 	newpage_add_lru(newpage);
 
 	/*
-	 * Referencer are dummy radix-tree + ->private (plus other
+	 * Referencer are dummy ->i_pages + ->private (plus other
 	 * users and lru_cache).
 	 *
 	 * FIXME: We can't remove from LRU, because page can be on
@@ -437,7 +437,7 @@ tux3_fork_page(struct vm_area_struct *vma, bool need_unmap,
 
 	/*
 	 * This prevents to re-fork the oldpage. And we guarantee the
-	 * newpage is available on radix-tree here.
+	 * newpage is available on ->i_pages here.
 	 */
 	SetPageForked(oldpage);
 	if (need_unmap) {
@@ -585,7 +585,7 @@ out:
  * stabled, we can't invalidate the buffers on page. So, this forks
  * the page without making clone page.
  *
- * 1 - fork was done to invalidate (i.e. page was removed from radix-tree)
+ * 1 - fork was done to invalidate (i.e. page was removed from ->i_pages)
  * 0 - fork was not done (i.e. buffers on page can be invalidated)
  */
 int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
@@ -598,7 +598,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 
 	switch (need_fork(page, NULL, delta)) {
 	case RET_NEED_FORK:
-		/* Need to fork, then delete from radix-tree */
+		/* Need to fork, then delete from ->i_pages */
 		break;
 	case RET_ALREADY_DIRTY:
 	case RET_CAN_DIRTY:
@@ -612,16 +612,16 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 		break;
 	}
 
-	/* We keep page->mapping as is, so get refcount for radix-tree. */
+	/* We keep page->mapping as is, so get refcount for ->i_pages. */
 	get_page(page);
 
 	/* FIXME: need this? */
 	ClearPageMappedToDisk(page);
-	/* Delete page from radix-tree */
+	/* Delete page from ->i_pages */
 	pagefork_delete_from_page_cache(page);
 
 	/*
-	 * Referencer are dummy radix-tree + ->private (plus other
+	 * Referencer are dummy ->i_pages + ->private (plus other
 	 * users and lru_cache).
 	 *
 	 * FIXME: We can't remove from LRU, because page can be on
@@ -636,7 +636,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 
 	/*
 	 * This prevents to re-fork the page. And we guarantee the
-	 * newpage is available on radix-tree here.
+	 * newpage is available on ->i_pages here.
 	 */
 	SetPageForked(page);
 

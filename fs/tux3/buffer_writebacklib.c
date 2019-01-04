@@ -11,13 +11,13 @@
  * Returns true if the page was previously dirty.
  *
  * This is for preparing to put the page under writeout.  We leave the page
- * tagged as dirty in the radix tree so that a concurrent write-for-sync
+ * tagged as dirty in the xarray so that a concurrent write-for-sync
  * can discover it via a PAGECACHE_TAG_DIRTY walk.  The ->writepage
  * implementation will run either set_page_writeback() or set_page_dirty(),
- * at which stage we bring the page's dirty flag and radix-tree dirty tag
+ * at which stage we bring the page's dirty flag and xarray dirty tag
  * back into sync.
  *
- * This incoherency between the page's dirty flag and radix-tree tag is
+ * This incoherency between the page's dirty flag and xarray tag is
  * unfortunate, but it only exists while the page is locked.
  */
 static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
@@ -92,11 +92,13 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 
 	lock_page_memcg(page);
 	if (mapping && mapping_use_writeback_tags(mapping)) {
+		XA_STATE(xas, &mapping->i_pages, page_index(page));
 		struct inode *inode = mapping->host;
 		struct backing_dev_info *bdi = inode_to_bdi(inode);
 		unsigned long flags;
 
-		xa_lock_irqsave(&mapping->i_pages, flags);
+		xas_lock_irqsave(&xas, flags);
+		xas_load(&xas);
 		if (!old_writeback) {
 			bool on_wblist;
 
@@ -107,9 +109,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 			on_wblist = mapping_tagged(mapping,
 						   PAGECACHE_TAG_WRITEBACK);
 
-			radix_tree_tag_set(&mapping->i_pages,
-					   page_index(page),
-					   PAGECACHE_TAG_WRITEBACK);
+			xas_set_mark(&xas, PAGECACHE_TAG_WRITEBACK);
 
 #if 0 /* sb_mark_inode_writeback() is not exported to module. And tux3
        * sync all with ->sync_fs(), thus this just makes slower us. */
@@ -128,14 +128,10 @@ skip_tag_set:
 		}
 		/* If PageForked(), don't touch tag */
 		if (!PageDirty(page) && !PageForked(page))
-			radix_tree_tag_clear(&mapping->i_pages,
-						page_index(page),
-						PAGECACHE_TAG_DIRTY);
+			xas_clear_mark(&xas, PAGECACHE_TAG_DIRTY);
 		if (!keep_write)
-			radix_tree_tag_clear(&mapping->i_pages,
-					     page_index(page),
-					     PAGECACHE_TAG_TOWRITE);
-		xa_unlock_irqrestore(&mapping->i_pages, flags);
+			xas_clear_mark(&xas, PAGECACHE_TAG_TOWRITE);
+		xas_unlock_irqrestore(&xas, flags);
 	} else {
 		BUG();
 	}
