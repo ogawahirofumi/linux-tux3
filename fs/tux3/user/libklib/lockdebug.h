@@ -13,14 +13,16 @@ typedef struct {
 } spinlock_t;
 
 #ifdef LOCK_DEBUG
-#define __SPIN_LOCK_UNLOCKED \
+#define __SPIN_LOCK_UNLOCKED(name)		\
 	(spinlock_t){ .magic = SPINLOCK_MAGIC, .lock = 0, }
 #else
-#define __SPIN_LOCK_UNLOCKED \
+#define __SPIN_LOCK_UNLOCKED(name)		\
 	(spinlock_t){ }
 #endif
-#define DEFINE_SPINLOCK(x) spinlock_t x = __SPIN_LOCK_UNLOCKED
-#define spin_lock_init(lock) do { *(lock) = __SPIN_LOCK_UNLOCKED; } while (0)
+#define DEFINE_SPINLOCK(x)	spinlock_t x = __SPIN_LOCK_UNLOCKED(x)
+#define spin_lock_init(lock)	do {		\
+	*(lock) = __SPIN_LOCK_UNLOCKED(lock);	\
+} while (0)
 
 static inline void spin_lock(spinlock_t *lock) __acquires(lock)
 {
