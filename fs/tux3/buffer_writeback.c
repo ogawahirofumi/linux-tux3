@@ -208,8 +208,8 @@ static void prepare_and_lock_page(struct page *page, int on_page_idx,
 	}
 
 	/*
-	 * This fixes incoherency of page accounting and radix-tree
-	 * tag by above change of dirty and writeback.
+	 * This fixes incoherence of page accounting and page tag by
+	 * above change of dirty and writeback.
 	 *
 	 * NOTE: This is assuming to be called after clearing dirty
 	 * (See comment of tux3_clear_page_dirty_for_io()).
