@@ -90,14 +90,16 @@ struct rw_semaphore {
 };
 
 #ifdef LOCK_DEBUG
-#define __RWSEM_INITIALIZER \
-	(struct rw_semaphore){ .magic = SPINLOCK_MAGIC, .count = 0, }
+#define __RWSEM_INITIALIZER(name)				\
+	{ .magic = SPINLOCK_MAGIC, .count = 0, }
 #else
-#define __RWSEM_INITIALIZER \
-	(struct rw_semaphore){ }
+#define __RWSEM_INITIALIZER(name)		\
+	{ }
 #endif
-#define DECLARE_RWSEM(name) struct rw_semaphore name = __RWSEM_INITIALIZER
-#define init_rwsem(sem) do { *(sem) = __RWSEM_INITIALIZER; } while (0)
+#define DECLARE_RWSEM(name) struct rw_semaphore name = __RWSEM_INITIALIZER(name)
+#define init_rwsem(sem) do {					\
+	*(sem) = (struct rw_semaphore)__RWSEM_INITIALIZER("");	\
+} while (0)
 
 static inline void down_read(struct rw_semaphore *lock)
 {
@@ -160,14 +162,17 @@ struct mutex {
 };
 
 #ifdef LOCK_DEBUG
-#define __MUTEX_INITIALIZER \
-	(struct mutex){ .sem = __RWSEM_INITIALIZER, }
+#define __MUTEX_INITIALIZER(lockname) \
+	{ .sem = (struct rw_semaphore)__RWSEM_INITIALIZER(lockname), }
 #else
 #define __MUTEX_INITIALIZER \
-	(struct mutex){ }
+	{ }
 #endif
-#define DEFINE_MUTEX(mutexname) struct mutex mutexname = __MUTEX_INITIALIZER
-#define mutex_init(mutex) do { *(mutex) = __MUTEX_INITIALIZER; } while (0)
+#define DEFINE_MUTEX(mutexname)			\
+	struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
+#define mutex_init(m) do {				\
+	*(m) = (struct mutex)__MUTEX_INITIALIZER("");	\
+} while (0)
 
 static inline void mutex_lock(struct mutex *lock)
 {
