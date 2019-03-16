@@ -9,7 +9,7 @@
  * Note fls(0) = 0, fls(1) = 1, fls(0x80000000) = 32.
  */
 
-static __always_inline int fls(int __x)
+static __always_inline int fls(unsigned int __x)
 {
 	unsigned int x = __x;
 	int r = 32;
