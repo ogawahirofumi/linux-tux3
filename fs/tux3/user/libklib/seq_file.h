@@ -23,10 +23,11 @@ static inline bool seq_has_overflowed(struct seq_file *m)
 	return m->count == m->size;
 }
 
-int seq_putc(struct seq_file *m, char c);
-int seq_puts(struct seq_file *m, const char *s);
-
-__printf(2, 3) int seq_printf(struct seq_file *, const char *, ...);
-__printf(2, 0) int seq_vprintf(struct seq_file *, const char *, va_list args);
+__printf(2, 0)
+void seq_vprintf(struct seq_file *m, const char *fmt, va_list args);
+__printf(2, 3)
+void seq_printf(struct seq_file *m, const char *fmt, ...);
+void seq_putc(struct seq_file *m, char c);
+void seq_puts(struct seq_file *m, const char *s);
 
 #endif /* !LIBKLIB_SEQ_FILE_H */
