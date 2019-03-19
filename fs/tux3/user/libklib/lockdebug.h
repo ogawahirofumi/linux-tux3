@@ -65,6 +65,19 @@ static inline int spin_is_locked(spinlock_t *lock)
 #define assert_spin_locked(lock)	do {} while (0)
 #endif
 
+#define spin_lock_irq(lock)		spin_lock(lock)
+#define spin_lock_irqsave(lock, flags)		\
+do {						\
+	flags = 0;				\
+	spin_lock(lock);			\
+} while (0)
+#define spin_unlock_irq(lock)		spin_unlock(lock)
+#define spin_unlock_irqrestore(lock, flags)	\
+do {						\
+	spin_unlock(lock);			\
+	(void)flags;				\
+} while (0)
+
 /**
  * atomic_dec_and_lock - lock on reaching reference count zero
  * @atomic: the atomic counter

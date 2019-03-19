@@ -38,13 +38,6 @@
 #include <libklib/refcount.h>
 #include <libklib/bug.h>
 
-#ifndef spin_lock_irqsave
-#define spin_lock_irqsave(l, f)
-#endif
-#ifndef spin_unlock_irqrestore
-#define spin_unlock_irqrestore(l, f)
-#endif
-
 /**
  * refcount_add_not_zero_checked - add a value to a refcount unless it is 0
  * @i: the value to add to the refcount
