@@ -162,7 +162,8 @@ ifeq ($(shell pkg-config fuse && echo found), found)
 endif
 
 # tests/*
-TEST_BIN	= tests/balloc tests/bdict_fixed tests/btree tests/buffer \
+TEST_BIN	= tests/libklib \
+	tests/balloc tests/bdict_fixed tests/btree tests/buffer \
 	tests/commit tests/dir tests/dleaf tests/fault tests/filemap \
 	tests/iattr tests/ileaf tests/inode tests/log tests/xattr
 
