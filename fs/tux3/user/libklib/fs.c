@@ -220,12 +220,12 @@ struct timespec64 timespec64_trunc(struct timespec64 t, unsigned gran)
 
 struct timespec64 current_time(struct inode *inode)
 {
-	struct timeval now;
+	struct timespec now;
 	struct timespec64 ts_now;
-	gettimeofday(&now, NULL);
+	clock_gettime(CLOCK_REALTIME_COARSE, &now);
 	ts_now = (struct timespec64){
 		.tv_sec = now.tv_sec,
-		.tv_nsec = now.tv_usec * 1000
+		.tv_nsec = now.tv_nsec,
 	};
 	return timespec64_trunc(ts_now, inode->i_sb->s_time_gran);
 }

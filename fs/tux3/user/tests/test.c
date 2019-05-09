@@ -153,12 +153,12 @@ void test_end(void)
 
 	/* Dead as child? */
 	if (!test_env.forked) {
-		struct timeval diff;
+		test_time_t diff;
 		diff = test_elapse_stop(&test_env.test[nest].elapse);
 
-		printf("[%s:%s] time %3ld.%06ld secs\n",
+		printf("[%s:%s] time %3lld.%09lld secs\n",
 		       test_env.series, test_env.test[nest].name,
-		       diff.tv_sec, diff.tv_usec);
+		       diff / NSEC_PER_SEC, diff % NSEC_PER_SEC);
 
 		exit(!!test_env.test[nest].fail_cnt);
 	}

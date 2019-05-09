@@ -1,7 +1,7 @@
 #ifndef _TEST_H
 #define _TEST_H
 
-#include <sys/time.h>
+#include <time.h>
 #include <sys/types.h>
 
 #define test_assert(x)	({						\
@@ -15,21 +15,31 @@
 	__test_res;							\
 })
 
+#ifndef NSEC_PER_SEC
+#define NSEC_PER_SEC	1000000000L
+#endif
+
+typedef long long		test_time_t;
+
 struct test_elapse {
-	struct timeval start;
+	test_time_t start;
 };
+
+static test_time_t test_ns_gettime(void)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (test_time_t)ts.tv_sec * NSEC_PER_SEC + ts.tv_nsec;
+}
 
 static inline void test_elapse_start(struct test_elapse *e)
 {
-	gettimeofday(&e->start, NULL);
+	e->start = test_ns_gettime();
 }
 
-static inline struct timeval test_elapse_stop(struct test_elapse *e)
+static inline test_time_t test_elapse_stop(struct test_elapse *e)
 {
-	struct timeval end, diff;
-	gettimeofday(&end, NULL);
-	timersub(&end, &e->start, &diff);
-	return diff;
+	return test_ns_gettime() - e->start;
 }
 
 int test_init(int argc, char *argv[]);

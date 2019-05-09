@@ -103,6 +103,9 @@ TESTDIR	= $(TOPDIR)
 OWNER	= root
 GROUP	= root
 
+# To use clock_gettime(), have to link librt if glibc is 2.16 or before
+#LIBS += -lrt
+
 # check lcov option
 lcov-opt-if = $(shell						\
 	if lcov --help 2> /dev/null | grep -q -- "$(1)"; then	\

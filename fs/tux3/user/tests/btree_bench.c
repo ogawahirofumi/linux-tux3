@@ -38,7 +38,7 @@ static void bench01(struct sb *sb, struct inode *inode)
 	test_assert(cursor);
 
 	struct test_elapse elapse;
-	struct timeval e;
+	test_time_t e;
 
 	int keys = sb->bnode_max_count * sb->bnode_max_count * btree->entries_per_leaf;
 
@@ -46,7 +46,8 @@ static void bench01(struct sb *sb, struct inode *inode)
 	for (int key = keys - 1; key >= 0; key--)
 		bench_btree_write(cursor, key);
 	e = test_elapse_stop(&elapse);
-	printf("%s: insert %ld.%06ld secs\n", __func__, e.tv_sec, e.tv_usec);
+	printf("%s: insert %lld.%09lld secs\n", __func__,
+	       e / NSEC_PER_SEC, e % NSEC_PER_SEC);
 
 	test_elapse_start(&elapse);
 	for (int key = 0; key < keys; key++) {
@@ -54,13 +55,15 @@ static void bench01(struct sb *sb, struct inode *inode)
 		release_cursor(cursor);
 	}
 	e = test_elapse_stop(&elapse);
-	printf("%s: probe %ld.%06ld secs\n", __func__, e.tv_sec, e.tv_usec);
+	printf("%s: probe %lld.%09lld secs\n", __func__,
+	       e / NSEC_PER_SEC, e % NSEC_PER_SEC);
 
 	test_elapse_start(&elapse);
 	for (int key = 0; key < keys; key++)
 		btree_chop(btree, key, 1);
 	e = test_elapse_stop(&elapse);
-	printf("%s: chop %ld.%06ld secs\n", __func__, e.tv_sec, e.tv_usec);
+	printf("%s: chop %lld.%09lld secs\n", __func__,
+	       e / NSEC_PER_SEC, e % NSEC_PER_SEC);
 
 	clean_main(sb, inode);
 }
