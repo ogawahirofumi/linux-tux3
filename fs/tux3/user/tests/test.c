@@ -12,6 +12,20 @@
 
 #include "test.h"
 
+/* dummy define to guarantee define at least one TEST_DEFINE(). */
+static void test_dummy(void *_arg)
+{
+	(void)_arg;
+}
+TEST_DEFINE(TEST_UNIT, "test_dummy", test_dummy);
+
+#define skip_test_dummy(def)				\
+	(def == &TEST_DEFINE_NAME(test_dummy) ? def++ : def)
+#define for_each_tests(def)						\
+	for (def = &__start_test_define[0], skip_test_dummy(def);	\
+	     def < __stop_test_define;					\
+	     def++, skip_test_dummy(def))
+
 #define TEST_NEST_MAX		10
 #define TEST_FILTER_MAX		10
 
@@ -38,6 +52,7 @@ struct filter {
 	int nr_exc;
 };
 static struct filter opt_filter;
+static enum test_type opt_test_type = TEST_UNIT;
 
 /*
  * - If test matched to "include" filter, return false even if included
@@ -61,12 +76,44 @@ static bool test_is_filtered(const char *test)
 	return false;
 }
 
+static void test_usage(const char *progname)
+{
+	printf("Usage: %s [options] <args>\n"
+	       "\n"
+	       "  -i <pattern>     Including test name (glob pattern)\n"
+	       "  -x <pattern>     Excluding test name (glob pattern)\n"
+	       "  -u               Run unit test\n"
+	       "  -b               Run bench test\n"
+	       "  -l               List all tests\n"
+	       "  -h               Print this help\n",
+	       progname);
+}
+
+static void test_list_test_defines(void)
+{
+	struct test_define *def;
+	const char *name[] = {
+		[TEST_UNIT]	= "unit",
+		[TEST_BENCH]	= "bench",
+	};
+
+	for_each_tests(def)
+		printf("[%s] \"%s\"\n", name[def->type], def->name);
+}
+
 int test_init(int argc, char *argv[])
 {
 	const char *argv0 = argv[0];
+	const char *progname;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "i:x:")) != -1) {
+	progname = strrchr(argv0, '/');
+	if (progname == NULL)
+		progname = argv0;
+	else
+		progname++;
+
+	while ((opt = getopt(argc, argv, "i:x:ublh")) != -1) {
 		switch (opt) {
 		case 'i':
 			opt_filter.inc[opt_filter.nr_inc] = optarg;
@@ -76,23 +123,34 @@ int test_init(int argc, char *argv[])
 			opt_filter.exc[opt_filter.nr_exc] = optarg;
 			opt_filter.nr_exc++;
 			break;
+		case 'u':
+			opt_test_type = TEST_UNIT;
+			break;
+		case 'b':
+			opt_test_type = TEST_BENCH;
+			break;
+		case 'l':
+			test_list_test_defines();
+			exit(0);
+		case 'h':
 		default: /* '?' */
+			test_usage(progname);
 			exit(EXIT_FAILURE);
 		}
 	}
 
-	test_env.series = strrchr(argv0, '/');
-	if (test_env.series == NULL)
-		test_env.series = argv0;
-	else
-		test_env.series++;
-
+	test_env.series = progname;
 	test_env.test_fail_count = 0;
 	test_env.nest = -1;
 	test_env.forked = 0;
 	test_env.filtered = false;
 
 	return optind;
+}
+
+enum test_type test_type(void)
+{
+	return opt_test_type;
 }
 
 const char *test_series(void)
@@ -156,9 +214,11 @@ void test_end(void)
 		test_time_t diff;
 		diff = test_elapse_stop(&test_env.test[nest].elapse);
 
-		printf("[%s:%s] time %3lld.%09lld secs\n",
-		       test_env.series, test_env.test[nest].name,
-		       diff / NSEC_PER_SEC, diff % NSEC_PER_SEC);
+		if (opt_test_type == TEST_UNIT) {
+			printf("[%s:%s] time %3lld.%09lld secs\n",
+			       test_env.series, test_env.test[nest].name,
+			       diff / NSEC_PER_SEC, diff % NSEC_PER_SEC);
+		}
 
 		exit(!!test_env.test[nest].fail_cnt);
 	}
@@ -168,9 +228,11 @@ void test_end(void)
 	assert(err >= 0);
 
 	if (WIFEXITED(status)) {
-		printf("[%s:%s] %s\n",
-		       test_env.series, test_env.test[nest].name,
-		       WEXITSTATUS(status) ? "FAILED" : "OK");
+		if (opt_test_type == TEST_UNIT) {
+			printf("[%s:%s] %s\n",
+			       test_env.series, test_env.test[nest].name,
+			       WEXITSTATUS(status) ? "FAILED" : "OK");
+		}
 
 		if (WEXITSTATUS(status))
 			test_env.test_fail_count++;
@@ -198,6 +260,21 @@ void test_end(void)
 int test_failures(void)
 {
 	return test_env.test_fail_count;
+}
+
+void test_run(void *_arg)
+{
+	struct test_define *def;
+
+	/* FIXME: run tests parallel? */
+	for_each_tests(def) {
+		if (def->type != opt_test_type)
+			continue;
+
+		if (test_start(def->name))
+			def->test(_arg);
+		test_end();
+	}
 }
 
 /*
