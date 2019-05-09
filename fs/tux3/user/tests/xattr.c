@@ -50,8 +50,9 @@ static void __check_xcache(struct inode *inode, struct xcache_data *data,
 #define check_xcache(i, d)	__check_xcache(i, d, ARRAY_SIZE(d))
 
 /* Test basic low level functions */
-static void test01(struct sb *sb)
+static void test01(void *_arg)
 {
+	struct sb *sb = _arg;
 	char attrs[1000] = { };
 	struct xcache_entry *xattr;
 	int err;
@@ -158,6 +159,7 @@ static void test01(struct sb *sb)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 struct xattr_data {
 	char name[32];
@@ -215,8 +217,9 @@ static void __check_listxattr(struct inode *inode, char *buf, int len,
 	__check_listxattr(i, b, l, d, ARRAY_SIZE(d))
 
 /* Test basic interfaces */
-static void test02(struct sb *sb)
+static void test02(void *_arg)
 {
+	struct sb *sb = _arg;
 	char attrs[1000] = { };
 	int err;
 
@@ -280,6 +283,7 @@ static void test02(struct sb *sb)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 int main(int argc, char *argv[])
 {
@@ -307,13 +311,7 @@ int main(int argc, char *argv[])
 	sb->atomref_base = 1 << 10;
 	sb->unatom_base = 1 << 11;
 
-	if (test_start("test01"))
-		test01(sb);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb);
-	test_end();
+	test_run(sb);
 
 	clean_main(sb);
 	return test_failures();

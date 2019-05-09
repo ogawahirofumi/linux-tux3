@@ -208,8 +208,10 @@ static void clean_main_and_fsck(struct sb *sb)
 }
 
 /* Generate all type of logs, and replay. */
-static void test01(struct sb *sb)
+static void test01(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 
 #define NUM_FILES	100
@@ -306,11 +308,14 @@ static void test01(struct sb *sb)
 	clean_snapshot();
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 /* Test to unlink file before flushing */
 /*  FIXME: check if I/O is nothing for inode */
-static void test02(struct sb *sb)
+static void test02(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -327,10 +332,10 @@ static void test02(struct sb *sb)
 	test_assert(!IS_ERR(inode));
 
 	struct file *file = &(struct file)FILE_INIT(inode, 0);
-	char data[1024] = {};
+	char buf[1024] = {};
 	for (int i = 0; i < 1024; i++) {
-		int size = tuxwrite(file, data, sizeof(data));
-		test_assert(size == sizeof(data));
+		int size = tuxwrite(file, buf, sizeof(buf));
+		test_assert(size == sizeof(buf));
 	}
 	iput(inode);
 	/* unlink created inode */
@@ -346,10 +351,13 @@ static void test02(struct sb *sb)
 	check_files(sb, &r, 1);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 /* Test to unlink file after flushing */
-static void test03(struct sb *sb)
+static void test03(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -366,10 +374,10 @@ static void test03(struct sb *sb)
 	test_assert(!IS_ERR(inode));
 
 	struct file *file = &(struct file)FILE_INIT(inode, 0);
-	char data[1024] = {};
+	char buf[1024] = {};
 	for (int i = 0; i < 1024; i++) {
-		int size = tuxwrite(file, data, sizeof(data));
-		test_assert(size == sizeof(data));
+		int size = tuxwrite(file, buf, sizeof(buf));
+		test_assert(size == sizeof(buf));
 	}
 	iput(inode);
 	test_assert(force_delta(sb) == 0);
@@ -415,6 +423,7 @@ static void test03(struct sb *sb)
 	clean_snapshot();
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
 /* Create/write/unlink inode without flush */
 static struct inode *make_orphan_inode(struct sb *sb, const char *name)
@@ -472,8 +481,10 @@ static void check_orphan_inum(struct replay *rp, struct orphan_data *data,
 }
 
 /* Test for orphan inodes */
-static void test04(struct sb *sb)
+static void test04(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -669,10 +680,13 @@ static void test04(struct sb *sb)
 	tux3_exit_mem();
 	test_free_shm(data, sizeof(*data) * NR_ORPHAN);
 }
+TEST_DEFINE(TEST_UNIT, "test04", test04);
 
 /* Test for mkdir/rmdir */
-static void test05(struct sb *sb)
+static void test05(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -744,6 +758,7 @@ static void test05(struct sb *sb)
 	clean_snapshot();
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test05", test05);
 
 static void check_parent_inum(struct inode *dir, const char *name, int len)
 {
@@ -754,8 +769,10 @@ static void check_parent_inum(struct inode *dir, const char *name, int len)
 }
 
 /* Test for rename */
-static void test06(struct sb *sb)
+static void test06(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -957,6 +974,7 @@ static void test06(struct sb *sb)
 	clean_snapshot();
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test06", test06);
 
 static void add_dirty_inode(struct sb *sb)
 {
@@ -967,8 +985,10 @@ static void add_dirty_inode(struct sb *sb)
 }
 
 /* Test for partial alloc to flush logblocks */
-static void test07(struct sb *sb)
+static void test07(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -997,10 +1017,13 @@ static void test07(struct sb *sb)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test07", test07);
 
 /* Test for replay of LOG_BNODE_FREE order */
-static void test08(struct sb *sb)
+static void test08(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
@@ -1059,10 +1082,13 @@ static void test08(struct sb *sb)
 
 	clean_main_and_fsck(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test08", test08);
 
 /* Test for cross boundary allocation on countmap group and fsck */
-static void test09(struct sb *sb)
+static void test09(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 	test_assert(force_unify(sb) == 0);
 
@@ -1094,10 +1120,13 @@ static void test09(struct sb *sb)
 
 	clean_main_and_fsck(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test09", test09);
 
 /* Test for mount options */
-static void test10(struct sb *sb)
+static void test10(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 
 	char options[512];
@@ -1137,10 +1166,13 @@ static void test10(struct sb *sb)
 
 	clean_main_and_fsck(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test10", test10);
 
 /* Test for non regular file types */
-static void test11(struct sb *sb)
+static void test11(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 
 	struct tux_iattr iattr = {
@@ -1220,10 +1252,13 @@ static void test11(struct sb *sb)
 
 	clean_main_and_fsck(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test11", test11);
 
 /* Test for reading saved inodes from disk  */
-static void test12(struct sb *sb)
+static void test12(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	test_assert(mkfs_tux3(sb) == 0);
 
 #define NR_REG		10
@@ -1306,6 +1341,7 @@ static void test12(struct sb *sb)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test12", test12);
 
 int main(int argc, char *argv[])
 {
@@ -1327,53 +1363,7 @@ int main(int argc, char *argv[])
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, volsize >> dev->bits);
 
-	if (test_start("test01"))
-		test01(sb);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb);
-	test_end();
-
-	if (test_start("test04"))
-		test04(sb);
-	test_end();
-
-	if (test_start("test05"))
-		test05(sb);
-	test_end();
-
-	if (test_start("test06"))
-		test06(sb);
-	test_end();
-
-	if (test_start("test07"))
-		test07(sb);
-	test_end();
-
-	if (test_start("test08"))
-		test08(sb);
-	test_end();
-
-	if (test_start("test09"))
-		test09(sb);
-	test_end();
-
-	if (test_start("test10"))
-		test10(sb);
-	test_end();
-
-	if (test_start("test11"))
-		test11(sb);
-	test_end();
-
-	if (test_start("test12"))
-		test12(sb);
-	test_end();
+	test_run(sb);
 
 	tux3_exit_mem();
 	return test_failures();

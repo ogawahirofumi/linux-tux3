@@ -8,7 +8,7 @@ static void clean_main(void)
 	tux3_exit_mem();
 }
 
-static void test01(void)
+static void test01(void *_arg)
 {
 	struct dev *dev = &(struct dev){ .bits = 12 };
 	struct sb *sb = rapid_sb(dev);
@@ -99,6 +99,7 @@ static void test01(void)
 
 	clean_main();
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 /* Test for bufvec */
 static void test02_endio(struct buffer_head *buffer, int err)
@@ -107,7 +108,7 @@ static void test02_endio(struct buffer_head *buffer, int err)
 	blockput(buffer);
 }
 
-static void test02(void)
+static void test02(void *_arg)
 {
 #define BUFFER_COUNT	100
 	struct dev *dev = &(struct dev){ .bits = 12 };
@@ -162,8 +163,9 @@ static void test02(void)
 
 	clean_main();
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
-static void test03(void)
+static void test03(void *_arg)
 {
 	/* This expect buffer is never reclaimed */
 	init_buffer_params(10 << 20, 2);
@@ -187,6 +189,7 @@ static void test03(void)
 
 	clean_main();
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
 int main(int argc, char *argv[])
 {
@@ -195,17 +198,7 @@ int main(int argc, char *argv[])
 	int err = tux3_init_mem(1 << 20, 2);
 	assert(!err);
 
-	if (test_start("test01"))
-		test01();
-	test_end();
-
-	if (test_start("test02"))
-		test02();
-	test_end();
-
-	if (test_start("test03"))
-		test03();
-	test_end();
+	test_run(NULL);
 
 	clean_main();
 	return test_failures();

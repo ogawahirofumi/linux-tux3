@@ -101,8 +101,9 @@ static void clean_main_and_fsck(struct sb *sb)
 #define TEST_CONFIG	(FAULT_ONE_SHOT | FAULT_PER_CALLPATH)
 
 /* Generate all type of logs, and replay. */
-static void test01(struct sb *sb)
+static void test01(void *_arg)
 {
+	struct sb *sb = _arg;
 	int nr, err;
 
 	nr = 0;
@@ -142,6 +143,7 @@ static void test01(struct sb *sb)
 
 	clean_main_and_fsck(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 int main(int argc, char *argv[])
 {
@@ -163,9 +165,7 @@ int main(int argc, char *argv[])
 	struct sb *sb = rapid_sb(dev);
 	sb->super = INIT_DISKSB(dev->bits, volsize >> dev->bits);
 
-	if (test_start("test01"))
-		test01(sb);
-	test_end();
+	test_run(sb);
 
 	tux3_exit_mem();
 	return test_failures();

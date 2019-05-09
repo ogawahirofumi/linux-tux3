@@ -5,7 +5,7 @@
 #include "tux3user.h"
 #include "test.h"
 
-static void test_atomic(void)
+static void test_atomic(void *_arg)
 {
 	atomic_t v1 = ATOMIC_LONG_INIT(0);
 #define VAL		(1U << 31)
@@ -25,8 +25,9 @@ static void test_atomic(void)
 	test_assert(atomic_long_read(&v3) == VAL);
 #undef VAL
 }
+TEST_DEFINE(TEST_UNIT, "atomic", test_atomic);
 
-static void test_rw_once(void)
+static void test_rw_once(void *_arg)
 {
 	u8 v1 = 0;
 	u16 v2 = 0;
@@ -52,8 +53,9 @@ static void test_rw_once(void)
 	test_assert(READ_ONCE(v16) == 10);
 #endif
 }
+TEST_DEFINE(TEST_UNIT, "rw_once", test_rw_once);
 
-static void test_err(void)
+static void test_err(void *_arg)
 {
 	long err = -EINVAL;
 	void *err_ptr = ERR_PTR(err);
@@ -66,8 +68,9 @@ static void test_err(void)
 	test_assert(PTR_ERR_OR_ZERO(err_ptr) == err);
 	test_assert(PTR_ERR_OR_ZERO(0) == 0);
 }
+TEST_DEFINE(TEST_UNIT, "err", test_err);
 
-static void test_find_bit(void)
+static void test_find_bit(void *_arg)
 {
 	unsigned long zero[2];
 	unsigned long full[2];
@@ -89,13 +92,14 @@ static void test_find_bit(void)
 	test_assert(find_first_zero_bit(full, nbits) == nbits);
 	test_assert(find_first_zero_bit(zero, nbits) == 0);
 }
+TEST_DEFINE(TEST_UNIT, "find_bit", test_find_bit);
 
 /* dummpy function for testing */
 void truncate_buffers_range(map_t *map, loff_t lstart, loff_t lend)
 {
 }
 
-static void test_fs(void)
+static void test_fs(void *_arg)
 {
 	struct inode inode = { .i_size = 0,};
 	truncate_setsize(&inode, 0);
@@ -117,8 +121,9 @@ static void test_fs(void)
 	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == ts.tv_nsec);
 #endif
 }
+TEST_DEFINE(TEST_UNIT, "fs", test_fs);
 
-static void test_lock(void)
+static void test_lock(void *_arg)
 {
 	static DEFINE_SPINLOCK(spin);
 	static DECLARE_RWSEM(rwsem);
@@ -151,8 +156,9 @@ static void test_lock(void)
 	mutex_unlock(&mutex);
 	test_assert(!mutex_is_locked(&mutex));
 }
+TEST_DEFINE(TEST_UNIT, "lock", test_lock);
 
-static void test_mm(void)
+static void test_mm(void *_arg)
 {
 	char *s = "1234", *p;
 
@@ -172,8 +178,9 @@ static void test_mm(void)
 	test_assert(p != NULL && p != s && !memcmp("12", p, 2));
 	kfree(p);
 }
+TEST_DEFINE(TEST_UNIT, "mm", test_mm);
 
-static void test_parser(void)
+static void test_parser(void *_arg)
 {
 	enum {
 		Opt_1, Opt_2, Opt_3, Opt_4, Opt_5, Opt_6, Opt_7, Opt_8,
@@ -225,8 +232,9 @@ static void test_parser(void)
 
 	test_assert(match_token("g=10", tokens, args) == Opt_err);
 }
+TEST_DEFINE(TEST_UNIT, "parser", test_parser);
 
-static void test_refcount(void)
+static void test_refcount(void *_arg)
 {
 	refcount_t r = REFCOUNT_INIT(0);
 
@@ -266,9 +274,10 @@ static void test_refcount(void)
 	refcount_set(&r, 2);
 	test_assert(refcount_dec_and_lock_irqsave(&r, &lock, &flags) == false);
 }
+TEST_DEFINE(TEST_UNIT, "refcount", test_refcount);
 
 #include <libklib/seq_file.h>
-static void test_seqfile(void)
+static void test_seqfile(void *_arg)
 {
 	char buf[4096];
 	struct seq_file seq = {
@@ -285,8 +294,9 @@ static void test_seqfile(void)
 
 	test_assert(!memcmp("test seq\n#test2\n", seq.buf, seq.count));
 }
+TEST_DEFINE(TEST_UNIT, "seqfile", test_seqfile);
 
-static void test_slab(void)
+static void test_slab(void *_arg)
 {
 	struct kmem_cache *cachep;
 	void *p;
@@ -314,8 +324,9 @@ static void test_slab(void)
 	kmem_cache_destroy(cachep);
 #undef SIZE
 }
+TEST_DEFINE(TEST_UNIT, "slab", test_slab);
 
-static void test_time(void)
+static void test_time(void *_arg)
 {
 	struct timespec t;
 	t = ns_to_timespec(0);
@@ -337,15 +348,17 @@ static void test_time(void)
 	t64 = ns_to_timespec64(-100);
 	test_assert(t64.tv_sec == -1 && t64.tv_nsec == 999999900);
 }
+TEST_DEFINE(TEST_UNIT, "time", test_time);
 
-static void test_fls(void)
+static void test_fls(void *_arg)
 {
 	test_assert(__fls(1) == 0);
 	test_assert(fls64(0) == 0);
 	test_assert(fls64(1) == 1);
 }
+TEST_DEFINE(TEST_UNIT, "fls", test_fls);
 
-static void test_bitops(void)
+static void test_bitops(void *_arg)
 {
 	unsigned long v[2] = {};
 
@@ -360,53 +373,13 @@ static void test_bitops(void)
 	test_assert(test_and_change_bit(BITS_PER_LONG + 1, v) == 0);
 	test_assert(test_and_change_bit(BITS_PER_LONG + 1, v) != 0);
 }
+TEST_DEFINE(TEST_UNIT, "bitops", test_bitops);
 
 int main(int argc, char *argv[])
 {
 	test_init(argc, argv);
 
-	if (test_start("test01"))
-		test_atomic();
-	test_end();
-	if (test_start("test02"))
-		test_rw_once();
-	test_end();
-	if (test_start("test03"))
-		test_err();
-	test_end();
-	if (test_start("test04"))
-		test_find_bit();
-	test_end();
-	if (test_start("test05"))
-		test_fs();
-	test_end();
-	if (test_start("test06"))
-		test_lock();
-	test_end();
-	if (test_start("test07"))
-		test_mm();
-	test_end();
-	if (test_start("test08"))
-		test_parser();
-	test_end();
-	if (test_start("test09"))
-		test_refcount();
-	test_end();
-	if (test_start("test10"))
-		test_seqfile();
-	test_end();
-	if (test_start("test11"))
-		test_slab();
-	test_end();
-	if (test_start("test12"))
-		test_time();
-	test_end();
-	if (test_start("test13"))
-		test_fls();
-	test_end();
-	if (test_start("test14"))
-		test_bitops();
-	test_end();
+	test_run(NULL);
 
 	return test_failures();
 }

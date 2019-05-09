@@ -21,6 +21,11 @@
 #include "../filemap.c"		/* for seg_alloc() */
 #include "../dleaf.c"
 
+struct test_arg {
+	struct sb *sb;
+	struct btree *btree;
+};
+
 static void clean_main(struct sb *sb, struct btree *btree)
 {
 	log_finish_cycle(sb, 1);
@@ -169,8 +174,12 @@ dleaf_set_r_req(struct dleaf_req *rq, block_t index, unsigned count,
 }
 
 /* Test dleaf_{read,write} operations */
-static void test01(struct sb *sb, struct btree *btree)
+static void test01(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct dleaf *leaf;
 	struct dleaf_req rq;
 	struct btree_key_range *key;
@@ -695,10 +704,15 @@ static void test01(struct sb *sb, struct btree *btree)
 	dleaf_destroy(btree, leaf);
 	clean_main(sb, btree);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 /* Test dleaf_write in the case of no space in leaf */
-static void test02(struct sb *sb, struct btree *btree)
+static void test02(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 #define BASE	0x1000
 	struct block_segment seg[10];
 	struct dleaf *leaf1, *leaf2;
@@ -789,10 +803,15 @@ static void test02(struct sb *sb, struct btree *btree)
 	dleaf_destroy(btree, leaf2);
 	clean_main(sb, btree);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 /* Test dleaf_chop operation */
-static void test03(struct sb *sb, struct btree *btree)
+static void test03(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct dleaf *leaf;
 	struct dleaf_req rq;
 	struct btree_key_range *key;
@@ -941,10 +960,15 @@ static void test03(struct sb *sb, struct btree *btree)
 	dleaf_destroy(btree, leaf);
 	clean_main(sb, btree);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
 /* Test dleaf_split operations */
-static void test04(struct sb *sb, struct btree *btree)
+static void test04(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct dleaf *leaf1, *leaf2;
 	struct dleaf_req rq;
 	struct btree_key_range *key;
@@ -1047,10 +1071,15 @@ static void test04(struct sb *sb, struct btree *btree)
 	dleaf_destroy(btree, leaf2);
 	clean_main(sb, btree);
 }
+TEST_DEFINE(TEST_UNIT, "test04", test04);
 
 /* Test dleaf_merge operations */
-static void test05(struct sb *sb, struct btree *btree)
+static void test05(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct dleaf *leaf1, *leaf2;
 	struct dleaf_req rq;
 	struct btree_key_range *key;
@@ -1160,10 +1189,15 @@ static void test05(struct sb *sb, struct btree *btree)
 	dleaf_destroy(btree, leaf2);
 	clean_main(sb, btree);
 }
+TEST_DEFINE(TEST_UNIT, "test05", test05);
 
 /* Test dleaf_{write} for split case */
-static void test06(struct sb *sb, struct btree *btree)
+static void test06(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct dleaf *leaf;
 	struct dleaf_req rq;
 	struct btree_key_range *key;
@@ -1245,6 +1279,7 @@ static void test06(struct sb *sb, struct btree *btree)
 	dleaf_destroy(btree, leaf);
 	clean_main(sb, btree);
 }
+TEST_DEFINE(TEST_UNIT, "test06", test06);
 
 int main(int argc, char *argv[])
 {
@@ -1270,29 +1305,11 @@ int main(int argc, char *argv[])
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);
 
-	if (test_start("test01"))
-		test01(sb, btree);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb, btree);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb, btree);
-	test_end();
-
-	if (test_start("test04"))
-		test04(sb, btree);
-	test_end();
-
-	if (test_start("test05"))
-		test05(sb, btree);
-	test_end();
-
-	if (test_start("test06"))
-		test06(sb, btree);
-	test_end();
+	struct test_arg arg = {
+		.sb = sb,
+		.btree = btree,
+	};
+	test_run(&arg);
 
 	tux3_end_backend();
 

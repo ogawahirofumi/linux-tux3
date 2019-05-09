@@ -19,6 +19,11 @@
 #include "balloc-dummy.c"
 #include "../btree.c"
 
+struct test_arg {
+	struct sb *sb;
+	struct inode *inode;
+};
+
 static void clean_main(struct sb *sb, struct inode *inode)
 {
 	log_finish_cycle(sb, 1);
@@ -196,8 +201,11 @@ static struct btree_ops ops = {
 };
 
 /* Test of new_leaf() and new_node() */
-static void test01(struct sb *sb, struct inode *inode)
+static void test01(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 
 	init_btree(btree, sb, no_root, &ops);
@@ -230,6 +238,7 @@ static void test01(struct sb *sb, struct inode *inode)
 
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 static void btree_write_test(struct cursor *cursor, tuxkey_t key)
 {
@@ -263,8 +272,11 @@ static void btree_write_test(struct cursor *cursor, tuxkey_t key)
 }
 
 /* btree_write() and btree_chop() test */
-static void test02(struct sb *sb, struct inode *inode)
+static void test02(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 	int err;
 
@@ -314,10 +326,14 @@ static void test02(struct sb *sb, struct inode *inode)
 
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 /* btree_write() and btree_chop() test (reverse order) */
-static void test03(struct sb *sb, struct inode *inode)
+static void test03(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 	int err;
 
@@ -369,9 +385,13 @@ static void test03(struct sb *sb, struct inode *inode)
 
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
-static void test04(struct sb *sb, struct inode *inode)
+static void test04(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 	int err;
 
@@ -413,6 +433,7 @@ static void test04(struct sb *sb, struct inode *inode)
 
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test04", test04);
 
 static void clean_test05(struct sb *sb, struct inode *inode,
 			 struct cursor *cursor, struct path_level *path)
@@ -425,8 +446,11 @@ static void clean_test05(struct sb *sb, struct inode *inode,
 }
 
 /* Test of cursor_redirect() */
-static void test05(struct sb *sb, struct inode *inode)
+static void test05(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 	struct path_level *orig;
 	int err;
@@ -535,10 +559,14 @@ static void test05(struct sb *sb, struct inode *inode)
 
 	clean_test05(sb, inode, cursor, orig);
 }
+TEST_DEFINE(TEST_UNIT, "test05", test05);
 
 /* btree_chop() range chop (and adjust_parent_sep()) test */
-static void test06(struct sb *sb, struct inode *inode)
+static void test06(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 
 	init_btree(btree, sb, no_root, &ops);
@@ -650,6 +678,7 @@ static void test06(struct sb *sb, struct inode *inode)
 
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test06", test06);
 
 static void clean_test07(struct sb *sb, struct inode *inode,
 			 struct cursor *cursor)
@@ -661,8 +690,11 @@ static void clean_test07(struct sb *sb, struct inode *inode,
 }
 
 /* Test of insert_leaf() cursor adjust */
-static void test07(struct sb *sb, struct inode *inode)
+static void test07(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
 	struct btree *btree = &tux_inode(inode)->btree;
 
 	init_btree(btree, sb, no_root, &ops);
@@ -761,22 +793,35 @@ static void test07(struct sb *sb, struct inode *inode)
 
 	clean_test07(sb, inode, cursor);
 }
+TEST_DEFINE(TEST_UNIT, "test07", test07);
 
 #include "btree_bench.c"
 
 int main(int argc, char *argv[])
 {
-	bench(argc, argv);
-
 	test_init(argc, argv);
 
-	struct dev *dev = &(struct dev){ .bits = 6 };
+	unsigned long max_mem_size, disk_size;
+	unsigned block_shift, buffers_debug;
+	if (test_type() == TEST_UNIT) {
+		max_mem_size = 1 << 20;
+		block_shift = 6;
+		disk_size = 2048;
+		buffers_debug = 2;
+	} else {
+		max_mem_size = 1 << 30;
+		block_shift = 12;
+		disk_size = max_mem_size >> 12;
+		buffers_debug = 0;
+	}
 
-	int err = tux3_init_mem(1 << 20, 2);
+	struct dev *dev = &(struct dev){ .bits = block_shift };
+
+	int err = tux3_init_mem(max_mem_size, buffers_debug);
 	assert(!err);
 
 	struct sb *sb = rapid_sb(dev);
-	sb->super = INIT_DISKSB(dev->bits, 2048);
+	sb->super = INIT_DISKSB(dev->bits, disk_size);
 	assert(!setup_sb(sb, &sb->super));
 	assert(!set_blocksize(sb->blocksize));
 
@@ -791,33 +836,11 @@ int main(int argc, char *argv[])
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);
 
-	if (test_start("test01"))
-		test01(sb, inode);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb, inode);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb, inode);
-	test_end();
-
-	if (test_start("test04"))
-		test04(sb, inode);
-	test_end();
-
-	if (test_start("test05"))
-		test05(sb, inode);
-	test_end();
-
-	if (test_start("test06"))
-		test06(sb, inode);
-	test_end();
-
-	if (test_start("test07"))
-		test07(sb, inode);
-	test_end();
+	struct test_arg arg = {
+		.sb = sb,
+		.inode = inode,
+	};
+	test_run(&arg);
 
 	tux3_end_backend();
 

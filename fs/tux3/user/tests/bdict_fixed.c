@@ -63,8 +63,9 @@ static bool check_key_data(struct test_data *t, void *buf, int blocksize, int i)
 	return t->key == k && t->data == p;
 }
 
-static void test01(int blocksize)
+static void test01(void *_arg)
 {
+	int blocksize = *(int *)_arg;
 	void *buf = malloc(blocksize);
 	int max_count = fbdict_max_count(blocksize);
 
@@ -152,6 +153,7 @@ static void test01(int blocksize)
 	free(tests);
 	free(buf);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 int main(int argc, char *argv[])
 {
@@ -159,9 +161,7 @@ int main(int argc, char *argv[])
 
 	int blocksize = 1 << 12;
 
-	if (test_start("test01"))
-		test01(blocksize);
-	test_end();
+	test_run(&blocksize);
 
 	return test_failures();
 }

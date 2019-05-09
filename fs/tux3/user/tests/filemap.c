@@ -5,6 +5,11 @@
 #include "../filemap.c"
 #include "test.h"
 
+struct test_arg {
+	struct sb *sb;
+	struct inode *inode;
+};
+
 #define FOO	"foo"
 
 static void clean_main(struct sb *sb, struct inode *inode)
@@ -90,8 +95,12 @@ struct test_data {
 };
 
 /* Test basic operations */
-static void test01(struct sb *sb, struct inode *inode)
+static void test01(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
+
 	/*
 	 * FIXME: filemap() are not supporting to read segments on
 	 * multiple leaves at once.
@@ -194,10 +203,15 @@ static void test01(struct sb *sb, struct inode *inode)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 /* Test redirect mode (create == 2) */
-static void test02(struct sb *sb, struct inode *inode)
+static void test02(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
+
 	struct block_segment seg[32];
 
 	struct test_data data[] = {
@@ -237,10 +251,15 @@ static void test02(struct sb *sb, struct inode *inode)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 /* Test overwrite seg entirely inside existing */
-static void test03(struct sb *sb, struct inode *inode)
+static void test03(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
+
 	struct block_segment seg1[32], seg2[32];
 	int segs1, segs2;
 
@@ -281,10 +300,15 @@ static void test03(struct sb *sb, struct inode *inode)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
 /* Test overwrite extent and hole at once */
-static void test04(struct sb *sb, struct inode *inode)
+static void test04(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
+
 	struct block_segment seg1[32], seg2[32];
 	int segs1, segs2;
 
@@ -317,6 +341,7 @@ static void test04(struct sb *sb, struct inode *inode)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test04", test04);
 
 static void __test05(struct test_data data[], int nr, struct inode *inode)
 {
@@ -346,8 +371,12 @@ static void __test05(struct test_data data[], int nr, struct inode *inode)
 }
 
 /* Test to write block to hole */
-static void test05(struct sb *sb, struct inode *inode)
+static void test05(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
+
 	struct test_data data[][3] = {
 		/* Test case 1 */
 		{
@@ -378,10 +407,15 @@ static void test05(struct sb *sb, struct inode *inode)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb, inode);
 }
+TEST_DEFINE(TEST_UNIT, "test05", test05);
 
 /* Test of filemap_hole stuff */
-static void test06(struct sb *sb, struct inode *inode)
+static void test06(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *inode = arg->inode;
+
 	struct file file = FILE_INIT(inode, 0);
 	char *buf;
 	int ret;
@@ -442,6 +476,7 @@ static void test06(struct sb *sb, struct inode *inode)
 	test_assert(force_delta(sb) == 0);
 	clean_main(sb, NULL);
 }
+TEST_DEFINE(TEST_UNIT, "test06", test06);
 
 int main(int argc, char *argv[])
 {
@@ -469,29 +504,11 @@ int main(int argc, char *argv[])
 
 	test_assert(force_unify(sb) == 0);
 
-	if (test_start("test01"))
-		test01(sb, inode);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb, inode);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb, inode);
-	test_end();
-
-	if (test_start("test04"))
-		test04(sb, inode);
-	test_end();
-
-	if (test_start("test05"))
-		test05(sb, inode);
-	test_end();
-
-	if (test_start("test06"))
-		test06(sb, inode);
-	test_end();
+	struct test_arg arg = {
+		.sb = sb,
+		.inode = inode,
+	};
+	test_run(&arg);
 
 	clean_main(sb, inode);
 	return test_failures();

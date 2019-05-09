@@ -17,6 +17,11 @@
 
 #include "../balloc.c"
 
+struct test_arg {
+	struct sb *sb;
+	block_t bitmap_blocks;
+};
+
 static int bitmap_test(struct sb *sb, block_t start, block_t count, int set)
 {
 	struct inode *bitmap = sb->bitmap;
@@ -74,8 +79,11 @@ static void clean_main(struct sb *sb)
 }
 
 /* Tests bits set/clear/test functions */
-static void test01(struct sb *sb, block_t blocks)
+static void test01(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	tux3_msg(sb, "---- test bitops ----");
 	unsigned char bits[16];
 	memset(bits, 0, sizeof(bits));
@@ -130,9 +138,14 @@ static void test01(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
-static void test02(struct sb *sb, block_t blocks)
+static void test02(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	block_t blocks = arg->bitmap_blocks;
+
 	/* Allocate specific range */
 	block_t start = 121;
 	unsigned count = 10;
@@ -166,9 +179,13 @@ static void test02(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
-static void test03(struct sb *sb, block_t blocks)
+static void test03(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 #define BLOCKS		3
 	struct block_segment seg[2];
 	unsigned n = BLOCKS;
@@ -189,9 +206,13 @@ static void test03(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
-static void test04(struct sb *sb, block_t blocks)
+static void test04(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	block_t start;
 
 	/* nextblock is last vol block, this should wrap around to zero */
@@ -212,10 +233,14 @@ static void test04(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test04", test04);
 
 /* Allocate blocks on one boundary (bitmap or group count) */
-static void test05(struct sb *sb, block_t blocks)
+static void test05(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	block_t bits = min(1 << (3 + sb->blockbits), 1 << sb->groupbits);
 
 	for (int i = 0; i < 2; i++) {
@@ -238,10 +263,14 @@ static void test05(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test05", test05);
 
 /* Fill whole bitmap and free */
-static void test06(struct sb *sb, block_t blocks)
+static void test06(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	enum { ALLOC_UNIT = 8 };
 	block_t total = sb->volblocks;
 	struct block_segment *seg;
@@ -266,10 +295,14 @@ static void test06(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test06", test06);
 
 /* Test balloc and bfree on multiple blocks */
-static void test07(struct sb *sb, block_t blocks)
+static void test07(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	enum { maxsegs = 1000 };
 	for (int i = 0; i < 3; i++) {
 		unsigned n = sb->volblocks;
@@ -288,10 +321,14 @@ static void test07(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test07", test07);
 
 /* Test balloc for partial allocation */
-static void test08(struct sb *sb, block_t blocks)
+static void test08(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	enum { maxsegs = 1000 };
 	struct block_segment seg[maxsegs];
 	unsigned blks = sb->volblocks;
@@ -320,10 +357,14 @@ static void test08(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test08", test08);
 
 /* Test balloc for ENOSPC */
-static void test09(struct sb *sb, block_t blocks)
+static void test09(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+
 	enum { maxsegs = 1000 };
 	struct block_segment seg[maxsegs];
 	unsigned blks = sb->volblocks;
@@ -343,6 +384,7 @@ static void test09(struct sb *sb, block_t blocks)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test09", test09);
 
 static void initialize_buffer(struct inode *inode, block_t block)
 {
@@ -386,41 +428,11 @@ int main(int argc, char *argv[])
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);
 
-	if (test_start("test01"))
-		test01(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test04"))
-		test04(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test05"))
-		test05(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test06"))
-		test06(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test07"))
-		test07(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test08"))
-		test08(sb, BITMAP_BLOCKS);
-	test_end();
-
-	if (test_start("test09"))
-		test09(sb, BITMAP_BLOCKS);
-	test_end();
+	struct test_arg arg = {
+		.sb = sb,
+		.bitmap_blocks = BITMAP_BLOCKS,
+	};
+	test_run(&arg);
 
 	tux3_end_backend();
 

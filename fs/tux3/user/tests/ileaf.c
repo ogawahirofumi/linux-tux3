@@ -17,6 +17,11 @@
 
 #include "../ileaf.c"
 
+struct test_arg {
+	struct sb *sb;
+	struct btree *btree;
+};
+
 static void clean_main(struct sb *sb)
 {
 	tux3_free_idefer_map(sb->idefer_map);
@@ -131,8 +136,12 @@ static int cmp_data(const void *p1, const void *p2)
 }
 
 /* Test basic ileaf operations */
-static void test01(struct sb *sb, struct btree *btree)
+static void test01(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct ileaf *leaf = ileaf_create(btree);
 	struct ileaf *dest = ileaf_create(btree);
 	unsigned more;
@@ -261,10 +270,15 @@ static void test01(struct sb *sb, struct btree *btree)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 /* Test merge by ileaf_resize */
-static void test02(struct sb *sb, struct btree *btree)
+static void test02(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct ileaf *leaf = ileaf_create(btree);
 
 	struct ileaf_data data[] = {
@@ -320,6 +334,7 @@ static void test02(struct sb *sb, struct btree *btree)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 static void test_split_hint(struct btree *btree, inum_t key_bottom,
 			    inum_t key_limit, struct ileaf *ileaf,
@@ -343,8 +358,12 @@ static void test_split_hint(struct btree *btree, inum_t key_bottom,
 }
 
 /* Test ileaf_split_hint */
-static void test03(struct sb *sb, struct btree *btree)
+static void test03(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct ileaf *leaf = ileaf_create(btree);
 	tuxkey_t key, ibase, bottom, limit;
 	int count, size = 64;
@@ -411,6 +430,7 @@ static void test03(struct sb *sb, struct btree *btree)
 	ileaf_destroy(btree, leaf);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
 static void test_ileaf_chop(struct btree *btree, tuxkey_t start, u64 len,
 			    struct ileaf *ileaf,
@@ -433,8 +453,12 @@ static void test_ileaf_chop(struct btree *btree, tuxkey_t start, u64 len,
 }
 
 /* Test of ileaf_chop */
-static void test04(struct sb *sb, struct btree *btree)
+static void test04(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct ileaf *leaf = ileaf_create(btree);
 
 	struct ileaf_data data[] = {
@@ -619,6 +643,7 @@ static void test04(struct sb *sb, struct btree *btree)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test04", test04);
 
 struct enum_data {
 	struct ileaf_data *data;
@@ -657,8 +682,12 @@ static void test_enum(struct ileaf_data *data, int nr, inum_t start, u64 len)
 }
 
 /* Test of ileaf_enumerate */
-static void test05(struct sb *sb, struct btree *btree)
+static void test05(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
 	struct ileaf *leaf = ileaf_create(btree);
 
 	struct ileaf_data data[] = {
@@ -796,6 +825,7 @@ static void test05(struct sb *sb, struct btree *btree)
 	ileaf_destroy(btree, leaf);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test05", test05);
 
 int main(int argc, char *argv[])
 {
@@ -813,25 +843,11 @@ int main(int argc, char *argv[])
 	struct btree btree;
 	init_btree(&btree, sb, no_root, &itree_ops);
 
-	if (test_start("test01"))
-		test01(sb, &btree);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb, &btree);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb, &btree);
-	test_end();
-
-	if (test_start("test04"))
-		test04(sb, &btree);
-	test_end();
-
-	if (test_start("test05"))
-		test05(sb, &btree);
-	test_end();
+	struct test_arg arg = {
+		.sb = sb,
+		.btree = &btree,
+	};
+	test_run(&arg);
 
 	clean_main(sb);
 	return test_failures();

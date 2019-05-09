@@ -7,6 +7,11 @@
 
 #include "../dir.c"
 
+struct test_arg {
+	struct sb *sb;
+	struct inode *dir;
+};
+
 static void clean_main(struct sb *sb, struct inode *dir)
 {
 	invalidate_buffers(dir->map);
@@ -16,8 +21,12 @@ static void clean_main(struct sb *sb, struct inode *dir)
 }
 
 /* Test basic dir operations */
-static void test01(struct sb *sb, struct inode *dir)
+static void test01(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *dir = arg->dir;
+
 	struct buffer_head *buffer;
 	struct tux3_dirent *entry;
 	int err;
@@ -66,6 +75,7 @@ static void test01(struct sb *sb, struct inode *dir)
 	rapid_free_inode(inode2);
 	clean_main(sb, dir);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 static int filldir(struct dir_context *ctx, const char *name, int namelen,
 		   loff_t offset, u64 inum, unsigned type)
@@ -91,8 +101,12 @@ static int filldir(struct dir_context *ctx, const char *name, int namelen,
 }
 
 /* Test readdir */
-static void test02(struct sb *sb, struct inode *dir)
+static void test02(void *_arg)
 {
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct inode *dir = arg->dir;
+
 	struct file *file = &(struct file)FILE_INIT(dir, 0);
 	int err;
 
@@ -143,6 +157,7 @@ static void test02(struct sb *sb, struct inode *dir)
 
 	clean_main(sb, dir);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 int main(int argc, char *argv[])
 {
@@ -160,13 +175,11 @@ int main(int argc, char *argv[])
 
 	struct inode *dir = rapid_new_inode(sb, NULL, S_IFDIR);
 
-	if (test_start("test01"))
-		test01(sb, dir);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb, dir);
-	test_end();
+	struct test_arg arg = {
+		.sb = sb,
+		.dir = dir,
+	};
+	test_run(&arg);
 
 	clean_main(sb, dir);
 	return test_failures();

@@ -25,8 +25,9 @@ static void clean_main(struct sb *sb)
 }
 
 /* Test encode_attrs() and decode_attrs() */
-static void test01(struct sb *sb)
+static void test01(void *_arg)
 {
+	struct sb *sb = _arg;
 	struct inode *inode1 = rapid_new_inode(sb, NULL, S_IFCHR | 0644);
 	struct inode *inode2 = rapid_new_inode(sb, NULL, 0x666);
 	unsigned delta;
@@ -88,6 +89,7 @@ static void test01(struct sb *sb)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 int main(int argc, char *argv[])
 {
@@ -102,9 +104,7 @@ int main(int argc, char *argv[])
 	sb->super = INIT_DISKSB(dev->bits, 100);
 	assert(!setup_sb(sb, &sb->super));
 
-	if (test_start("test01"))
-		test01(sb);
-	test_end();
+	test_run(sb);
 
 	clean_main(sb);
 	return test_failures();

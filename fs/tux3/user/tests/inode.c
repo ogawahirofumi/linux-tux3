@@ -33,8 +33,9 @@ static int tux3_flush_inode_hack(struct inode *inode)
 	return err;
 }
 
-static void test01(struct sb *sb)
+static void test01(void *_arg)
 {
+	struct sb *sb = _arg;
 	struct inode *inode;
 	struct tux_iattr iattr = { .mode = S_IFREG | S_IRWXU };
 
@@ -85,10 +86,12 @@ static void test01(struct sb *sb)
 	force_delta(sb);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 /* Test try to allocate same inum */
-static void test02(struct sb *sb)
+static void test02(void *_arg)
 {
+	struct sb *sb = _arg;
 	struct tux_iattr *iattr = &(struct tux_iattr){ .mode = S_IFREG };
 	struct inode *inode1, *inode2, *inode3, *inode4;
 	int err;
@@ -157,10 +160,12 @@ static void test02(struct sb *sb)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test02", test02);
 
 /* Create multiple directories in root */
-static void test03(struct sb *sb)
+static void test03(void *_arg)
 {
+	struct sb *sb = _arg;
 	struct tux_iattr dir_attr = { .mode = S_IFDIR | S_IRWXU };
 	struct tux_iattr reg_attr = { .mode = S_IFREG | S_IRWXU };
 	struct inode *dir, *inode;
@@ -185,6 +190,7 @@ static void test03(struct sb *sb)
 	force_delta(sb);
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test03", test03);
 
 int main(int argc, char *argv[])
 {
@@ -210,17 +216,7 @@ int main(int argc, char *argv[])
 	err = mkfs_tux3(sb);
 	assert(!err);
 
-	if (test_start("test01"))
-		test01(sb);
-	test_end();
-
-	if (test_start("test02"))
-		test02(sb);
-	test_end();
-
-	if (test_start("test03"))
-		test03(sb);
-	test_end();
+	test_run(sb);
 
 	clean_main(sb);
 	return test_failures();

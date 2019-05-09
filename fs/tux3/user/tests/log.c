@@ -33,8 +33,10 @@ static void check(struct sb *sb, u8 intent)
 }
 
 /* Tests log funcs and log_size[] */
-static void test01(struct sb *sb)
+static void test01(void *_arg)
 {
+	struct sb *sb = _arg;
+
 	log_balloc(sb, 1, 2);
 	check(sb, LOG_BALLOC);
 
@@ -91,6 +93,7 @@ static void test01(struct sb *sb)
 
 	clean_main(sb);
 }
+TEST_DEFINE(TEST_UNIT, "test01", test01);
 
 int main(int argc, char *argv[])
 {
@@ -112,9 +115,7 @@ int main(int argc, char *argv[])
 	/* Set fake backend mark to modify backend objects. */
 	tux3_start_backend(sb);
 
-	if (test_start("test01"))
-		test01(sb);
-	test_end();
+	test_run(sb);
 
 	tux3_end_backend();
 
