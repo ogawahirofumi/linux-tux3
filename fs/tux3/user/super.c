@@ -22,9 +22,15 @@ struct inode *__alloc_inode(struct super_block *sb)
 	return tux3_alloc_inode(sb);
 }
 
+static void i_callback(struct rcu_head *head)
+{
+	struct inode *inode = container_of(head, struct inode, i_rcu);
+	tux3_free_inode(inode);
+}
+
 void __destroy_inode(struct inode *inode)
 {
-	tux3_destroy_inode(inode);
+	call_rcu(&inode->i_rcu, i_callback);
 }
 
 void put_super(struct sb *sb)
