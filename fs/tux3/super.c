@@ -85,12 +85,6 @@ static struct inode *tux3_alloc_inode(struct super_block *sb)
 	return &tuxnode->vfs_inode;
 }
 
-static void tux3_i_callback(struct rcu_head *head)
-{
-	struct inode *inode = container_of(head, struct inode, i_rcu);
-	kmem_cache_free(tux_inode_cachep, tux_inode(inode));
-}
-
 static int i_ddc_is_clean(struct inode *inode)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
@@ -106,14 +100,14 @@ static int i_ddc_is_clean(struct inode *inode)
 	return 1;
 }
 
-static void tux3_destroy_inode(struct inode *inode)
+static void tux3_free_inode(struct inode *inode)
 {
 	/* Those must be clean, tux3_inode_init_always() doesn't init. */
 	assert(list_empty(&tux_inode(inode)->orphan_list));
 	assert(list_empty(&tux_inode(inode)->hole_extents));
 	assert(i_ddc_is_clean(inode));
 
-	call_rcu(&inode->i_rcu, tux3_i_callback);
+	kmem_cache_free(tux_inode_cachep, tux_inode(inode));
 }
 
 static int __init tux3_init_inodecache(void)
@@ -731,7 +725,7 @@ static int tux3_show_options(struct seq_file *seq, struct dentry *root)
 
 static const struct super_operations tux3_super_ops = {
 	.alloc_inode	= tux3_alloc_inode,
-	.destroy_inode	= tux3_destroy_inode,
+	.free_inode	= tux3_free_inode,
 	.dirty_inode	= tux3_dirty_inode,
 	.drop_inode	= tux3_drop_inode,
 	.evict_inode	= tux3_evict_inode,

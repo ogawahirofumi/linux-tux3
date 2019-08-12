@@ -178,7 +178,8 @@ struct disksuper {
 	__be32 atomgen;		/* Next atom number if there are no free atoms */
 	__be64 logchain;	/* Most recent delta commit block pointer */
 	__be32 logcount;	/* Count of log blocks in the current log chain */
-} __packed;
+	__be32 unused2[1];
+};
 
 enum { MAX_DIRECT_COUNT = SHRT_MAX };
 
