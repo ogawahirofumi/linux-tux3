@@ -238,7 +238,11 @@ static void tux3_clear_dirty_inode_nolock(struct inode *inode, unsigned delta,
 }
 
 /* Clear dirty flags for delta */
-static void __tux3_clear_dirty_inode(struct inode *inode, unsigned delta)
+#ifdef __KERNEL__
+/* FIXME: userspace uses this */
+static
+#endif
+void __tux3_clear_dirty_inode(struct inode *inode, unsigned delta)
 {
 	struct tux3_inode *tuxnode = tux_inode(inode);
 
