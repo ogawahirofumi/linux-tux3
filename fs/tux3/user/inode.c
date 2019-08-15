@@ -62,12 +62,6 @@ void remove_inode_hash(struct inode *inode)
 		hlist_del_init(&inode->i_hash);
 }
 
-static void destroy_inode_nocheck(struct inode *inode)
-{
-	free_map(mapping(inode));
-	__destroy_inode_nocheck(inode);
-}
-
 static void destroy_inode(struct inode *inode)
 {
 	assert(hlist_unhashed(&inode->i_hash));
@@ -431,5 +425,19 @@ struct inode *rapid_new_inode(struct sb *sb, blockio_t *io, umode_t mode)
 
 void rapid_free_inode(struct inode *inode)
 {
-	destroy_inode_nocheck(inode);
+	/*
+	 * The test code may leave dirty state on rapid inode, so
+	 * clear it here to make happy sanity check.
+	 */
+	if (inode->i_state & I_DIRTY) {
+		/*
+		 * Assuming the user of rapid inode never do delta
+		 * transition. So use TUX3_INIT_DELTA always.
+		 */
+		__tux3_clear_dirty_inode(inode, TUX3_INIT_DELTA);
+		printf("Note: rapid inode (inum %llu) was dirtied, it may not work.\n",
+		       tux_inode(inode)->inum);
+	}
+
+	destroy_inode(inode);
 }

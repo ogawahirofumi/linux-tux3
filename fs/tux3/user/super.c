@@ -22,11 +22,6 @@ struct inode *__alloc_inode(struct super_block *sb)
 	return tux3_alloc_inode(sb);
 }
 
-void __destroy_inode_nocheck(struct inode *inode)
-{
-	call_rcu(&inode->i_rcu, tux3_i_callback);
-}
-
 void __destroy_inode(struct inode *inode)
 {
 	tux3_destroy_inode(inode);
