@@ -1108,6 +1108,9 @@ int bytebits(u8 c);
 void tux3_set_inode_always_dirty(struct inode *inode);
 void tux3_mark_btree_dirty(struct btree *btree);
 void __tux3_mark_inode_dirty(struct inode *inode, int flags);
+#ifndef __KERNEL__
+void __tux3_clear_dirty_inode(struct inode *inode, unsigned delta);
+#endif
 static inline void tux3_mark_inode_dirty(struct inode *inode)
 {
 	__tux3_mark_inode_dirty(inode, I_DIRTY);
