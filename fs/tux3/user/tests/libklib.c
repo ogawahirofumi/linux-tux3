@@ -347,6 +347,42 @@ static void test_time(void *_arg)
 	test_assert(t64.tv_sec == 2 && t64.tv_nsec == 100);
 	t64 = ns_to_timespec64(-100);
 	test_assert(t64.tv_sec == -1 && t64.tv_nsec == 999999900);
+
+	struct timespec64 r, a, b;
+	a = (struct timespec64){ 1, 500000000 };
+	b = (struct timespec64){ 2, 500000001 };
+	r = timespec64_add(a, b);
+	test_assert(r.tv_sec == 4 && r.tv_nsec == 1);
+	r = timespec64_add_safe(a, b);
+	test_assert(r.tv_sec == 4 && r.tv_nsec == 1);
+	a = (struct timespec64){ 1, 500000000 };
+	b = (struct timespec64){ 2, 499999999 };
+	r = timespec64_sub(b, a);
+	test_assert(r.tv_sec == 0 && r.tv_nsec == 999999999);
+	timespec64_add_ns(&a, 500000001);
+	test_assert(a.tv_sec == 2 && a.tv_nsec == 1);
+
+	a = (struct timespec64){ LLONG_MAX, 500000000 };
+	b = (struct timespec64){ 0, 500000001 };
+	r = timespec64_add_safe(a, b);
+	test_assert(r.tv_sec == TIME64_MAX && r.tv_nsec == 0);
+
+	a = (struct timespec64){ 1, 1 };
+	test_assert(timespec64_valid(&a) == true);
+	test_assert(timespec64_valid_strict(&a) == true);
+	test_assert(timespec64_valid_settod(&a) == true);
+	a = (struct timespec64){ -1, 0 };
+	test_assert(timespec64_valid(&a) == false);
+	test_assert(timespec64_valid_strict(&a) == false);
+	test_assert(timespec64_valid_settod(&a) == false);
+	a = (struct timespec64){ 0, 1000000001 };
+	test_assert(timespec64_valid(&a) == false);
+	test_assert(timespec64_valid_strict(&a) == false);
+	test_assert(timespec64_valid_settod(&a) == false);
+	a = (struct timespec64){ LLONG_MAX, 0 };
+	test_assert(timespec64_valid(&a) == true);
+	test_assert(timespec64_valid_strict(&a) == false);
+	test_assert(timespec64_valid_settod(&a) == false);
 }
 TEST_DEFINE(TEST_UNIT, "time", test_time);
 
