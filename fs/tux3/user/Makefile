@@ -140,7 +140,7 @@ USER_OBJS	+= aligncheck.o
 endif
 KERN_OBJS	= ../balloc.o ../btree.o ../dleaf.o ../iattr.o ../ileaf.o \
 	../log.o ../orphan.o ../policy.o ../replay.o ../xattr.o
-TEST_LIB_OBJS	= tests/test.o
+TEST_LIB_OBJS	= tests/bench.o tests/test.o
 
 all-static	+= libtux3.a
 libtux3.a-objs	= $(USER_OBJS) $(KERN_OBJS) $(TEST_LIB_OBJS)
@@ -169,6 +169,12 @@ TEST_BIN	= tests/libklib \
 	tests/balloc tests/bdict_fixed tests/btree tests/buffer \
 	tests/commit tests/dir tests/dleaf tests/fault tests/filemap \
 	tests/iattr tests/ileaf tests/inode tests/log tests/xattr
+
+# add libm to all tests/* if needed
+define add_libm_to_bin
+LIBS_$(1) += -Wl,--push-state,--as-needed -lm -Wl,--pop-state
+endef
+$(foreach bin,$(TEST_BIN),$(eval $(call add_libm_to_bin,$(bin))))
 
 LIBS_tests/fault	= -ldl
 
