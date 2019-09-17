@@ -104,7 +104,7 @@ static inline void call_rcu(struct rcu_head *head, rcu_callback_t func)
  * other macros that it invokes.
  */
 #define rcu_assign_pointer(p, v)					      \
-({									      \
+do {									      \
 	uintptr_t _r_a_p__v = (uintptr_t)(v);				      \
 	rcu_check_sparse(p, __rcu);				      \
 									      \
@@ -112,8 +112,7 @@ static inline void call_rcu(struct rcu_head *head, rcu_callback_t func)
 		WRITE_ONCE((p), (typeof(p))(_r_a_p__v));		      \
 	else								      \
 		smp_store_release(&p, RCU_INITIALIZER((typeof(p))_r_a_p__v)); \
-	_r_a_p__v;							      \
-})
+} while (0)
 
 /**
  * rcu_access_pointer() - fetch RCU pointer with no dereferencing
