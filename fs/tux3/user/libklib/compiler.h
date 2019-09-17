@@ -26,6 +26,7 @@
 /* Unreachable code */
 #define annotate_reachable()
 #define annotate_unreachable()
+#define __annotate_jump_table
 
 #ifndef ASM_UNREACHABLE
 # define ASM_UNREACHABLE

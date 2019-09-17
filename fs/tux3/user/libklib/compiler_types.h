@@ -88,6 +88,8 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 
 #if defined(CC_USING_HOTPATCH)
 #define notrace			__attribute__((hotpatch(0, 0)))
+#elif defined(CC_USING_PATCHABLE_FUNCTION_ENTRY)
+#define notrace			__attribute__((patchable_function_entry(0, 0)))
 #else
 #define notrace			__attribute__((__no_instrument_function__))
 #endif
@@ -159,6 +161,10 @@ extern void __chk_io_ptr(const volatile void __iomem *);
 
 #ifndef asm_volatile_goto
 #define asm_volatile_goto(x...) asm goto(x)
+#endif
+
+#ifndef __no_fgcse
+# define __no_fgcse
 #endif
 
 /* Are two types/vars the same type (ignoring qualifiers)? */
