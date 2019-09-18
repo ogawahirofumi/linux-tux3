@@ -94,10 +94,16 @@ CHECKFLAGS = -gcc-base-dir $(shell $(CC) -print-file-name=)
 CHECKFLAGS += $(shell if gcc -print-multiarch > /dev/null 2>&1; then \
 		echo "-isystem /usr/include/`gcc -print-multiarch`"; fi)
 CHECKFLAGS += -D__CHECKER__
-CHECKFLAGS += -Wsparse-all -Wno-transparent-union
-CHECKFLAGS += -Wno-declaration-after-statement
-CHECKFLAGS += -Wno-decl
+CHECKFLAGS += -Wsparse-all
+CHECKFLAGS += -Wno-unknown-attribute -Wno-transparent-union -Wno-return-void
+# suppress potentially expensive ptr sub
 CHECKFLAGS += -Wno-ptr-subtraction-blows
+# suppress non-static warning
+#CHECKFLAGS += -Wno-decl
+# suppress mixed declaration
+CHECKFLAGS += -Wno-declaration-after-statement
+# too many false positive (sparse bug?)
+CHECKFLAGS += -Wno-pointer-arith -Wno-bitwise-pointer -Wno-constexpr-not-const
 
 TESTDIR	= $(TOPDIR)
 OWNER	= root
