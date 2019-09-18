@@ -137,6 +137,7 @@ static void test_lock(void *_arg)
 	test_assert(!spin_is_locked(&spin));
 	atomic_t v = ATOMIC_INIT(1);
 	test_assert(atomic_dec_and_lock(&v, &spin));
+	spin_unlock(&spin);
 
 	init_rwsem(&rwsem);
 	down_read(&rwsem);

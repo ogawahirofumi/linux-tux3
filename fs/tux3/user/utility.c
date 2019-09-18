@@ -61,17 +61,6 @@ int devio_sync(enum req_opf req_opf, unsigned int req_flags,
 	return devio_vec(req_opf, req_flags, dev, offset, &iov, 1);
 }
 
-int blockio(enum req_opf req_opf, unsigned int req_flags,
-	    struct sb *sb, struct buffer_head *buffer, block_t block,
-	    void *endio, void *info)
-{
-	trace("%s: buffer %p, block %Lx",
-	      op_is_write(req_opf) ? "write" : "read", buffer, block);
-	return devio_sync(req_opf, req_flags, sb_dev(sb),
-			  block << sb->blockbits,
-			  bufdata(buffer), sb->blocksize);
-}
-
 int blockio_sync(enum req_opf req_opf, unsigned int req_flags, struct sb *sb,
 		 struct buffer_head *buffer, block_t block)
 {

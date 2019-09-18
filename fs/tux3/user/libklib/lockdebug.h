@@ -24,33 +24,44 @@ typedef struct {
 	*(lock) = __SPIN_LOCK_UNLOCKED(lock);	\
 } while (0)
 
-static inline void spin_lock(spinlock_t *lock) __acquires(lock)
+static inline void _spin_lock(spinlock_t *lock)
 {
-	__acquire(lock);
 #ifdef LOCK_DEBUG
 	BUG_ON(lock->magic != SPINLOCK_MAGIC);
 	BUG_ON(lock->lock != 0);
 	lock->lock++;
 #endif
 }
-static inline void spin_unlock(spinlock_t *lock) __releases(lock)
+static inline void spin_lock(spinlock_t *lock) __acquires(lock)
+{
+	__acquire(lock);
+	_spin_lock(lock);
+}
+
+static inline void _spin_unlock(spinlock_t *lock)
 {
 #ifdef LOCK_DEBUG
 	BUG_ON(lock->magic != SPINLOCK_MAGIC);
 	BUG_ON(lock->lock != 1);
 	lock->lock--;
 #endif
+}
+static inline void spin_unlock(spinlock_t *lock) __releases(lock)
+{
+	_spin_unlock(lock);
 	__release(lock);
 }
+
 static inline int _spin_trylock(spinlock_t *lock)
 {
-	spin_lock(lock);
+	_spin_lock(lock);
 	return 1;
 }
 static inline int spin_trylock(spinlock_t *lock)
 {
 	return __cond_lock(lock, _spin_trylock(lock));
 }
+
 static inline int spin_is_locked(spinlock_t *lock)
 {
 #ifdef LOCK_DEBUG
@@ -86,14 +97,16 @@ do {						\
  * Decrements @atomic by 1.  If the result is 0, returns true and locks
  * @lock.  Returns false for all other cases.
  */
-static inline int atomic_dec_and_lock(atomic_t *v, spinlock_t *lock)
+static inline int _atomic_dec_and_lock(atomic_t *v, spinlock_t *lock)
 {
-	spin_lock(lock);
+	_spin_lock(lock);
 	if (atomic_dec_and_test(v))
 		return 1;
-	spin_unlock(lock);
+	_spin_unlock(lock);
 	return 0;
 }
+#define atomic_dec_and_lock(atomic, lock) \
+		__cond_lock(lock, _atomic_dec_and_lock(atomic, lock))
 
 struct rw_semaphore {
 #ifdef LOCK_DEBUG

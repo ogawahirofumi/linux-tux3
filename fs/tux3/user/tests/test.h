@@ -10,6 +10,9 @@
 #ifndef __aligned
 #define __aligned(x)                    __attribute__((__aligned__(x)))
 #endif
+#ifndef __used
+#define __used                          __attribute__((__used__))
+#endif
 
 #define test_assert(x)	({						\
 	int __test_res = !(x);						\
@@ -34,14 +37,15 @@ struct test_define {
 } __aligned(16);
 
 #define TEST_DEFINE_NAME(__f)	test_define_##__f
-#define TEST_DEFINE(__t, __n, __f)			\
-	struct test_define TEST_DEFINE_NAME(__f)	\
-		__aligned(16)				\
-		__section(test_define) = {		\
-	.type = __t,					\
-	.name = __n,					\
-	.test = __f,					\
-}
+#define TEST_DEFINE(__t, __n, __f)				\
+static struct test_define TEST_DEFINE_NAME(__f)			\
+	__used							\
+	__aligned(16)						\
+	__section(test_define) = {				\
+		.type = __t,					\
+		.name = __n,					\
+		.test = __f,					\
+	}
 
 extern struct test_define __start_test_define[], __stop_test_define[];
 

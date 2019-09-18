@@ -294,7 +294,7 @@ static void draw_bitmap_end(struct graph_info *gi, struct btree *btree)
 	draw_data_end(gi, btree);
 }
 
-struct draw_data_ops draw_bitmap = {
+static struct draw_data_ops draw_bitmap = {
 	.draw_start	= draw_bitmap_start,
 	.draw_data	= draw_bitmap_data,
 	.draw_end	= draw_bitmap_end,
@@ -353,7 +353,7 @@ static void draw_countmap_end(struct graph_info *gi, struct btree *btree)
 	draw_data_end(gi, btree);
 }
 
-struct draw_data_ops draw_countmap = {
+static struct draw_data_ops draw_countmap = {
 	.draw_start	= draw_countmap_start,
 	.draw_data	= draw_countmap_data,
 	.draw_end	= draw_countmap_end,
@@ -365,7 +365,7 @@ static void draw_vtable_start(struct graph_info *gi, struct btree *btree)
 	fprintf(gi->fp, "label = \"version table\"\n");
 }
 
-struct draw_data_ops draw_vtable = {
+static struct draw_data_ops draw_vtable = {
 	.draw_start	= draw_vtable_start,
 	.draw_data	= draw_data,
 	.draw_end	= draw_data_end,
@@ -517,7 +517,7 @@ static void draw_atable_end(struct graph_info *gi, struct btree *btree)
 	draw_data_end(gi, btree);
 }
 
-struct draw_data_ops draw_atable = {
+static struct draw_data_ops draw_atable = {
 	.draw_start	= draw_atable_start,
 	.draw_data	= draw_atable_data,
 	.draw_end	= draw_atable_end,
@@ -553,7 +553,7 @@ static void draw_dir_end(struct graph_info *gi, struct btree *btree)
 	draw_data_end(gi, btree);
 }
 
-struct draw_data_ops draw_dir = {
+static struct draw_data_ops draw_dir = {
 	.draw_start	= draw_dir_start,
 	.draw_data	= draw_dir_data,
 	.draw_end	= draw_dir_end,
@@ -565,7 +565,7 @@ static void draw_file_start(struct graph_info *gi, struct btree *btree)
 	fprintf(gi->fp, "label = \"file data\"\n");
 }
 
-struct draw_data_ops draw_file = {
+static struct draw_data_ops draw_file = {
 	.draw_start	= draw_file_start,
 	.draw_data	= draw_data,
 	.draw_end	= draw_data_end,
