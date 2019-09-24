@@ -13,6 +13,7 @@
 #include <sys/types.h>
 
 #include <libklib/typecheck.h>
+#include <libklib/export.h>
 #include <libklib/math64.h>
 #include <libklib/init.h>
 #include <libklib/list.h>
