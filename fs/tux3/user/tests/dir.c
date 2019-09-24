@@ -52,7 +52,7 @@ static void test01(void *_arg)
 	test_assert(be64_to_cpu(entry->inum) == tux_inode(inode1)->inum);
 	test_assert(be16_to_cpu(entry->rec_len) >= name1.len + 2);
 	test_assert(entry->name_len == name1.len);
-	test_assert(entry->type == TUX_REG);
+	test_assert(entry->type == FT_REG_FILE);
 
 	err = tux_delete_dirent(dir, buffer, entry);
 	test_assert(!err);
@@ -64,7 +64,7 @@ static void test01(void *_arg)
 	test_assert(be64_to_cpu(entry->inum) == tux_inode(inode2)->inum);
 	test_assert(be16_to_cpu(entry->rec_len) >= name2.len + 2);
 	test_assert(entry->name_len == name2.len);
-	test_assert(entry->type == TUX_LNK);
+	test_assert(entry->type == FT_SYMLINK);
 	blockput(buffer);
 
 	test_assert(tux_dir_is_empty(dir) == -ENOTEMPTY);

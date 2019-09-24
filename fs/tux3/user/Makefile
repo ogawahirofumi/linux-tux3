@@ -154,10 +154,10 @@ libtux3.a-objs	= $(USER_OBJS) $(KERN_OBJS) $(TEST_LIB_OBJS)
 $(KERN_OBJS): CFLAGS += -include tux3user.h
 
 all-static	+= libklib/libklib.a
-libklib/libklib.a-objs = libklib/find_bit.o libklib/fs.o libklib/list_sort.o \
-	libklib/mm-util.o libklib/parser.o libklib/refcount.o \
-	libklib/seq_file.o libklib/slab.o libklib/string.o libklib/time.o \
-	libklib/uidgid.o
+libklib/libklib.a-objs = libklib/find_bit.o libklib/fs.o libklib/fs_types.o \
+	libklib/list_sort.o libklib/mm-util.o libklib/parser.o \
+	libklib/refcount.o libklib/seq_file.o libklib/slab.o libklib/string.o \
+	libklib/time.o libklib/uidgid.o
 
 # binaries
 all-bin		+= tux3

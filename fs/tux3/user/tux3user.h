@@ -24,6 +24,7 @@
 #include "libklib/mm.h"
 #include "libklib/slab.h"
 #include "libklib/fs.h"
+#include "libklib/fs_types.h"
 #include "libklib/parser.h"
 #include "libklib/iversion.h"
 
