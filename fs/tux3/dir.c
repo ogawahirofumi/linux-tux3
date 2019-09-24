@@ -79,51 +79,6 @@ static inline struct tux3_dirent *next_entry(struct tux3_dirent *entry)
 	return (void *)entry + tux_rec_len_from_disk(entry->rec_len);
 }
 
-enum {
-	TUX_UNKNOWN,
-	TUX_REG,
-	TUX_DIR,
-	TUX_CHR,
-	TUX_BLK,
-	TUX_FIFO,
-	TUX_SOCK,
-	TUX_LNK,
-	TUX_TYPES
-};
-
-#define STAT_SHIFT 12
-
-static inline u8 tux3_mode_to_type(umode_t mode)
-{
-	static u8 type_by_mode[S_IFMT >> STAT_SHIFT] = {
-		[S_IFREG >> STAT_SHIFT] = TUX_REG,
-		[S_IFDIR >> STAT_SHIFT] = TUX_DIR,
-		[S_IFCHR >> STAT_SHIFT] = TUX_CHR,
-		[S_IFBLK >> STAT_SHIFT] = TUX_BLK,
-		[S_IFIFO >> STAT_SHIFT] = TUX_FIFO,
-		[S_IFSOCK >> STAT_SHIFT] = TUX_SOCK,
-		[S_IFLNK >> STAT_SHIFT] = TUX_LNK,
-	};
-	return type_by_mode[(mode & S_IFMT) >> STAT_SHIFT];
-}
-
-static inline unsigned tux3_type_to_dt(u8 type)
-{
-	static u8 dt_by_type[TUX_TYPES] = {
-		[TUX_UNKNOWN]	= DT_UNKNOWN,
-		[TUX_REG]	= DT_REG,
-		[TUX_DIR]	= DT_DIR,
-		[TUX_CHR]	= DT_CHR,
-		[TUX_BLK]	= DT_BLK,
-		[TUX_FIFO]	= DT_FIFO,
-		[TUX_SOCK]	= DT_SOCK,
-		[TUX_LNK]	= DT_LNK,
-	};
-	if (type < TUX_TYPES)
-		return dt_by_type[type];
-	return DT_UNKNOWN;
-}
-
 #define tux_zero_len_error(dir, block)					\
 	tux3_fs_error(tux_sb((dir)->i_sb),				\
 		      "zero length entry at inum %Lu, block %Lu",	\
@@ -133,7 +88,7 @@ void tux_set_entry(struct buffer_head *buffer, struct tux3_dirent *entry,
 		   inum_t inum, umode_t mode)
 {
 	entry->inum = cpu_to_be64(inum);
-	entry->type = tux3_mode_to_type(mode);
+	entry->type = fs_umode_to_ftype(mode);
 	mark_buffer_dirty_non(buffer);
 	blockput(buffer);
 }
@@ -434,7 +389,7 @@ int tux_readdir(struct file *file, struct dir_context *ctx)
 				break;
 			}
 			if (!is_deleted(entry)) {
-				unsigned type = tux3_type_to_dt(entry->type);
+				unsigned type = fs_ftype_to_dtype(entry->type);
 				if (!dir_emit(ctx, entry->name, entry->name_len,
 					      be64_to_cpu(entry->inum), type)) {
 					blockput(buffer);
