@@ -918,7 +918,8 @@ static void tux3fuse_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
 	}
 
 	int len = list_xattr(inode, buf, size);
-	trace("listxattr-buffer: %s", buf);
+	if (buf)
+		trace("listxattr-buffer: %s", buf);
 	iput(inode);
 
 	if (len < 0)
