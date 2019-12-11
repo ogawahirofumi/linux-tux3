@@ -3,6 +3,13 @@
 
 #include <libklib/bits.h>
 
+/* Set bits in the first 'n' bytes when loaded from memory */
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#  define aligned_byte_mask(n) ((1UL << 8*(n))-1)
+#else
+#  define aligned_byte_mask(n) (~0xffUL << (BITS_PER_LONG - 8 - 8*(n)))
+#endif
+
 #define BITS_PER_TYPE(type) (sizeof(type) * BITS_PER_BYTE)
 #define BITS_TO_LONGS(nr)	DIV_ROUND_UP(nr, BITS_PER_TYPE(long))
 
