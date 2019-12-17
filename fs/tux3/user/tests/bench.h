@@ -19,7 +19,7 @@ struct bench {
 };
 
 struct bench_result {
-	bool no_detail;		/* if no detail, don't measure for each test */
+	bool detail;		/* if detail, measures for each test */
 	int nr;			/* number of test */
 	b_int64 *elapse;	/* elapse per test (need detail) */
 	b_int64 total;		/* total of elapse */
@@ -33,6 +33,7 @@ struct bench_result {
 	struct rusage rusage;
 };
 
+void bench_set_detail_default(bool v);
 void bench_res_free(struct bench_result *res);
 void bench_loop(struct bench_result *res, bool no_detail,
 		struct bench *bench, int nr, void *_arg);

@@ -11,6 +11,7 @@
 #include <fnmatch.h>
 
 #include "test.h"
+#include "bench.h"
 
 /* dummy define to guarantee define at least one TEST_DEFINE(). */
 static void test_dummy(void *_arg)
@@ -84,6 +85,7 @@ static void test_usage(const char *progname)
 	       "  -x <pattern>     Excluding test name (glob pattern)\n"
 	       "  -u               Run unit test\n"
 	       "  -b               Run bench test\n"
+	       "  -d               Show detailed result of bench\n"
 	       "  -l               List all tests\n"
 	       "  -h               Print this help\n",
 	       progname);
@@ -113,7 +115,7 @@ int test_init(int argc, char *argv[])
 	else
 		progname++;
 
-	while ((opt = getopt(argc, argv, "i:x:ublh")) != -1) {
+	while ((opt = getopt(argc, argv, "i:x:ubdlh")) != -1) {
 		switch (opt) {
 		case 'i':
 			opt_filter.inc[opt_filter.nr_inc] = optarg;
@@ -128,6 +130,9 @@ int test_init(int argc, char *argv[])
 			break;
 		case 'b':
 			opt_test_type = TEST_BENCH;
+			break;
+		case 'd':
+			bench_set_detail_default(true);
 			break;
 		case 'l':
 			test_list_test_defines();

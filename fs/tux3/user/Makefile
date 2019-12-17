@@ -182,7 +182,7 @@ LIBS_$(1) += -Wl,--push-state,--as-needed -lm -Wl,--pop-state
 endef
 $(foreach bin,$(TEST_BIN),$(eval $(call add_libm_to_bin,$(bin))))
 
-LIBS_tests/fault	= -ldl
+LIBS_tests/fault	+= -ldl
 
 # make define for binary that compiled from one source file
 define onefile_bin_template =

@@ -18,6 +18,13 @@
 #include "test.h"
 #include "bench.h"
 
+static bool opt_detail_default = false;
+
+void bench_set_detail_default(bool v)
+{
+	opt_detail_default = v;
+}
+
 #ifndef min
 #define min(a, b)	((a) > (b) ? (b) : (a))
 #endif
@@ -90,7 +97,7 @@ static void bench_calc_res(struct bench_result *res)
 	if (res->nr == 0)
 		return;
 
-	int nr = res->no_detail ? 1 : res->nr;
+	int nr = res->detail ? res->nr : 1;
 	size_t size = sizeof(*res->elapse) * nr;
 	b_int64 *tmp = malloc(size);
 	if (!tmp)
@@ -124,14 +131,14 @@ void bench_res_free(struct bench_result *res)
 		free(res->elapse);
 }
 
-void bench_loop(struct bench_result *res, bool no_detail,
+void bench_loop(struct bench_result *res, bool detail,
 		struct bench *bench, int nr, void *_arg)
 {
 	memset(res, 0, sizeof(*res));
 	res->nr = nr;
-	res->no_detail = no_detail;
+	res->detail = detail;
 
-	int nr_elapse = no_detail ? 1 : nr;
+	int nr_elapse = detail ? nr : 1;
 	b_int64 *elapse = calloc(nr_elapse, sizeof(*elapse));
 	if (!elapse)
 		error(1, errno, "malloc");
@@ -146,10 +153,10 @@ void bench_loop(struct bench_result *res, bool no_detail,
 		b_int64 s = bench_get_nsecs();
 		bench->test(_arg, i);
 		b_int64 e = bench_get_nsecs();
-		if (no_detail)
-			elapse[0] += e - s;
-		else
+		if (detail)
 			elapse[i] = e - s;
+		else
+			elapse[0] += e - s;
 
 		if (bench->post)
 			bench->post(_arg, i);
@@ -162,7 +169,7 @@ void bench_loop(struct bench_result *res, bool no_detail,
 
 void bench_res_print(struct bench_result *res, FILE *fp_out, FILE *fp_log)
 {
-	if (res->no_detail) {
+	if (!res->detail) {
 		fprintf(fp_out,
 			"elapse: total %llu ns (loop %d times)\n"
 			"        avg %.2f ns\n",
@@ -196,7 +203,7 @@ void bench_res_print(struct bench_result *res, FILE *fp_out, FILE *fp_log)
 void bench_run(struct bench *bench, int nr, void *_arg)
 {
 	struct bench_result res;
-	bench_loop(&res, true, bench, nr, _arg);
+	bench_loop(&res, opt_detail_default, bench, nr, _arg);
 	if (test_series())
 		printf("[%s:%s]\n", test_series(), bench->name);
 	else
@@ -209,9 +216,9 @@ void bench_measure_overhead(void)
 {
 	struct bench_result res;
 	/* warmup */
-	bench_loop(&res, false, &bench_nop, 5000, NULL);
-	/* measure nop overhead */
 	bench_loop(&res, true, &bench_nop, 5000, NULL);
+	/* measure nop overhead */
+	bench_loop(&res, false, &bench_nop, 5000, NULL);
 	printf("#\n"
 	       "# bench overhead (nop):\n"
 	       "#     avg %.2f ns, sstddev %.2f ns\n"
