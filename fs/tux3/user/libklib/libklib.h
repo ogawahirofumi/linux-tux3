@@ -20,6 +20,7 @@
 #include <libklib/err.h>
 #include <libklib/compiler.h>
 #include <libklib/types.h>
+#include <libklib/limits.h>
 #include <libklib/bitops.h>
 #include <libklib/byteorder.h>
 #include <libklib/unaligned.h>
