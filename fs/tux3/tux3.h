@@ -152,6 +152,10 @@ static inline void *decode48(void *at, u64 *val)
 
 /* Timestamp granularity */
 #define TUX3_TIME_GRAN		1	/* nanoseconds */
+/* Timestamp min/max in seconds
+ * FIXME: s_time_{min,max} can't use nsecs, so tux3 can't specify real limit */
+#define TUX3_TIME_MIN		(S64_MIN / NSEC_PER_SEC)
+#define TUX3_TIME_MAX		(S64_MAX / NSEC_PER_SEC)
 
 struct disksuper {
 	/* Update magic on any incompatible format change */
