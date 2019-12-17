@@ -433,6 +433,8 @@ static void __setup_sb(struct sb *sb, struct disksuper *super)
 	/* vfs fields */
 	vfs_sb(sb)->s_magic = TUX3_SUPER_MAGIC;
 	vfs_sb(sb)->s_time_gran = TUX3_TIME_GRAN;
+	vfs_sb(sb)->s_time_min = TUX3_TIME_MIN;
+	vfs_sb(sb)->s_time_max = TUX3_TIME_MAX;
 	vfs_sb(sb)->s_maxbytes = calc_maxbytes(sb->blocksize);
 	vfs_sb(sb)->s_max_links = TUX_MAX_LINKS;
 
