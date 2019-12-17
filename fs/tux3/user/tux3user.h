@@ -49,9 +49,12 @@ struct super_block {
 	unsigned long s_flags;
 	unsigned long s_magic;
 	unsigned int s_max_links;	/* maximum link counts */
-	/* Granularity of c/m/atime in ns.
-	   Cannot be worse than a second */
+
+	/* Granularity of c/m/atime in ns (cannot be worse than a second) */
 	u32 s_time_gran;
+	/* Time limits for c/m/atime in seconds */
+	time64_t s_time_min;
+	time64_t s_time_max;
 };
 
 static inline struct sb *tux_sb(struct super_block *sb);
@@ -107,6 +110,8 @@ static inline struct dev *sb_dev(struct sb *sb)
 	.vfs_sb = {				\
 		.dev = x,			\
 		.s_time_gran = TUX3_TIME_GRAN,	\
+		.s_time_min = TUX3_TIME_MIN,	\
+		.s_time_max = TUX3_TIME_MAX,	\
 	},					\
 })
 

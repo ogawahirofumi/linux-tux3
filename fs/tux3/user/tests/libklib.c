@@ -94,17 +94,20 @@ static void test_find_bit(void *_arg)
 }
 TEST_DEFINE(TEST_UNIT, "find_bit", test_find_bit);
 
-/* dummpy function for testing */
-void truncate_buffers_range(map_t *map, loff_t lstart, loff_t lend)
-{
-}
-
 static void test_fs(void *_arg)
 {
-	struct inode inode = { .i_size = 0,};
-	truncate_setsize(&inode, 0);
-	truncate_setsize(&inode, 1);
-	truncate_setsize(&inode, 0);
+	int err = tux3_init_mem(1 << 20, 1);
+	assert(!err);
+
+	struct dev *dev = &(struct dev){ .fd = -1, .bits = 12 };
+	struct sb *sb = rapid_sb(dev);
+	sb->super = INIT_DISKSB(dev->bits, 1024 * 1024 >> dev->bits);
+
+	struct inode *inode = rapid_new_inode(sb, NULL, 0);
+
+	truncate_setsize(inode, 0);
+	truncate_setsize(inode, 1);
+	truncate_setsize(inode, 0);
 
 	/* timespec64_trunc tests */
 	struct timespec64 t, ts = { .tv_sec = 10, .tv_nsec = 999999999, };
@@ -120,6 +123,21 @@ static void test_fs(void *_arg)
 	t = timespec64_trunc(ts, 2 * NSEC_PER_SEC);
 	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == ts.tv_nsec);
 #endif
+
+	/* timestamp_truncate tests */
+	time64_t orig = inode->i_sb->s_time_max;
+
+	t = timestamp_truncate(ts, inode);
+	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == ts.tv_nsec);
+	/* outside min/max time */
+	inode->i_sb->s_time_max = 3;
+	t = timestamp_truncate(ts, inode);
+	test_assert(t.tv_sec == inode->i_sb->s_time_max && t.tv_nsec == 0);
+
+	inode->i_sb->s_time_max = orig;
+
+	rapid_free_inode(inode);
+	tux3_exit_mem();
 }
 TEST_DEFINE(TEST_UNIT, "fs", test_fs);
 

@@ -118,6 +118,8 @@ struct inode {
 	};
 };
 
+struct timespec64 timestamp_truncate(struct timespec64 t, struct inode *inode);
+
 static inline void inode_lock(struct inode *inode)
 {
 	down_write(&inode->i_rwsem);
