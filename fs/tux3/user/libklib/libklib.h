@@ -22,6 +22,7 @@
 #include <libklib/types.h>
 #include <libklib/limits.h>
 #include <libklib/bitops.h>
+#include <libklib/bitmap.h>
 #include <libklib/byteorder.h>
 #include <libklib/unaligned.h>
 #include <libklib/build_bug.h>
