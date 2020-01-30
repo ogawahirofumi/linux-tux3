@@ -257,16 +257,16 @@ static void test_refcount(void *_arg)
 {
 	refcount_t r = REFCOUNT_INIT(0);
 
-	test_assert(refcount_add_not_zero_checked(1, &r) == false);
+	test_assert(refcount_add_not_zero(1, &r) == false);
 
 	refcount_set(&r, 1);
-	test_assert(refcount_add_not_zero_checked(1, &r) == true);
-	refcount_add_checked(1, &r);
-	test_assert(refcount_inc_not_zero_checked(&r) == true);
-	refcount_inc_checked(&r);
-	test_assert(refcount_sub_and_test_checked(1, &r) == false);
-	test_assert(refcount_dec_and_test_checked(&r) == false);
-	refcount_dec_checked(&r);
+	test_assert(refcount_add_not_zero(1, &r) == true);
+	refcount_add(1, &r);
+	test_assert(refcount_inc_not_zero(&r) == true);
+	refcount_inc(&r);
+	test_assert(refcount_sub_and_test(1, &r) == false);
+	test_assert(refcount_dec_and_test(&r) == false);
+	refcount_dec(&r);
 
 	refcount_set(&r, 1);
 	test_assert(refcount_dec_if_one(&r) == true);
