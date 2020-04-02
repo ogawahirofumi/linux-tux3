@@ -3,6 +3,7 @@
 
 /* depending on tux3 */
 
+#include <asm/posix_types.h>	/* for __kernel_fsid_t */
 #include <libklib/lockdebug.h>
 #include <libklib/uidgid.h>
 #include <libklib/blk_types.h>
@@ -16,10 +17,6 @@
 
 struct nameidata {
 };
-
-typedef struct {
-	int	val[2];
-} __kernel_fsid_t;
 
 struct kstatfs {
 	long f_type;

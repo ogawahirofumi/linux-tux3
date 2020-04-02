@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-#ifndef _ASM_GENERIC_BITOPS_LOCK_H_
-#define _ASM_GENERIC_BITOPS_LOCK_H_
+#ifndef LIBKLIB_ASM_GENERIC_BITOPS_LOCK_H_
+#define LIBKLIB_ASM_GENERIC_BITOPS_LOCK_H_
 
 #include <libklib/atomic.h>
 
@@ -86,4 +86,4 @@ static inline bool clear_bit_unlock_is_negative_byte(unsigned int nr,
 #define clear_bit_unlock_is_negative_byte clear_bit_unlock_is_negative_byte
 #endif
 
-#endif /* _ASM_GENERIC_BITOPS_LOCK_H_ */
+#endif /* LIBKLIB_ASM_GENERIC_BITOPS_LOCK_H_ */
