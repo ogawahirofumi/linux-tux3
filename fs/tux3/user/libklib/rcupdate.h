@@ -1,23 +1,79 @@
-#ifndef LIBKLIB_RCUPDATE_H
-#define LIBKLIB_RCUPDATE_H
+/* SPDX-License-Identifier: GPL-2.0+ */
+/*
+ * Read-Copy Update mechanism for mutual exclusion
+ *
+ * Copyright IBM Corporation, 2001
+ *
+ * Author: Dipankar Sarma <dipankar@in.ibm.com>
+ *
+ * Based on the original work by Paul McKenney <paulmck@vnet.ibm.com>
+ * and inputs from Rusty Russell, Andrea Arcangeli and Andi Kleen.
+ * Papers:
+ * http://www.rdrop.com/users/paulmck/paper/rclockpdcsproof.pdf
+ * http://lse.sourceforge.net/locking/rclock_OLS.2001.05.01c.sc.pdf (OLS2001)
+ *
+ * For detailed explanation of Read-Copy Update mechanism see -
+ *		http://lse.sourceforge.net/locking/rcupdate.html
+ *
+ */
 
-struct rcu_head {
-	/* stub */
-};
+#ifndef LIBKLIB__LINUX_RCUPDATE_H
+#define LIBKLIB__LINUX_RCUPDATE_H
 
-static inline void rcu_barrier_sched(void)
-{
-}
+struct callback_head {
+	struct callback_head *next;
+	void (*func)(struct callback_head *head);
+} __attribute__((aligned(sizeof(void *))));
+#define rcu_head callback_head
 
 static inline void rcu_barrier(void)
 {
-	rcu_barrier_sched();
 }
 
 typedef void (*rcu_callback_t)(struct rcu_head *head);
 static inline void call_rcu(struct rcu_head *head, rcu_callback_t func)
 {
 	func(head);
+}
+
+static inline void __rcu_read_lock(void)
+{
+	//preempt_disable();
+}
+
+static inline void __rcu_read_unlock(void)
+{
+	//preempt_enable();
+}
+
+static inline int rcu_preempt_depth(void)
+{
+	return 0;
+}
+
+# define rcu_lock_acquire(a)		do { } while (0)
+# define rcu_lock_release(a)		do { } while (0)
+
+static inline int rcu_read_lock_held(void)
+{
+	return 1;
+}
+
+static inline int rcu_read_lock_bh_held(void)
+{
+	return 1;
+}
+
+static inline int rcu_read_lock_sched_held(void)
+{
+	//return !preemptible();
+	return 0;
+}
+
+static inline int rcu_read_lock_any_held(void)
+{
+	//return !preemptible();
+	return 0;
 }
 
 #define RCU_LOCKDEP_WARN(c, s) do { } while (0)
@@ -27,9 +83,8 @@ static inline void call_rcu(struct rcu_head *head, rcu_callback_t func)
  * Helper functions for rcu_dereference_check(), rcu_dereference_protected()
  * and rcu_assign_pointer().  Some of these could be folded into their
  * callers, but they are left separate in order to ease introduction of
- * multiple flavors of pointers to match the multiple flavors of RCU
- * (e.g., __rcu_bh, * __rcu_sched, and __srcu), should this make sense in
- * the future.
+ * multiple pointers markings to match different RCU implementations
+ * (e.g., __srcu), should this make sense in the future.
  */
 
 #ifdef __CHECKER__
@@ -106,7 +161,7 @@ static inline void call_rcu(struct rcu_head *head, rcu_callback_t func)
 #define rcu_assign_pointer(p, v)					      \
 do {									      \
 	uintptr_t _r_a_p__v = (uintptr_t)(v);				      \
-	rcu_check_sparse(p, __rcu);				      \
+	rcu_check_sparse(p, __rcu);					      \
 									      \
 	if (__builtin_constant_p(v) && (_r_a_p__v) == (uintptr_t)NULL)	      \
 		WRITE_ONCE((p), (typeof(p))(_r_a_p__v));		      \
@@ -137,12 +192,12 @@ do {									      \
  * @p: The pointer to read
  *
  * Return the value of the specified RCU-protected pointer, but omit the
- * smp_read_barrier_depends() and keep the READ_ONCE().  This is useful
- * when the value of this pointer is accessed, but the pointer is not
- * dereferenced, for example, when testing an RCU-protected pointer against
- * NULL.  Although rcu_access_pointer() may also be used in cases where
- * update-side locks prevent the value of the pointer from changing, you
- * should instead use rcu_dereference_protected() for this use case.
+ * lockdep checks for being in an RCU read-side critical section.  This is
+ * useful when the value of this pointer is accessed, but the pointer is
+ * not dereferenced, for example, when testing an RCU-protected pointer
+ * against NULL.  Although rcu_access_pointer() may also be used in cases
+ * where update-side locks prevent the value of the pointer from changing,
+ * you should instead use rcu_dereference_protected() for this use case.
  *
  * It is also permissible to use rcu_access_pointer() when read-side
  * access to the pointer was removed at least one grace period ago, as
@@ -225,12 +280,11 @@ do {									      \
  * @c: The conditions under which the dereference will take place
  *
  * Return the value of the specified RCU-protected pointer, but omit
- * both the smp_read_barrier_depends() and the READ_ONCE().  This
- * is useful in cases where update-side locks prevent the value of the
- * pointer from changing.  Please note that this primitive does -not-
- * prevent the compiler from repeating this reference or combining it
- * with other references, so it should not be used without protection
- * of appropriate locks.
+ * the READ_ONCE().  This is useful in cases where update-side locks
+ * prevent the value of the pointer from changing.  Please note that this
+ * primitive does *not* prevent the compiler from repeating this reference
+ * or combining it with other references, so it should not be used without
+ * protection of appropriate locks.
  *
  * This function is only for update-side use.  Using this function
  * when protected only by rcu_read_lock() will result in infrequent
@@ -263,6 +317,214 @@ do {									      \
  * Makes rcu_dereference_check() do the dirty work.
  */
 #define rcu_dereference_sched(p) rcu_dereference_sched_check(p, 0)
+
+/**
+ * rcu_pointer_handoff() - Hand off a pointer from RCU to other mechanism
+ * @p: The pointer to hand off
+ *
+ * This is simply an identity function, but it documents where a pointer
+ * is handed off from RCU to some other synchronization mechanism, for
+ * example, reference counting or locking.  In C11, it would map to
+ * kill_dependency().  It could be used as follows::
+ *
+ *	rcu_read_lock();
+ *	p = rcu_dereference(gp);
+ *	long_lived = is_long_lived(p);
+ *	if (long_lived) {
+ *		if (!atomic_inc_not_zero(p->refcnt))
+ *			long_lived = false;
+ *		else
+ *			p = rcu_pointer_handoff(p);
+ *	}
+ *	rcu_read_unlock();
+ */
+#define rcu_pointer_handoff(p) (p)
+
+/**
+ * rcu_read_lock() - mark the beginning of an RCU read-side critical section
+ *
+ * When synchronize_rcu() is invoked on one CPU while other CPUs
+ * are within RCU read-side critical sections, then the
+ * synchronize_rcu() is guaranteed to block until after all the other
+ * CPUs exit their critical sections.  Similarly, if call_rcu() is invoked
+ * on one CPU while other CPUs are within RCU read-side critical
+ * sections, invocation of the corresponding RCU callback is deferred
+ * until after the all the other CPUs exit their critical sections.
+ *
+ * Note, however, that RCU callbacks are permitted to run concurrently
+ * with new RCU read-side critical sections.  One way that this can happen
+ * is via the following sequence of events: (1) CPU 0 enters an RCU
+ * read-side critical section, (2) CPU 1 invokes call_rcu() to register
+ * an RCU callback, (3) CPU 0 exits the RCU read-side critical section,
+ * (4) CPU 2 enters a RCU read-side critical section, (5) the RCU
+ * callback is invoked.  This is legal, because the RCU read-side critical
+ * section that was running concurrently with the call_rcu() (and which
+ * therefore might be referencing something that the corresponding RCU
+ * callback would free up) has completed before the corresponding
+ * RCU callback is invoked.
+ *
+ * RCU read-side critical sections may be nested.  Any deferred actions
+ * will be deferred until the outermost RCU read-side critical section
+ * completes.
+ *
+ * You can avoid reading and understanding the next paragraph by
+ * following this rule: don't put anything in an rcu_read_lock() RCU
+ * read-side critical section that would block in a !PREEMPTION kernel.
+ * But if you want the full story, read on!
+ *
+ * In non-preemptible RCU implementations (pure TREE_RCU and TINY_RCU),
+ * it is illegal to block while in an RCU read-side critical section.
+ * In preemptible RCU implementations (PREEMPT_RCU) in CONFIG_PREEMPTION
+ * kernel builds, RCU read-side critical sections may be preempted,
+ * but explicit blocking is illegal.  Finally, in preemptible RCU
+ * implementations in real-time (with -rt patchset) kernel builds, RCU
+ * read-side critical sections may be preempted and they may also block, but
+ * only when acquiring spinlocks that are subject to priority inheritance.
+ */
+static __always_inline void rcu_read_lock(void)
+{
+	__rcu_read_lock();
+	__acquire(RCU);
+	rcu_lock_acquire(&rcu_lock_map);
+	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+			 "rcu_read_lock() used illegally while idle");
+}
+
+/*
+ * So where is rcu_write_lock()?  It does not exist, as there is no
+ * way for writers to lock out RCU readers.  This is a feature, not
+ * a bug -- this property is what provides RCU's performance benefits.
+ * Of course, writers must coordinate with each other.  The normal
+ * spinlock primitives work well for this, but any other technique may be
+ * used as well.  RCU does not care how the writers keep out of each
+ * others' way, as long as they do so.
+ */
+
+/**
+ * rcu_read_unlock() - marks the end of an RCU read-side critical section.
+ *
+ * In most situations, rcu_read_unlock() is immune from deadlock.
+ * However, in kernels built with CONFIG_RCU_BOOST, rcu_read_unlock()
+ * is responsible for deboosting, which it does via rt_mutex_unlock().
+ * Unfortunately, this function acquires the scheduler's runqueue and
+ * priority-inheritance spinlocks.  This means that deadlock could result
+ * if the caller of rcu_read_unlock() already holds one of these locks or
+ * any lock that is ever acquired while holding them.
+ *
+ * That said, RCU readers are never priority boosted unless they were
+ * preempted.  Therefore, one way to avoid deadlock is to make sure
+ * that preemption never happens within any RCU read-side critical
+ * section whose outermost rcu_read_unlock() is called with one of
+ * rt_mutex_unlock()'s locks held.  Such preemption can be avoided in
+ * a number of ways, for example, by invoking preempt_disable() before
+ * critical section's outermost rcu_read_lock().
+ *
+ * Given that the set of locks acquired by rt_mutex_unlock() might change
+ * at any time, a somewhat more future-proofed approach is to make sure
+ * that that preemption never happens within any RCU read-side critical
+ * section whose outermost rcu_read_unlock() is called with irqs disabled.
+ * This approach relies on the fact that rt_mutex_unlock() currently only
+ * acquires irq-disabled locks.
+ *
+ * The second of these two approaches is best in most situations,
+ * however, the first approach can also be useful, at least to those
+ * developers willing to keep abreast of the set of locks acquired by
+ * rt_mutex_unlock().
+ *
+ * See rcu_read_lock() for more information.
+ */
+static inline void rcu_read_unlock(void)
+{
+	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+			 "rcu_read_unlock() used illegally while idle");
+	__release(RCU);
+	__rcu_read_unlock();
+	rcu_lock_release(&rcu_lock_map); /* Keep acq info for rls diags. */
+}
+
+/**
+ * rcu_read_lock_bh() - mark the beginning of an RCU-bh critical section
+ *
+ * This is equivalent of rcu_read_lock(), but also disables softirqs.
+ * Note that anything else that disables softirqs can also serve as
+ * an RCU read-side critical section.
+ *
+ * Note that rcu_read_lock_bh() and the matching rcu_read_unlock_bh()
+ * must occur in the same context, for example, it is illegal to invoke
+ * rcu_read_unlock_bh() from one task if the matching rcu_read_lock_bh()
+ * was invoked from some other task.
+ */
+static inline void rcu_read_lock_bh(void)
+{
+	//local_bh_disable();
+	__acquire(RCU_BH);
+	rcu_lock_acquire(&rcu_bh_lock_map);
+	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+			 "rcu_read_lock_bh() used illegally while idle");
+}
+
+/*
+ * rcu_read_unlock_bh - marks the end of a softirq-only RCU critical section
+ *
+ * See rcu_read_lock_bh() for more information.
+ */
+static inline void rcu_read_unlock_bh(void)
+{
+	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+			 "rcu_read_unlock_bh() used illegally while idle");
+	rcu_lock_release(&rcu_bh_lock_map);
+	__release(RCU_BH);
+	//local_bh_enable();
+}
+
+/**
+ * rcu_read_lock_sched() - mark the beginning of a RCU-sched critical section
+ *
+ * This is equivalent of rcu_read_lock(), but disables preemption.
+ * Read-side critical sections can also be introduced by anything else
+ * that disables preemption, including local_irq_disable() and friends.
+ *
+ * Note that rcu_read_lock_sched() and the matching rcu_read_unlock_sched()
+ * must occur in the same context, for example, it is illegal to invoke
+ * rcu_read_unlock_sched() from process context if the matching
+ * rcu_read_lock_sched() was invoked from an NMI handler.
+ */
+static inline void rcu_read_lock_sched(void)
+{
+	//preempt_disable();
+	__acquire(RCU_SCHED);
+	rcu_lock_acquire(&rcu_sched_lock_map);
+	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+			 "rcu_read_lock_sched() used illegally while idle");
+}
+
+/* Used by lockdep and tracing: cannot be traced, cannot call lockdep. */
+static inline notrace void rcu_read_lock_sched_notrace(void)
+{
+	//preempt_disable_notrace();
+	__acquire(RCU_SCHED);
+}
+
+/*
+ * rcu_read_unlock_sched - marks the end of a RCU-classic critical section
+ *
+ * See rcu_read_lock_sched for more information.
+ */
+static inline void rcu_read_unlock_sched(void)
+{
+	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+			 "rcu_read_unlock_sched() used illegally while idle");
+	rcu_lock_release(&rcu_sched_lock_map);
+	__release(RCU_SCHED);
+	//preempt_enable();
+}
+
+/* Used by lockdep and tracing: cannot be traced, cannot call lockdep. */
+static inline notrace void rcu_read_unlock_sched_notrace(void)
+{
+	__release(RCU_SCHED);
+	//preempt_enable_notrace();
+}
 
 /**
  * RCU_INIT_POINTER() - initialize an RCU protected pointer
@@ -318,4 +580,62 @@ do {									      \
 #define RCU_POINTER_INITIALIZER(p, v) \
 		.p = RCU_INITIALIZER(v)
 
-#endif /* !LIBKLIB_RCUPDATE_H */
+/*
+ * Place this after a lock-acquisition primitive to guarantee that
+ * an UNLOCK+LOCK pair acts as a full barrier.  This guarantee applies
+ * if the UNLOCK and LOCK are executed by the same CPU or if the
+ * UNLOCK and LOCK operate on the same lock variable.
+ */
+#ifdef CONFIG_ARCH_WEAK_RELEASE_ACQUIRE
+#define smp_mb__after_unlock_lock()	smp_mb()  /* Full ordering for lock. */
+#else /* #ifdef CONFIG_ARCH_WEAK_RELEASE_ACQUIRE */
+#define smp_mb__after_unlock_lock()	do { } while (0)
+#endif /* #else #ifdef CONFIG_ARCH_WEAK_RELEASE_ACQUIRE */
+
+
+/* Has the specified rcu_head structure been handed to call_rcu()? */
+
+/**
+ * rcu_head_init - Initialize rcu_head for rcu_head_after_call_rcu()
+ * @rhp: The rcu_head structure to initialize.
+ *
+ * If you intend to invoke rcu_head_after_call_rcu() to test whether a
+ * given rcu_head structure has already been passed to call_rcu(), then
+ * you must also invoke this rcu_head_init() function on it just after
+ * allocating that structure.  Calls to this function must not race with
+ * calls to call_rcu(), rcu_head_after_call_rcu(), or callback invocation.
+ */
+static inline void rcu_head_init(struct rcu_head *rhp)
+{
+	rhp->func = (rcu_callback_t)~0L;
+}
+
+/**
+ * rcu_head_after_call_rcu - Has this rcu_head been passed to call_rcu()?
+ * @rhp: The rcu_head structure to test.
+ * @f: The function passed to call_rcu() along with @rhp.
+ *
+ * Returns @true if the @rhp has been passed to call_rcu() with @func,
+ * and @false otherwise.  Emits a warning in any other case, including
+ * the case where @rhp has already been invoked after a grace period.
+ * Calls to this function must not race with callback invocation.  One way
+ * to avoid such races is to enclose the call to rcu_head_after_call_rcu()
+ * in an RCU read-side critical section that includes a read-side fetch
+ * of the pointer to the structure containing @rhp.
+ */
+static inline bool
+rcu_head_after_call_rcu(struct rcu_head *rhp, rcu_callback_t f)
+{
+	rcu_callback_t func = READ_ONCE(rhp->func);
+
+	if (func == f)
+		return true;
+	WARN_ON_ONCE(func != (rcu_callback_t)~0L);
+	return false;
+}
+
+/* kernel/ksysfs.c definitions */
+extern int rcu_expedited;
+extern int rcu_normal;
+
+#endif /* !LIBKLIB__LINUX_RCUPDATE_H */
