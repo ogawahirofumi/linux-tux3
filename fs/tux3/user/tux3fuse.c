@@ -122,6 +122,22 @@ static struct inode *tux3fuse_iget(struct sb *sb, fuse_ino_t ino)
 	return tux3_iget(sb, ino);
 }
 
+static inline struct timespec ts64_to_ts(const struct timespec64 ts64)
+{
+	struct timespec ret;
+	ret.tv_sec = (time_t)ts64.tv_sec;
+	ret.tv_nsec = ts64.tv_nsec;
+	return ret;
+}
+
+static inline struct timespec64 ts_to_ts64(const struct timespec ts)
+{
+	struct timespec64 ret;
+	ret.tv_sec = ts.tv_sec;
+	ret.tv_nsec = ts.tv_nsec;
+	return ret;
+}
+
 static void tux3fuse_fill_stat(struct stat *stat, struct inode *inode)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
@@ -139,9 +155,9 @@ static void tux3fuse_fill_stat(struct stat *stat, struct inode *inode)
 		.st_blksize	= sb->blocksize,
 		/* FIXME: need to implement ->i_blocks? */
 		.st_blocks	= ALIGN(inode->i_size, sb->blocksize) >> 9,
-		.st_atim	= timespec64_to_timespec(inode->i_atime),
-		.st_mtim	= timespec64_to_timespec(inode->i_mtime),
-		.st_ctim	= timespec64_to_timespec(inode->i_ctime),
+		.st_atim	= ts64_to_ts(inode->i_atime),
+		.st_mtim	= ts64_to_ts(inode->i_mtime),
+		.st_ctim	= ts64_to_ts(inode->i_ctime),
 	};
 }
 
@@ -208,7 +224,8 @@ static void tux3fuse_getattr(fuse_req_t req, fuse_ino_t ino,
 	fuse_reply_attr(req, &stbuf, 0.0);
 }
 
-static void tux3fuse_to_iattr(struct iattr *iattr, struct stat *attr, int to_set)
+static void tux3fuse_to_iattr(struct inode *inode, struct iattr *iattr,
+			      struct stat *attr, int to_set)
 {
 	iattr->ia_valid = 0;
 
@@ -232,13 +249,15 @@ static void tux3fuse_to_iattr(struct iattr *iattr, struct stat *attr, int to_set
 		if (!(to_set & FUSE_SET_ATTR_ATIME_NOW))
 			iattr->ia_valid |= ATTR_ATIME_SET;
 		iattr->ia_valid |= ATTR_ATIME;
-		iattr->ia_atime = timespec_to_timespec64(attr->st_atim);
+		iattr->ia_atime =
+			timestamp_truncate(ts_to_ts64(attr->st_atim), inode);
 	}
 	if (to_set & FUSE_SET_ATTR_MTIME) {
 		if (!(to_set & FUSE_SET_ATTR_MTIME_NOW))
 			iattr->ia_valid |= ATTR_MTIME_SET;
 		iattr->ia_valid |= ATTR_MTIME;
-		iattr->ia_mtime = timespec_to_timespec64(attr->st_mtim);
+		iattr->ia_mtime =
+			timestamp_truncate(ts_to_ts64(attr->st_mtim), inode);
 	}
 }
 
@@ -259,7 +278,7 @@ static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 		.d_inode = inode,
 	};
 	struct iattr iattr;
-	tux3fuse_to_iattr(&iattr, attr, to_set);
+	tux3fuse_to_iattr(inode, &iattr, attr, to_set);
 	int err = tux3_setattr(&dentry, &iattr);
 	if (err) {
 		fuse_reply_err(req, -err);

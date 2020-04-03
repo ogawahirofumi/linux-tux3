@@ -109,22 +109,8 @@ static void test_fs(void *_arg)
 	truncate_setsize(inode, 1);
 	truncate_setsize(inode, 0);
 
-	/* timespec64_trunc tests */
-	struct timespec64 t, ts = { .tv_sec = 10, .tv_nsec = 999999999, };
-
-	t = timespec64_trunc(ts, 1);
-	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == ts.tv_nsec);
-	t = timespec64_trunc(ts, NSEC_PER_SEC);
-	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == 0);
-	t = timespec64_trunc(ts, 1000);
-	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == 999999000);
-#if 0
-	/* the case of WARN() */
-	t = timespec64_trunc(ts, 2 * NSEC_PER_SEC);
-	test_assert(t.tv_sec == ts.tv_sec && t.tv_nsec == ts.tv_nsec);
-#endif
-
 	/* timestamp_truncate tests */
+	struct timespec64 t, ts = { .tv_sec = 10, .tv_nsec = 999999999, };
 	time64_t orig = inode->i_sb->s_time_max;
 
 	t = timestamp_truncate(ts, inode);
@@ -347,18 +333,6 @@ TEST_DEFINE(TEST_UNIT, "slab", test_slab);
 
 static void test_time(void *_arg)
 {
-	struct timespec t;
-	t = ns_to_timespec(0);
-	test_assert(t.tv_sec == 0 && t.tv_nsec == 0);
-	t = ns_to_timespec(NSEC_PER_SEC * 2 + 100);
-	test_assert(t.tv_sec == 2 && t.tv_nsec == 100);
-	t = ns_to_timespec(-100);
-	test_assert(t.tv_sec == -1 && t.tv_nsec == 999999900);
-
-	struct timeval tv;
-	tv = ns_to_timeval(NSEC_PER_SEC * 2 + 100);
-	test_assert(tv.tv_sec == 2 && tv.tv_usec == 0);
-
 	struct timespec64 t64;
 	t64 = ns_to_timespec64(0);
 	test_assert(t64.tv_sec == 0 && t64.tv_nsec == 0);

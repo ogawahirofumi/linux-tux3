@@ -106,11 +106,11 @@ void setattr_copy(struct inode *inode, const struct iattr *attr)
 		inode->i_gid = attr->ia_gid;
 	/* tux3 has nanosecond granularity */
 	if (ia_valid & ATTR_ATIME)
-		inode->i_atime = timestamp_truncate(attr->ia_atime, inode);
+		inode->i_atime = attr->ia_atime;
 	if (ia_valid & ATTR_MTIME)
-		inode->i_mtime = timestamp_truncate(attr->ia_mtime, inode);
+		inode->i_mtime = attr->ia_mtime;
 	if (ia_valid & ATTR_CTIME)
-		inode->i_ctime = timestamp_truncate(attr->ia_ctime, inode);
+		inode->i_ctime = attr->ia_ctime;
 	if (ia_valid & ATTR_MODE) {
 		umode_t mode = attr->ia_mode;
 #ifdef __KERNEL__
@@ -190,29 +190,6 @@ void truncate_setsize(struct inode *inode, loff_t newsize)
 		pagecache_isize_extended(inode, oldsize, newsize);
 	if (newsize < oldsize)
 		truncate_pagecache(inode, newsize);
-}
-
-/**
- * timespec64_trunc - Truncate timespec64 to a granularity
- * @t: Timespec64
- * @gran: Granularity in ns.
- *
- * Truncate a timespec64 to a granularity. Always rounds down. gran must
- * not be 0 nor greater than a second (NSEC_PER_SEC, or 10^9 ns).
- */
-struct timespec64 timespec64_trunc(struct timespec64 t, unsigned gran)
-{
-	/* Avoid division in the common cases 1 ns and 1 s. */
-	if (gran == 1) {
-		/* nothing */
-	} else if (gran == NSEC_PER_SEC) {
-		t.tv_nsec = 0;
-	} else if (gran > 1 && gran < NSEC_PER_SEC) {
-		t.tv_nsec -= t.tv_nsec % gran;
-	} else {
-		WARN(1, "illegal file time granularity: %u", gran);
-	}
-	return t;
 }
 
 /**
