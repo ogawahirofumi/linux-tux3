@@ -11,6 +11,7 @@
 #include <endian.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <libklib/typecheck.h>
 #include <libklib/export.h>

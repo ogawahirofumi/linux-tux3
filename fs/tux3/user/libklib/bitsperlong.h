@@ -3,6 +3,11 @@
 #define LIBKLIB__ASM_GENERIC_BITS_PER_LONG
 
 #include <limits.h>
+#include <asm/bitsperlong.h>
+
+#if __BITS_PER_LONG != LONG_BIT
+#error "__BITS_PER_LONG != LONG_BIT"
+#endif
 
 #define BITS_PER_LONG		LONG_BIT	/* SuS define this */
 

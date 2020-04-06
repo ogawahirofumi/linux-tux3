@@ -5,6 +5,7 @@
 
 #include <libklib/types.h>
 #include <libklib/compiler.h>
+#include <libklib/bitsperlong.h>
 
 /*
  * casts are necessary for constants, because we never know how for sure
@@ -143,6 +144,15 @@ static inline __attribute_const__ __u32 __fswahb32(__u32 val)
 	___constant_swab64(x) :			\
 	__fswab64(x))
 #endif
+
+static __always_inline unsigned long __swab(const unsigned long y)
+{
+#if __BITS_PER_LONG == 64
+	return __swab64(y);
+#else /* __BITS_PER_LONG == 32 */
+	return __swab32(y);
+#endif
+}
 
 /**
  * __swahw32 - return a word-swapped 32-bit value
@@ -306,6 +316,7 @@ static inline void __swahb32s(__u32 *p)
 #define swab16 __swab16
 #define swab32 __swab32
 #define swab64 __swab64
+#define swab __swab
 #define swahw32 __swahw32
 #define swahb32 __swahb32
 #define swab16p __swab16p
