@@ -242,11 +242,9 @@ static void clone_buffers(struct page *oldpage, struct page *newpage)
 	struct sb *sb = tux_sb(oldpage->mapping->host->i_sb);
 	struct buffer_head *head, *newbuf, *oldbuf;
 #if 1	/* For now, writeback doesn't use BH_Lock */
-#define USE_FOR_IO					\
-	((1UL << BH_Uptodate_Lock) | (1UL << BH_Async_Write))
+#define USE_FOR_IO	(1UL << BH_Async_Write)
 #else
-#define USE_FOR_IO					\
-	((1UL << BH_Lock) | (1UL << BH_Uptodate_Lock) | (1UL << BH_Async_Write))
+#define USE_FOR_IO	((1UL << BH_Lock) | (1UL << BH_Async_Write))
 #endif
 
 	oldbuf = page_buffers(oldpage);
