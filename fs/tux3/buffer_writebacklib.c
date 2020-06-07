@@ -25,7 +25,7 @@ static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 	struct address_space *mapping = page->mapping;
 	int ret = 0;
 
-	BUG_ON(!PageLocked(page));
+	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
 	if (mapping && mapping_cap_account_dirty(mapping)) {
 		struct inode *inode = mapping->host;
@@ -89,6 +89,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 			       bool old_writeback)
 {
 	struct address_space *mapping = page->mapping;
+	int access_ret;
 
 	lock_page_memcg(page);
 	if (mapping && mapping_use_writeback_tags(mapping)) {
@@ -140,6 +141,12 @@ skip_tag_set:
 		inc_zone_page_state(page, NR_ZONE_WRITE_PENDING);
 	}
 	unlock_page_memcg(page);
+	access_ret = arch_make_page_accessible(page);
+	/*
+	 * If writeback has been triggered on a page that cannot be made
+	 * accessible, it is too late to recover here.
+	 */
+	VM_BUG_ON_PAGE(access_ret != 0, page);
 }
 
 #define tux3_test_set_page_writeback(page, old_writeback)		\
