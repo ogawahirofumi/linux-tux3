@@ -311,9 +311,7 @@ static void bufvec_end_io_multiple(struct bio *bio)
 	tux3_io_inflight_dec(tux_sb(mapping->host->i_sb)->ioinfo);
 
 	/* Check buffers on the page. If all was done, clear writeback */
-	local_irq_save(flags);
-	bit_spin_lock(BH_Uptodate_Lock, &first->b_state);
-
+	spin_lock_irqsave(&first->b_uptodate_lock, flags);
 	clear_buffer_async_write(buffer);
 	tmp = buffer->b_this_page;
 	while (tmp != buffer) {
@@ -321,16 +319,14 @@ static void bufvec_end_io_multiple(struct bio *bio)
 			goto still_busy;
 		tmp = tmp->b_this_page;
 	}
-	bit_spin_unlock(BH_Uptodate_Lock, &first->b_state);
-	local_irq_restore(flags);
+	spin_unlock_irqrestore(&first->b_uptodate_lock, flags);
 
 	bufvec_page_end_io(bio, page);
 	bio_put(bio);
 	return;
 
 still_busy:
-	bit_spin_unlock(BH_Uptodate_Lock, &first->b_state);
-	local_irq_restore(flags);
+	spin_unlock_irqrestore(&first->b_uptodate_lock, flags);
 	bio_put(bio);
 }
 
