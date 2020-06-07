@@ -2,6 +2,7 @@
 #define LIBKLIB_MATH64_H
 
 #include <libklib/types.h>
+#include <libklib/vdso/math64.h>
 
 #define div64_long(x, y) div64_s64((x), (y))
 #define div64_ul(x, y)   div64_u64((x), (y))
@@ -73,25 +74,6 @@ static inline u64 div64_u64(u64 dividend, u64 divisor)
 static inline s64 div64_s64(s64 dividend, s64 divisor)
 {
 	return dividend / divisor;
-}
-
-static __always_inline u32
-__iter_div_u64_rem(u64 dividend, u32 divisor, u64 *remainder)
-{
-	u32 ret = 0;
-
-	while (dividend >= divisor) {
-		/* The following asm() prevents the compiler from
-		   optimising this loop into a modulo operation.  */
-		asm("" : "+rm"(dividend));
-
-		dividend -= divisor;
-		ret++;
-	}
-
-	*remainder = dividend;
-
-	return ret;
 }
 
 #endif /* !LIBKLIB_MATH64_H */
