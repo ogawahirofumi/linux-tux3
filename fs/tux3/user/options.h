@@ -9,7 +9,8 @@
  */
 
 struct optv {
-	unsigned size, argc, optc, err;
+	unsigned size, argc, optc;
+	int err;
 	const char *argv[];
 };
 
