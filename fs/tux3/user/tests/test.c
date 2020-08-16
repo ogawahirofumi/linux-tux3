@@ -150,6 +150,11 @@ int test_init(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 	}
+	/* If specified only include filters, add the default exclude filter. */
+	if (opt_filter.nr_inc && !opt_filter.nr_exc) {
+		opt_filter.exc[opt_filter.nr_exc] = "*";
+		opt_filter.nr_exc++;
+	}
 
 	test_env.series = progname;
 	test_env.test_fail_count = 0;
