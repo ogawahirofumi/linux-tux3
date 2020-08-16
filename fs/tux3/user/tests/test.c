@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <error.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -118,10 +119,16 @@ int test_init(int argc, char *argv[])
 	while ((opt = getopt(argc, argv, "i:x:ubdlh")) != -1) {
 		switch (opt) {
 		case 'i':
+			if (opt_filter.nr_inc >= TEST_FILTER_MAX)
+				error(1, 0, "too many include filters");
+
 			opt_filter.inc[opt_filter.nr_inc] = optarg;
 			opt_filter.nr_inc++;
 			break;
 		case 'x':
+			if (opt_filter.nr_exc >= TEST_FILTER_MAX)
+				error(1, 0, "too many exclude filters");
+
 			opt_filter.exc[opt_filter.nr_exc] = optarg;
 			opt_filter.nr_exc++;
 			break;
