@@ -193,11 +193,15 @@ void bench_res_print(struct bench_result *res, FILE *fp_out, FILE *fp_log)
 		res->rusage.ru_inblock, res->rusage.ru_oublock,
 		res->rusage.ru_nvcsw, res->rusage.ru_nivcsw);
 
-	if (!fp_log)
+	if (!fp_log || res->nr == 0)
 		return;
 
-	for (int i = 0; i < res->nr; i++)
-		fprintf(fp_log, "%llu\n", res->elapse[i]);
+	if (!res->detail)
+		fprintf(fp_log, "%llu\n", res->elapse[0]);
+	else {
+		for (int i = 0; i < res->nr; i++)
+			fprintf(fp_log, "%llu\n", res->elapse[i]);
+	}
 }
 
 void bench_run(struct bench *bench, int nr, void *_arg)
@@ -217,14 +221,16 @@ void bench_measure_overhead(void)
 	struct bench_result res;
 	/* warmup */
 	bench_loop(&res, true, &bench_nop, 5000, NULL);
+	bench_res_free(&res);
 	/* measure nop overhead */
 	bench_loop(&res, false, &bench_nop, 5000, NULL);
+	bench_res_free(&res);
 	printf("#\n"
 	       "# bench overhead (nop):\n"
-	       "#     avg %.2f ns, sstddev %.2f ns\n"
+	       "#     avg %.2f ns\n"
 	       "#     minflt %ld, majflt %ld, nvcsw %ld, nivcsw %ld\n"
 	       "#\n",
-	       res.mean, res.sstddev,
+	       res.mean,
 	       res.rusage.ru_minflt, res.rusage.ru_majflt,
 	       res.rusage.ru_nvcsw, res.rusage.ru_nivcsw);
 }
