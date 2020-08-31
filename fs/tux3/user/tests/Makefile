@@ -31,7 +31,7 @@ export ASAN_OPTIONS UBSAN_OPTIONS
 all: test_libklib \
 	test_balloc test_bdict_fixed test_btree test_buffer test_commit \
 	test_dir test_dleaf test_dleaf test_fault test_filemap test_iattr \
-	test_ileaf test_inode test_log test_xattr
+	test_ileaf test_inode test_link test_log test_xattr
 
 clean:
 	$(Q)rm -f foodev
@@ -79,6 +79,9 @@ test_ileaf: ileaf
 
 test_inode: inode
 	$(VG) ./inode foodev
+
+test_link: link
+	$(VG) ./link
 
 test_log: log
 	$(VG) ./log

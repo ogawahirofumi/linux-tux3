@@ -174,7 +174,7 @@ endif
 TEST_BIN	= tests/libklib \
 	tests/balloc tests/bdict_fixed tests/btree tests/buffer \
 	tests/commit tests/dir tests/dleaf tests/fault tests/filemap \
-	tests/iattr tests/ileaf tests/inode tests/log tests/xattr
+	tests/iattr tests/ileaf tests/inode tests/link tests/log tests/xattr
 
 # add libm to all tests/* if needed
 define add_libm_to_bin
