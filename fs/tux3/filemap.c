@@ -808,10 +808,9 @@ static int tux3_readpage(struct file *file, struct page *page)
 	return err;
 }
 
-static int tux3_readpages(struct file *file, struct address_space *mapping,
-			  struct list_head *pages, unsigned nr_pages)
+static void tux3_readahead(struct readahead_control *rac)
 {
-	return mpage_readpages(mapping, pages, nr_pages, tux3_get_block);
+	mpage_readahead(rac, tux3_get_block);
 }
 
 #include "filemap_blocklib.c"
@@ -958,7 +957,7 @@ static sector_t tux3_bmap(struct address_space *mapping, sector_t iblock)
 
 const struct address_space_operations tux_file_aops = {
 	.readpage		= tux3_readpage,
-	.readpages		= tux3_readpages,
+	.readahead		= tux3_readahead,
 	.writepage		= tux3_disable_writepage,
 	.writepages		= tux3_disable_writepages,
 	.write_begin		= tux3_file_write_begin,
@@ -989,7 +988,7 @@ static int tux3_symlink_write_begin(struct file *file,
 /* Copy of tux_file_aops, except ->write_begin/end */
 const struct address_space_operations tux_symlink_aops = {
 	.readpage		= tux3_readpage,
-	.readpages		= tux3_readpages,
+	.readahead		= tux3_readahead,
 	.writepage		= tux3_disable_writepage,
 	.writepages		= tux3_disable_writepages,
 	.write_begin		= tux3_symlink_write_begin,
