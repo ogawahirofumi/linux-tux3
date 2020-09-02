@@ -40,6 +40,7 @@
 # define __GCC4_has_attribute___noclone__             1
 # define __GCC4_has_attribute___nonstring__           0
 # define __GCC4_has_attribute___no_sanitize_address__ (__GNUC_MINOR__ >= 8)
+# define __GCC4_has_attribute___no_sanitize_undefined__ (__GNUC_MINOR__ >= 9)
 # define __GCC4_has_attribute___fallthrough__         0
 #endif
 
@@ -185,7 +186,7 @@
  *  gcc: https://gcc.gnu.org/onlinedocs/gcc/Common-Function-Attributes.html#index-noclone-function-attribute
  */
 #if __has_attribute(__noclone__)
-# define __noclone                     __attribute__((__noclone__))
+# define __noclone                      __attribute__((__noclone__))
 #else
 # define __noclone
 #endif
