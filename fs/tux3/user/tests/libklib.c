@@ -33,25 +33,15 @@ static void test_rw_once(void *_arg)
 	u16 v2 = 0;
 	u32 v4 = 0;
 	u64 v8 = 0;
-#ifdef __SIZEOF_INT128__
-	/* test for internally uses memcpy() that can not be atomic. */
-	__int128 v16 = 0;
-#endif
 
 	WRITE_ONCE(v1, 10);
 	WRITE_ONCE(v2, 10);
 	WRITE_ONCE(v4, 10);
 	WRITE_ONCE(v8, 10);
-#ifdef __SIZEOF_INT128__
-	WRITE_ONCE(v16, 10);
-#endif
 	test_assert(READ_ONCE(v1) == 10);
 	test_assert(READ_ONCE(v2) == 10);
 	test_assert(READ_ONCE(v4) == 10);
 	test_assert(READ_ONCE(v8) == 10);
-#ifdef __SIZEOF_INT128__
-	test_assert(READ_ONCE(v16) == 10);
-#endif
 }
 TEST_DEFINE(TEST_UNIT, "rw_once", test_rw_once);
 
