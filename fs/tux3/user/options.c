@@ -1,31 +1,50 @@
 /*
- * Copyright (c) Daniel Phillips, 2002-2013
+ * Copyright (c) Daniel Phillips, 2002-2020
  * License for distribution granted under the terms of the GPL Version 3
  * The original author reserves the right to dual license this work
  * These lines must be preserved as is in any derivative of this work
  */
 
+#include <ctype.h>
+
 #include "tux3user.h"
 #include "options.h"
 
-static struct optv *optstart(void *work, int size)
+enum { OPT_ANYARG = OPT_HASARG | OPT_OPTARG, };
+
+static inline bool need_arg(int rule)
+{
+	return (rule & OPT_ANYARG) == OPT_HASARG;
+}
+
+static inline bool optional_arg(int rule)
+{
+	return (rule & OPT_OPTARG);
+}
+
+static inline bool allow_arg(int rule)
+{
+	return (rule & OPT_ANYARG);
+}
+
+static struct optv *optstart(void *work, unsigned size)
 {
 	struct optv *optv = work;
 	*optv = (struct optv){ .size = size };
 	return optv;
 }
 
-static int is_number(const char *str)
+static bool is_number(const char *str)
 {
 	const unsigned char *num = (const unsigned char *)str;
-	unsigned c;
+	int c;
 
 	while ((c = *num++)) {
-		if (c - '0' >= 10)
-			return 0;
+		if (!isdigit(c))
+			return false;
 	}
 
-	return 1;
+	return true;
 }
 
 static int optparse(struct options *options, struct optv *optv, const char **argv, int argc, int *pos)
@@ -33,7 +52,7 @@ static int optparse(struct options *options, struct optv *optv, const char **arg
 	struct opt *top = (void *)optv + optv->size;
 	const char *arg, *why;
 	char *errout = (char *)optv->argv;
-	int fake = !optv->size, terse = 0, longlen = 0, rule;
+	int fake = !optv->size, terse = 0, longlen = 0;
 	int free = (char *)(top - optv->optc) - (char *)(optv->argv + optv->argc);
 	int maxerr = fake ? 0 : (char *)top - errout;
 	struct options *option;
@@ -57,16 +76,17 @@ static int optparse(struct options *options, struct optv *optv, const char **arg
 					break;
 			if (!option->name)
 				goto name;
-			if (terse && (option->rule & OPT_ANYARG) && *arg)
+			int rule = option->rule;
+			if (terse && allow_arg(rule) && *arg)
 				val = arg;
-			else if ((option->rule & OPT_ANYARG) == OPT_HASARG && !val) {
+			else if (need_arg(rule) && !val) {
 				why = "must have a value";
 				if (*pos >= argc)
 					goto fail;
 				val = argv[(*pos)++];
 			}
 			optv->optc++;
-			if (!(rule = option->rule) && val) {
+			if (!allow_arg(rule) && val) {
 				why = "must not have a value";
 				goto fail;
 			}
@@ -75,20 +95,22 @@ static int optparse(struct options *options, struct optv *optv, const char **arg
 					goto full;
 				if (!(rule & OPT_MANY)) {
 					struct opt *seen = top;
-					why = "given more than once";
+					why = "used more than once";
 					while (--seen > top - optv->optc)
 						if (option - options == seen->index)
 							goto fail;
 				}
-				if (rule & OPT_NUMBER) {
+				if (val && (rule & OPT_NUMBER)) {
 					if (!is_number(val)) {
-						why = "must be numeric";
+						why = "must be a number";
 						goto fail;
 					}
 				}
 				*(top - optv->optc) = (struct opt){option - options, val ? : option->defarg};
 			}
-		} while (terse && !(rule & ~OPT_MANY) && (terse = *arg++));
+			if (allow_arg(rule))
+				break;
+		} while (terse && (terse = *arg++));
 
 		return 0;
 	}
@@ -110,17 +132,17 @@ name:
 
 fail:
 	if (terse)
-		snprintf(errout, maxerr, "Option -%c (%s) %s", terse, option->name, why);
+		snprintf(errout, maxerr, "-%c option (%s) %s", terse, option->name, why);
 	else
-		snprintf(errout, maxerr, "Option --%s %s", option->name, why);
+		snprintf(errout, maxerr, "--%s option %s", option->name, why);
 	return optv->err = -EINVAL;
 
 full:
-	snprintf((char *)optv->argv, maxerr, "Out of space in optv");
+	snprintf((char *)optv->argv, maxerr, "Out of optv space");
 	return optv->err = -E2BIG;
 }
 
-int opthead(struct options *options, int *argc, const char ***argv, void *work, int size, int stop)
+int opthead(struct options *options, int *argc, const char ***argv, void *work, unsigned size, unsigned stop)
 {
 	struct optv *optv = optstart(work, size);
 	int pos = 0;
@@ -146,7 +168,7 @@ int opthead(struct options *options, int *argc, const char ***argv, void *work, 
 	return optv->optc;
 }
 
-int optscan(struct options *options, int *argc, const char ***argv, void *work, int size)
+int optscan(struct options *options, int *argc, const char ***argv, void *work, unsigned size)
 {
 	return opthead(options, argc, argv, work, size, 0);
 }
@@ -162,7 +184,7 @@ int optspace(struct options *options, int argc, const char *argv[])
 int optcount(void *work, int opt)
 {
 	int count = 0;
-	for (int i = 0; i < ((struct optv *)work)->optc; i++)
+	for (unsigned i = 0; i < ((struct optv *)work)->optc; i++)
 		count += optindex(work, i) == opt;
 	return count;
 }
@@ -181,7 +203,7 @@ struct emit {
 };
 
 static int __printf(2, 3)
-emit(struct emit *text, char *fmt, ...)
+emit(struct emit *text, const char *fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);
@@ -208,10 +230,9 @@ static int emitend(struct emit *text)
 
 static int emitrule(struct emit *text, struct options *option)
 {
-	if ((option->rule & 3)) {
+	if (allow_arg(option->rule)) {
 		const char *type = option->arghelp ? : (option->rule & OPT_NUMBER) ? "number" : "value";
-		int optional = (option->rule & 3) == OPT_OPTARG;
-		if (optional)
+		if (optional_arg(option->rule))
 			emit(text, "[=%s]", type);
 		else
 			emit(text, "=%s", type);

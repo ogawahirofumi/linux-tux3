@@ -2,7 +2,7 @@
 #define OPTIONS_H
 
 /*
- * Copyright (c) Daniel Phillips, 2002-2013
+ * Copyright (c) Daniel Phillips, 2002-2020
  * License for distribution granted under the terms of the GPL Version 3
  * The original author reserves the right to dual license this work
  * These lines must be preserved as is in any derivative of this work
@@ -30,11 +30,9 @@ enum {
 	OPT_HASARG,
 	OPT_OPTARG,
 
-	OPT_NUMBER	= 4,
+	OPT_NUMBER	= 4 | OPT_HASARG,
 	OPT_MANY	= 8,
 	OPT_MAX,
-
-	OPT_ANYARG	= OPT_HASARG | OPT_OPTARG,
 };
 
 static inline struct opt *optentry(void *work, int i)
@@ -58,8 +56,8 @@ static inline struct optv *argv2optv(const char *argv[])
 	return (struct optv *)((char *)argv - offsetof(struct optv, argv));
 }
 
-int opthead(struct options *options, int *argc, const char ***argv, void *work, int size, int stop);
-int optscan(struct options *options, int *argc, const char ***argv, void *work, int size);
+int opthead(struct options *options, int *argc, const char ***argv, void *work, unsigned size, unsigned stop);
+int optscan(struct options *options, int *argc, const char ***argv, void *work, unsigned size);
 int optspace(struct options *options, int argc, const char *argv[]);
 int optcount(void *work, int opt);
 const char *opterror(void *work);

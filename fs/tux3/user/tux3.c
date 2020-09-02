@@ -121,8 +121,7 @@ static int cmd_mkfs(struct sb *sb, const char *progname, const char *command,
 		    int argc, const char **args)
 {
 	struct options options[] = {
-		{ "blocksize", "b", OPT_HASARG | OPT_NUMBER,
-		  "Set block size", },
+		{ "blocksize", "b", OPT_NUMBER, "Set block size", },
 		{ "verbose", "v", OPT_MANY, "Verbose output", },
 		{ "usage", "", 0, "Show usage", },
 		{ "help", "?", 0, "Show help", },
@@ -403,7 +402,7 @@ int main(int argc, char *argv[])
 	struct sb *sb = rapid_sb(dev);	/* dev->bits still zero, take care */
 
 	struct options onlyseek[] = {
-		{ "seek", "s", OPT_HASARG | OPT_NUMBER, "Set file position", },
+		{ "seek", "s", OPT_NUMBER, "Set file position", },
 		{ "verbose", "v", OPT_MANY, "Verbose output", },
 		{ "usage", "", 0, "Show usage", },
 		{ "help", "?", 0, "Show help", },
@@ -411,7 +410,7 @@ int main(int argc, char *argv[])
 	};
 
 	struct options onlysize[] = {
-		{ "size", "s", OPT_HASARG | OPT_NUMBER, "Specify file size", },
+		{ "size", "s", OPT_NUMBER, "Specify file size", },
 		{ "verbose", "v", OPT_MANY, "Verbose output", },
 		{ "usage", "", 0, "Show usage", },
 		{ "help", "?", 0, "Show help", },
