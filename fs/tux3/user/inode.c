@@ -62,15 +62,6 @@ void remove_inode_hash(struct inode *inode)
 		hlist_del_init(&inode->i_hash);
 }
 
-static void destroy_inode(struct inode *inode)
-{
-	assert(hlist_unhashed(&inode->i_hash));
-
-	if (mapping(inode))
-		free_map(mapping(inode));
-	__destroy_inode(inode);
-}
-
 void inode_init_once(struct inode *inode)
 {
 	memset(inode, 0, sizeof(*inode));
@@ -89,7 +80,16 @@ static void inode_init_always(struct super_block *sb, struct inode *inode)
 	mapping_set_gfp_mask(mapping(inode), GFP_HIGHUSER_MOVABLE);
 }
 
-static struct inode *new_inode(struct super_block *sb)
+static void destroy_inode(struct inode *inode)
+{
+	assert(hlist_unhashed(&inode->i_hash));
+
+	if (mapping(inode))
+		free_map(mapping(inode));
+	__destroy_inode(inode);
+}
+
+static struct inode *alloc_inode(struct super_block *sb)
 {
 	struct inode *inode = __alloc_inode(sb);
 	if (!inode)
@@ -109,6 +109,18 @@ error:
 	return NULL;
 }
 
+static struct inode *new_inode(struct super_block *sb)
+{
+	struct inode *inode = alloc_inode(sb);
+
+	if (inode) {
+		spin_lock(&inode->i_lock);
+		inode->i_state = 0;
+		spin_unlock(&inode->i_lock);
+	}
+	return inode;
+}
+
 /* This is just to clean inode is partially initialized */
 static void make_bad_inode(struct inode *inode)
 {
@@ -123,14 +135,18 @@ static int is_bad_inode(struct inode *inode)
 
 void unlock_new_inode(struct inode *inode)
 {
+	spin_lock(&inode->i_lock);
 	WARN_ON(!(inode->i_state & I_NEW));
 	inode->i_state &= ~I_NEW & ~I_CREATING;
+	spin_unlock(&inode->i_lock);
 }
 
 void discard_new_inode(struct inode *inode)
 {
+	spin_lock(&inode->i_lock);
 	WARN_ON(!(inode->i_state & I_NEW));
 	inode->i_state &= ~I_NEW;
+	spin_unlock(&inode->i_lock);
 	iput(inode);
 }
 
@@ -207,23 +223,6 @@ static struct inode *ilookup5_nowait(struct super_block *sb, inum_t inum,
 	return inode;
 }
 
-static struct inode *ilookup5(struct super_block *sb, inum_t inum,
-		int (*test)(struct inode *, void *), void *data)
-{
-	struct inode *inode = ilookup5_nowait(sb, inum, test, data);
-again:
-	if (inode) {
-		/* On userland, inode shouldn't have I_NEW */
-		assert(!(inode->i_state & I_NEW));
-		//wait_on_inode(inode);
-		if (unlikely(inode_unhashed(inode))) {
-			iput(inode);
-			goto again;
-		}
-	}
-	return inode;
-}
-
 static struct inode *inode_insert5(struct inode *inode, inum_t inum,
 			    int (*test)(struct inode *, void *),
 			    int (*set)(struct inode *, void *), void *data)
@@ -238,6 +237,8 @@ again:
 		 * Uhhuh, somebody else created the same inode under us.
 		 * Use the old inode instead of the preallocated one.
 		 */
+		if (IS_ERR(old))
+			return NULL;
 		assert(!(inode->i_state & I_NEW));
 		//wait_on_inode(old);
 		if (unlikely(inode_unhashed(old))) {
@@ -265,6 +266,24 @@ unlock:
 	return inode;
 }
 
+static struct inode *ilookup5(struct super_block *sb, inum_t inum,
+		int (*test)(struct inode *, void *), void *data)
+{
+	struct inode *inode;
+again:
+	inode = ilookup5_nowait(sb, inum, test, data);
+	if (inode) {
+		/* On userland, inode shouldn't have I_NEW */
+		assert(!(inode->i_state & I_NEW));
+		//wait_on_inode(inode);
+		if (unlikely(inode_unhashed(inode))) {
+			iput(inode);
+			goto again;
+		}
+	}
+	return inode;
+}
+
 static struct inode *iget5_locked(struct super_block *sb, inum_t inum,
 			   int (*test)(struct inode *, void *),
 			   int (*set)(struct inode *, void *), void *data)
@@ -272,12 +291,13 @@ static struct inode *iget5_locked(struct super_block *sb, inum_t inum,
 	struct inode *inode = ilookup5(sb, inum, test, data);
 
 	if (!inode) {
-		struct inode *new = new_inode(sb);
+		struct inode *new = alloc_inode(sb);
 
 		if (new) {
+			new->i_state = 0;
 			inode = inode_insert5(new, inum, test, set, data);
 			if (unlikely(inode != new))
-				iput(new);
+				destroy_inode(new);
 		}
 	}
 	return inode;
@@ -356,6 +376,44 @@ static void tux_setup_inode(struct inode *inode)
 	}
 }
 
+static void iput_final(struct inode *inode)
+{
+	struct super_block *sb = inode->i_sb;
+	unsigned long state;
+	int drop;
+
+	WARN_ON(inode->i_state & I_NEW);
+
+	drop = tux3_drop_inode(inode);
+	if (!drop && (sb->s_flags & SB_ACTIVE)) {
+		/* Keep the inode on dirty list */
+		spin_unlock(&inode->i_lock);
+		return;
+	}
+
+	state = inode->i_state;
+	if (!drop) {
+		WRITE_ONCE(inode->i_state, state | I_WILL_FREE);
+		spin_unlock(&inode->i_lock);
+
+		BUG_ON(1);
+		//write_inode_now(inode, 1);
+
+		spin_lock(&inode->i_lock);
+		state = inode->i_state;
+		WARN_ON(state & I_NEW);
+		state &= ~I_WILL_FREE;
+	}
+
+	WRITE_ONCE(inode->i_state, state | I_FREEING);
+	spin_unlock(&inode->i_lock);
+
+	tux3_evict_inode(inode);
+
+	remove_inode_hash(inode);
+	destroy_inode(inode);
+}
+
 /*
  * NOTE: iput() must not be called inside of change_begin/end() if
  * i_nlink == 0.  Otherwise, it will become cause of deadlock.
@@ -366,22 +424,7 @@ void iput(struct inode *inode)
 		return;
 
 	if (atomic_dec_and_lock(&inode->i_count, &inode->i_lock)) {
-		int drop;
-
-		assert(!(inode->i_state & I_NEW));
-
-		drop = tux3_drop_inode(inode);
-		if (!drop && (inode->i_sb->s_flags & SB_ACTIVE)) {
-			/* Keep the inode on dirty list */
-			spin_unlock(&inode->i_lock);
-			return;
-		}
-		spin_unlock(&inode->i_lock);
-
-		tux3_evict_inode(inode);
-
-		remove_inode_hash(inode);
-		destroy_inode(inode);
+		iput_final(inode);
 	}
 }
 
