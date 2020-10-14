@@ -89,10 +89,7 @@ static void seg_free(struct btree *btree, block_t block, unsigned count)
 	map_bfree(btree_inode(btree), block, count);
 }
 
-/*
- * FIXME: Use balloc_find() and balloc_modify(). Use multiple segment
- * allocation
- */
+/* Find free blocks. Actual allocation is done by seg_alloc() */
 static int seg_find(struct btree *btree, struct dleaf_req *rq,
 		    int space, unsigned seg_len, unsigned *alloc_len)
 {
