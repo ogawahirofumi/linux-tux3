@@ -6,7 +6,7 @@
 /* The 64-bit atomic type */
 
 typedef struct {
-	long long __aligned(8) counter;
+	s64 __aligned(8) counter;
 } atomic64_t;
 
 #define ATOMIC64_INIT(i)	{ (i) }
@@ -18,16 +18,16 @@ typedef struct {
  * Atomically reads the value of @v.
  * Doesn't imply a read memory barrier.
  */
-static inline long long arch_atomic64_read(const atomic64_t *v)
+static inline s64 arch_atomic64_read(const atomic64_t *v)
 {
 	return READ_ONCE((v)->counter);
 }
 
 #ifndef CONFIG_64BIT
 /* FIXME: 5.2 has bug on i386. */
-static inline long long arch_atomic64_read_acquire(const atomic64_t *v)
+static inline s64 arch_atomic64_read_acquire(const atomic64_t *v)
 {
-	long long __v;
+	s64 __v;
 	__v = arch_atomic64_read(v);
 	smp_mb();
 	return __v;
@@ -42,14 +42,14 @@ static inline long long arch_atomic64_read_acquire(const atomic64_t *v)
  *
  * Atomically sets the value of @v to @i.
  */
-static inline void arch_atomic64_set(atomic64_t *v, long long i)
+static inline void arch_atomic64_set(atomic64_t *v, s64 i)
 {
 	WRITE_ONCE(v->counter, i);
 }
 
 #ifndef CONFIG_64BIT
 /* FIXME: 5.2 has bug on i386. */
-static inline void arch_atomic64_set_release(atomic64_t *v, long long i)
+static inline void arch_atomic64_set_release(atomic64_t *v, s64 i)
 {
 	smp_mb();
 	arch_atomic64_set(v, i);
@@ -64,7 +64,7 @@ static inline void arch_atomic64_set_release(atomic64_t *v, long long i)
  *
  * Atomically adds @i to @v.
  */
-static __always_inline void arch_atomic64_add(long long i, atomic64_t *v)
+static __always_inline void arch_atomic64_add(s64 i, atomic64_t *v)
 {
 	klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
@@ -76,7 +76,7 @@ static __always_inline void arch_atomic64_add(long long i, atomic64_t *v)
  *
  * Atomically subtracts @i from @v.
  */
-static inline void arch_atomic64_sub(long long i, atomic64_t *v)
+static inline void arch_atomic64_sub(s64 i, atomic64_t *v)
 {
 	klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
@@ -90,7 +90,7 @@ static inline void arch_atomic64_sub(long long i, atomic64_t *v)
  * true if the result is zero, or false for all
  * other cases.
  */
-static inline bool arch_atomic64_sub_and_test(long long i, atomic64_t *v)
+static inline bool arch_atomic64_sub_and_test(s64 i, atomic64_t *v)
 {
 	return klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST) == 0;
 }
@@ -157,7 +157,7 @@ static inline bool arch_atomic64_inc_and_test(atomic64_t *v)
  * if the result is negative, or false when
  * result is greater than or equal to zero.
  */
-static inline bool arch_atomic64_add_negative(long long i, atomic64_t *v)
+static inline bool arch_atomic64_add_negative(s64 i, atomic64_t *v)
 {
 	return klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST) < 0;
 }
@@ -170,68 +170,68 @@ static inline bool arch_atomic64_add_negative(long long i, atomic64_t *v)
  *
  * Atomically adds @i to @v and returns @i + @v
  */
-static __always_inline long long arch_atomic64_add_return(long long i, atomic64_t *v)
+static __always_inline s64 arch_atomic64_add_return(s64 i, atomic64_t *v)
 {
 	return klib_atomic_add_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_sub_return(long long i, atomic64_t *v)
+static inline s64 arch_atomic64_sub_return(s64 i, atomic64_t *v)
 {
 	return klib_atomic_sub_fetch(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_fetch_add(long long i, atomic64_t *v)
+static inline s64 arch_atomic64_fetch_add(s64 i, atomic64_t *v)
 {
 	return klib_atomic_fetch_add(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_fetch_sub(long long i, atomic64_t *v)
+static inline s64 arch_atomic64_fetch_sub(s64 i, atomic64_t *v)
 {
 	return klib_atomic_fetch_sub(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_cmpxchg(atomic64_t *v, long long old, long long new)
+static inline s64 arch_atomic64_cmpxchg(atomic64_t *v, s64 old, s64 new)
 {
 	return arch_cmpxchg(&v->counter, old, new);
 }
 
 #define arch_atomic64_try_cmpxchg arch_atomic64_try_cmpxchg
-static __always_inline bool arch_atomic64_try_cmpxchg(atomic64_t *v, long long *old, long long new)
+static __always_inline bool arch_atomic64_try_cmpxchg(atomic64_t *v, s64 *old, s64 new)
 {
 	return try_cmpxchg(&v->counter, old, new);
 }
 
-static inline long long arch_atomic64_xchg(atomic64_t *v, long long new)
+static inline s64 arch_atomic64_xchg(atomic64_t *v, s64 new)
 {
 	return arch_xchg(&v->counter, new);
 }
 
-static inline void arch_atomic64_and(long long i, atomic64_t *v)
+static inline void arch_atomic64_and(s64 i, atomic64_t *v)
 {
 	klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_fetch_and(long long i, atomic64_t *v)
+static inline s64 arch_atomic64_fetch_and(s64 i, atomic64_t *v)
 {
 	return klib_atomic_fetch_and(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline void arch_atomic64_or(long long i, atomic64_t *v)
+static inline void arch_atomic64_or(s64 i, atomic64_t *v)
 {
 	klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_fetch_or(long long i, atomic64_t *v)
+static inline s64 arch_atomic64_fetch_or(s64 i, atomic64_t *v)
 {
 	return klib_atomic_fetch_or(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline void arch_atomic64_xor(long long i, atomic64_t *v)
+static inline void arch_atomic64_xor(s64 i, atomic64_t *v)
 {
 	klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
 }
 
-static inline long long arch_atomic64_fetch_xor(long long i, atomic64_t *v)
+static inline s64 arch_atomic64_fetch_xor(s64 i, atomic64_t *v)
 {
 	return klib_atomic_fetch_xor(&v->counter, i, __ATOMIC_SEQ_CST);
 }
