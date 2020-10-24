@@ -112,7 +112,7 @@ void tux3_dirty_inode(struct inode *inode, int flags)
 	struct tux3_inode *tuxnode = tux_inode(inode);
 	unsigned delta = tux3_inode_delta(inode);
 	struct sb_delta_dirty *s_ddc;
-	struct inode_delta_dirty *uninitialized_var(i_ddc);
+	struct inode_delta_dirty *i_ddc;
 	int re_dirtied = 0;
 	unsigned mask;
 
