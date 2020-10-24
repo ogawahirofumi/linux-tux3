@@ -154,7 +154,8 @@ void tux3_dirty_inode(struct inode *inode, int flags)
 	spin_unlock(&tuxnode->lock);
 
 	/*
-	 * Update ->i_wb_list and ->dirtied_when if needed.
+	 * Update ->i_io_list and ->dirtied_when if needed.
+	 *
 	 * __mark_inode_dirty() doesn't know about delta boundary (we don't
 	 * clear I_DIRTY before flush, in order to prevent the inode to be
 	 * freed). So, if inode was re-dirtied for frontend delta while
