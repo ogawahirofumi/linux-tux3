@@ -23,6 +23,18 @@ static inline long long arch_atomic64_read(const atomic64_t *v)
 	return READ_ONCE((v)->counter);
 }
 
+#ifndef CONFIG_64BIT
+/* FIXME: 5.2 has bug on i386. */
+static inline long long arch_atomic64_read_acquire(const atomic64_t *v)
+{
+	long long __v;
+	__v = arch_atomic64_read(v);
+	smp_mb();
+	return __v;
+}
+#define arch_atomic64_read_acquire arch_atomic64_read_acquire
+#endif
+
 /**
  * arch_atomic64_set - set atomic64 variable
  * @v: pointer to type atomic64_t
@@ -34,6 +46,16 @@ static inline void arch_atomic64_set(atomic64_t *v, long long i)
 {
 	WRITE_ONCE(v->counter, i);
 }
+
+#ifndef CONFIG_64BIT
+/* FIXME: 5.2 has bug on i386. */
+static inline void arch_atomic64_set_release(atomic64_t *v, long long i)
+{
+	smp_mb();
+	arch_atomic64_set(v, i);
+}
+#define arch_atomic64_set_release	arch_atomic64_set_release
+#endif
 
 /**
  * arch_atomic64_add - add integer to atomic64 variable
