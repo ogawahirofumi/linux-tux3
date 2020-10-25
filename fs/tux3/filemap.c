@@ -526,7 +526,7 @@ static void seg_to_buffer(struct sb *sb, struct buffer_head *buffer,
 			break;
 		}
 		set_buffer_new(buffer);
-		/* FALLTHRU */
+		fallthrough;
 	default:
 		map_bh(buffer, vfs_sb(sb), seg->block);
 		buffer->b_size = seg->count << sb->blockbits;

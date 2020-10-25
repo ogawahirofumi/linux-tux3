@@ -458,7 +458,7 @@ struct buffer_head *blockdirty(struct buffer_head *buffer, unsigned newdelta)
 		/* This page was already forked. Retry from lookup page. */
 		buffer = ERR_PTR(-EAGAIN);
 		WARN_ON(1);
-		/* FALLTHRU */
+		fallthrough;
 	case RET_ALREADY_DIRTY:
 		/* This buffer was already dirtied. Done. */
 		goto out;
@@ -584,7 +584,7 @@ int bufferfork_to_invalidate(struct address_space *mapping, struct page *page)
 		return 0;
 	case RET_FORKED:
 		trace_on("mapping %p, page %p", mapping, page);
-		/* FALLTHRU */
+		fallthrough;
 	default:
 		BUG();
 		break;
