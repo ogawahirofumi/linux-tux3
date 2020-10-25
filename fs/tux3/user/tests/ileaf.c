@@ -645,6 +645,62 @@ static void test04(void *_arg)
 }
 TEST_DEFINE(TEST_UNIT, "test04", test04);
 
+/* Test of ileaf_chop and trim tail */
+static void test05(void *_arg)
+{
+	struct test_arg *arg = _arg;
+	struct sb *sb = arg->sb;
+	struct btree *btree = arg->btree;
+
+	struct ileaf *leaf = ileaf_create(btree);
+
+	struct ileaf_data data[] = {
+		{ .inum = 10, .size = 2, .c = 'k', },
+		{ .inum = 11, .size = 3, .c = 'l', },
+		{ .inum = 12, .size = 4, .c = 'm', },
+		{ .inum = 13, .size = 5, .c = 'n', },
+		{ .inum = 14, .size = 6, .c = 'o', },
+		{ .inum = 15, .size = 7, .c = 'p', },
+		{ .inum = 16, .size = 8, .c = 'q', },
+		{ .inum = 17, .size = 9, .c = 'r', },
+
+		{ .inum = 40, .size = 4, .c = 's', },
+		{ .inum = 41, .size = 4, .c = 't', },
+		{ .inum = 42, .size = 4, .c = 'u', },
+		{ .inum = 43, .size = 4, .c = 'v', },
+	};
+
+	/* Init data[] */
+	for (int i = 0; i < ARRAY_SIZE(data); i++)
+		memset(data[i].buf, data[i].c, data[i].size);
+
+	/* Add data */
+	for (int i = 0; i < ARRAY_SIZE(data); i++) {
+		if (data[i].size == 0)
+			continue;
+		test_append(btree, leaf, data[i].inum, data[i].size, data[i].c);
+	}
+	/* Check */
+	check_ileaf_with_data(btree, leaf, data, ARRAY_SIZE(data));
+
+	/* Chop after hole */
+	test_ileaf_chop(btree, 40, 4, leaf, data, ARRAY_SIZE(data));
+
+	/* Check if trim tail is working */
+	inum_t last_inum;
+#ifndef ILEAF_FORMAT_MULTI_IBASE
+	last_inum = ileaf_ibase(leaf) + ileaf_count(leaf) - 1;
+#else
+	test_assert(ibase_count(leaf) == 1);
+	last_inum = ibase_read(leaf->head) + ibase_dictend_read(leaf->head) - 1;
+#endif
+	test_assert(last_inum == 17);
+
+	ileaf_destroy(btree, leaf);
+	clean_main(sb);
+}
+TEST_DEFINE(TEST_UNIT, "test05", test05);
+
 struct enum_data {
 	struct ileaf_data *data;
 	int nr;
@@ -682,7 +738,7 @@ static void test_enum(struct ileaf_data *data, int nr, inum_t start, u64 len)
 }
 
 /* Test of ileaf_enumerate */
-static void test05(void *_arg)
+static void test06(void *_arg)
 {
 	struct test_arg *arg = _arg;
 	struct sb *sb = arg->sb;
@@ -744,7 +800,7 @@ static void test05(void *_arg)
 		.data		= &enum_data,
 	};
 
-	if (test_start("test05.1")) {
+	if (test_start("test06.1")) {
 		/* Outside inum */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  100, TUXKEY_LIMIT, &cb);
@@ -757,7 +813,7 @@ static void test05(void *_arg)
 	}
 	test_end();
 
-	if (test_start("test05.2")) {
+	if (test_start("test06.2")) {
 		/* Enumerate whole inums */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  0, TUXKEY_LIMIT, &cb);
@@ -770,7 +826,7 @@ static void test05(void *_arg)
 	}
 	test_end();
 
-	if (test_start("test05.3")) {
+	if (test_start("test06.3")) {
 		/* Enumerate inums from hole */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  38, TUXKEY_LIMIT, &cb);
@@ -783,7 +839,7 @@ static void test05(void *_arg)
 	}
 	test_end();
 
-	if (test_start("test05.4")) {
+	if (test_start("test06.4")) {
 		/* Enumerate inums from middle of ibase */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  13, TUXKEY_LIMIT, &cb);
@@ -796,7 +852,7 @@ static void test05(void *_arg)
 	}
 	test_end();
 
-	if (test_start("test05.5")) {
+	if (test_start("test06.5")) {
 		/* Enumerate inums, but limit by length (end is hole) */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  0, 19, &cb);
@@ -809,7 +865,7 @@ static void test05(void *_arg)
 	}
 	test_end();
 
-	if (test_start("test05.6")) {
+	if (test_start("test06.6")) {
 		/* Enumerate inums, but limit by length (end is not hole) */
 		int ret = ileaf_enumerate(btree, 0, TUXKEY_LIMIT, leaf,
 					  0, 22, &cb);
@@ -825,7 +881,7 @@ static void test05(void *_arg)
 	ileaf_destroy(btree, leaf);
 	clean_main(sb);
 }
-TEST_DEFINE(TEST_UNIT, "test05", test05);
+TEST_DEFINE(TEST_UNIT, "test06", test06);
 
 int main(int argc, char *argv[])
 {
