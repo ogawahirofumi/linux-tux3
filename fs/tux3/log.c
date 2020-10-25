@@ -87,6 +87,8 @@ unsigned log_size[] = {
 	[LOG_UNIFY]		= 1,
 	[LOG_DELTA]		= 1,
 };
+/* Check whether array is uptodate */
+static_assert(ARRAY_SIZE(log_size) == LOG_TYPES);
 
 void log_next(struct sb *sb)
 {
@@ -240,9 +242,6 @@ int tux3_logmap_io(struct bufvec *bufvec)
 
 static void log_intent(struct sb *sb, u8 intent)
 {
-	/* Check whether array is uptodate */
-	BUILD_BUG_ON(ARRAY_SIZE(log_size) != LOG_TYPES);
-
 	unsigned char *data = log_begin(sb, 1);
 	*data++ = intent;
 	log_end(sb, data);

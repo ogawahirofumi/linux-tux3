@@ -34,6 +34,8 @@ static const char *const log_name[] = {
 	X(LOG_DELTA),
 #undef X
 };
+/* Check whether array is uptodate */
+static_assert(ARRAY_SIZE(log_name) == LOG_TYPES);
 
 static struct replay *alloc_replay(struct sb *sb, unsigned logcount)
 {
@@ -182,9 +184,6 @@ static int replay_log_stage1(struct replay *rp, struct buffer_head *logbuf)
 	struct logblock *log = bufdata(logbuf);
 	unsigned char *data = log->data;
 	int err;
-
-	/* Check whether array is uptodate */
-	BUILD_BUG_ON(ARRAY_SIZE(log_name) != LOG_TYPES);
 
 	/* If log is before latest unify, those were already applied to FS. */
 	if (bufindex(logbuf) < rp->unify_index) {
