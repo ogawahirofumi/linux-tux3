@@ -405,7 +405,7 @@ static int dleaf_chop(struct btree *btree, tuxkey_t start, u64 len, void *leaf)
 static unsigned __dleaf_read(struct btree *btree, tuxkey_t key_bottom,
 			     tuxkey_t key_limit,
 			     struct dleaf *dleaf, struct btree_key_range *key,
-			     int stop_at_hole)
+			     bool stop_at_hole)
 {
 	struct dleaf_req *rq = container_of(key, struct dleaf_req, key);
 	tuxkey_t key_start = key->start;
@@ -462,7 +462,7 @@ static unsigned __dleaf_read(struct btree *btree, tuxkey_t key_bottom,
 		/* Stop if current is hole and next is segment */
 		if (stop_at_hole) {
 			if (!seg->block && physical)
-				break;
+				goto out;
 		}
 	} while (key_len && rq->seg_cnt < rq->seg_max && dex + 1 < dex_limit);
 
@@ -480,6 +480,7 @@ fill_seg:
 		rq->seg_cnt++;
 	}
 
+out:
 	return key->len - key_len;
 }
 
@@ -491,7 +492,7 @@ static int dleaf_read(struct btree *btree, tuxkey_t key_bottom,
 	struct dleaf *dleaf = leaf;
 	unsigned len;
 
-	len = __dleaf_read(btree, key_bottom, key_limit, dleaf, key, 0);
+	len = __dleaf_read(btree, key_bottom, key_limit, dleaf, key, false);
 	key->start += len;
 	key->len -= len;
 
@@ -504,34 +505,38 @@ static int dleaf_pre_write(struct btree *btree, tuxkey_t key_bottom,
 {
 	struct dleaf_req *rq = container_of(key, struct dleaf_req, key);
 	struct dleaf *dleaf = leaf;
+	unsigned len;
+	int last, hole_len;
+
+	if (!rq->overwrite)
+		return BTREE_DO_DIRTY;
 
 	/*
-	 * If overwrite mode, read exists segments. Then, if there are
-	 * hole, allocate segment.
+	 * If overwrite mode, read exists segments, but stop at a hole.
+	 * Then, if there is a hole, allocate a segment.
+	 *
+	 * FIXME: writing the hole one by one (partial write) would be
+	 * inefficient.
 	 */
-	if (rq->overwrite) {
-		unsigned len;
-		int last, hole_len;
+	len = __dleaf_read(btree, key_bottom, key_limit, dleaf, key, true);
+	last = rq->seg_cnt;
 
-		len = __dleaf_read(btree, key_bottom, key_limit, dleaf, key, 1);
-		last = rq->seg_cnt;
-
-		/* Remove hole from seg[] */
-		hole_len = 0;
-		while (last > rq->seg_idx && !rq->seg[last - 1].block) {
-			len -= rq->seg[last - 1].count;
-			hole_len += rq->seg[last - 1].count;
-			last--;
-		}
-		key->start += len;
-		key->len = hole_len;
-		rq->seg_idx = last;
-		rq->seg_cnt = last;
-
-		/* If there is no hole, return exists segments */
-		if (!hole_len)
-			return BTREE_DO_RETRY;
+	/* Remove hole from seg[] */
+	hole_len = 0;
+	while (last > rq->seg_idx && !rq->seg[last - 1].block) {
+		len -= rq->seg[last - 1].count;
+		hole_len += rq->seg[last - 1].count;
+		last--;
 	}
+	/* Adjust key to range of a hole */
+	key->start += len;
+	key->len = hole_len;
+	rq->seg_idx = last;
+	rq->seg_cnt = last;
+
+	/* If there is no hole, return exists segments */
+	if (!hole_len)
+		return BTREE_DO_RETRY;
 
 	return BTREE_DO_DIRTY;
 }

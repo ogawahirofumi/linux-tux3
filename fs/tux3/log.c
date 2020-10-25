@@ -87,6 +87,8 @@ unsigned log_size[] = {
 	[LOG_UNIFY]		= 1,
 	[LOG_DELTA]		= 1,
 };
+/* Check whether array is uptodate */
+static_assert(ARRAY_SIZE(log_size) == LOG_TYPES);
 
 void log_next(struct sb *sb)
 {
@@ -240,9 +242,6 @@ int tux3_logmap_io(struct bufvec *bufvec)
 
 static void log_intent(struct sb *sb, u8 intent)
 {
-	/* Check whether array is uptodate */
-	BUILD_BUG_ON(ARRAY_SIZE(log_size) != LOG_TYPES);
-
 	unsigned char *data = log_begin(sb, 1);
 	*data++ = intent;
 	log_end(sb, data);
@@ -498,10 +497,7 @@ int stash_value(struct stash *stash, u64 value)
 			return -ENOMEM;
 		stash->top = page_address(page) + PAGE_SIZE;
 		stash->pos = page_address(page);
-		if (!flink_empty(&stash->head))
-			flink_add(page_link(page), &stash->head);
-		else
-			flink_first_add(page_link(page), &stash->head);
+		flink_add_tail(page_link(page), &stash->head);
 	}
 	*stash->pos++ = value;
 	return 0;
@@ -511,19 +507,15 @@ int stash_value(struct stash *stash, u64 value)
 void empty_stash(struct stash *stash)
 {
 	struct flink_head *head = &stash->head;
+	struct page *page;
 
-	if (!flink_empty(head)) {
-		struct page *page;
-		while (1) {
-			page = __flink_next_entry(head, struct page, private);
-			if (flink_is_last(head))
-				break;
-			flink_del_next(head);
-			__free_page(page);
-		}
+	while (!flink_empty(head)) {
+		page = __flink_front_entry(head, struct page, private);
+		flink_del_front(head);
 		__free_page(page);
-		stash_init(stash);
 	}
+
+	stash_init(stash);
 }
 
 /*
@@ -538,7 +530,7 @@ int unstash(struct stash *stash, unstash_t actor, void *data)
 	if (flink_empty(head))
 		return 0;
 	while (1) {
-		page = __flink_next_entry(head, struct page, private);
+		page = __flink_front_entry(head, struct page, private);
 		u64 *vec = page_address(page);
 		u64 *top = page_address(page) + PAGE_SIZE;
 
@@ -549,9 +541,10 @@ int unstash(struct stash *stash, unstash_t actor, void *data)
 			if (err)
 				return err;
 		}
-		if (flink_is_last(head))
+		if (flink_is_singular(head))
 			break;
-		flink_del_next(head);
+
+		__flink_del_front(head);
 		__free_page(page);
 	}
 	stash->pos = page_address(page);
@@ -563,16 +556,10 @@ int unstash(struct stash *stash, unstash_t actor, void *data)
  */
 int stash_walk(struct stash *stash, unstash_t actor, void *data)
 {
-	struct flink_head *head = &stash->head;
-	struct page *page;
+	struct link *pos, *n;
 
-	if (flink_empty(head))
-		return 0;
-
-	struct link *link, *first;
-	link = first = flink_next(head);
-	do {
-		page = __link_entry(link, struct page, private);
+	flink_for_each(pos, n, &stash->head) {
+		struct page *page = __flink_entry(pos, struct page, private);
 		u64 *vec = page_address(page);
 		u64 *top = page_address(page) + PAGE_SIZE;
 
@@ -583,9 +570,7 @@ int stash_walk(struct stash *stash, unstash_t actor, void *data)
 			if (err)
 				return err;
 		}
-
-		link = link->next;
-	} while (link != first);
+	}
 
 	return 0;
 }

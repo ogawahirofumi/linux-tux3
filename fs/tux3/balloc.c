@@ -456,8 +456,9 @@ int balloc_find_range(struct sb *sb,
 }
 
 /*
- * Allocate block segments from entire volume.  Wrap around volume if needed.
- * Returns negative if error, zero if at least one block found
+ * Find free block segments from entire volume.  Wrap around volume if
+ * needed.  Returns negative if error, zero if at least one block
+ * found
  *
  * Scan entire volume exactly once. Start at current goal, continue to end
  * of group, then continue scanning a group at a time, wrapping around to
@@ -466,6 +467,15 @@ int balloc_find_range(struct sb *sb,
  * partial groups are scanned regardless of threshold in the first pass
  * and never in the second pass. The second pass scans groups skipped in
  * the first pass that are not completely full.
+ *
+ * Note: balloc_find() and balloc_use() are used by combination.
+ *
+ *    For example, if number of allocated segments didn't fit to free
+ *    space in a dleaf, then we have to revert allocated blocks. But
+ *    the bitmap is already dirtied and original dirty state is unknown.
+ *
+ *    So this separates find free blocks (balloc_find()) and modify
+ *    bitmap (balloc_use()).
  *
  * return value:
  * < 0 - error
@@ -545,6 +555,10 @@ done:
 	return 0;
 }
 
+/*
+ * Apply used blocks in free blocks that find by balloc_find() to
+ * bitmap. See also comment of balloc_find().
+ */
 int balloc_use(struct sb *sb, struct block_segment *seg, int segs)
 {
 	block_t goal;
