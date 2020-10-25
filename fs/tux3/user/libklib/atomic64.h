@@ -4,6 +4,7 @@
 /* based on arch/x86/include/asm/atomic64_64.h */
 
 #include <libklib/types.h>
+#include <libklib/barrier.h>
 
 /* The 64-bit atomic type */
 
