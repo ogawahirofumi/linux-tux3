@@ -202,7 +202,7 @@ static void image_log(struct sb *sb, struct buffer_head *buffer,
 	case LOG_BFREE_RELOG:
 		if (opt_verbose < 2)
 			break;
-		/* FALLTHRU */
+		fallthrough;
 	case LOG_BFREE_ON_UNIFY: {
 		u32 count;
 		u64 block;
@@ -218,7 +218,7 @@ static void image_log(struct sb *sb, struct buffer_head *buffer,
 	case LOG_LEAF_REDIRECT:
 		if (opt_verbose < 2)
 			break;
-		/* FALLTHRU */
+		fallthrough;
 	case LOG_BNODE_REDIRECT: {
 		u64 old, new;
 		p = decode48(p, &old);
@@ -231,7 +231,7 @@ static void image_log(struct sb *sb, struct buffer_head *buffer,
 	case LOG_LEAF_FREE:
 		if (opt_verbose < 2)
 			break;
-		/* FALLTHRU */
+		fallthrough;
 	case LOG_BNODE_FREE: {
 		u64 block;
 		p = decode48(p, &block);
