@@ -247,6 +247,8 @@ static const char *const log_name[] = {
 	X(LOG_DELTA),
 #undef X
 };
+/* Check whether array is uptodate */
+static_assert(ARRAY_SIZE(log_name) == LOG_TYPES);
 
 static void walk_logchain(struct sb *sb, struct walk_logchain_ops *cb,
 			  void *data)
@@ -255,9 +257,6 @@ static void walk_logchain(struct sb *sb, struct walk_logchain_ops *cb,
 	block_t nextchain;
 	unsigned logcount;
 	int obsolete = 0;
-
-	/* Check whether array is uptodate */
-	BUILD_BUG_ON(ARRAY_SIZE(log_name) != LOG_TYPES);
 
 	nextchain = be64_to_cpu(sb->super.logchain);
 	logcount = be32_to_cpu(sb->super.logcount);
