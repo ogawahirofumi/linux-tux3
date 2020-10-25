@@ -28,11 +28,6 @@
 #define annotate_unreachable()
 #define __annotate_jump_table
 
-#ifndef instrumentation_begin
-#define instrumentation_begin()		do { } while(0)
-#define instrumentation_end()		do { } while(0)
-#endif
-
 #ifndef ASM_UNREACHABLE
 # define ASM_UNREACHABLE
 #endif
@@ -91,59 +86,6 @@ static inline void *offset_to_ptr(const int *off)
 }
 
 #endif /* __ASSEMBLY__ */
-
-/* Compile time object size, -1 for unknown */
-#ifndef __compiletime_object_size
-# define __compiletime_object_size(obj) -1
-#endif
-#ifndef __compiletime_warning
-# define __compiletime_warning(message)
-#endif
-#ifndef __compiletime_error
-# define __compiletime_error(message)
-#endif
-
-#ifdef __OPTIMIZE__
-# define __compiletime_assert(condition, msg, prefix, suffix)		\
-	do {								\
-		extern void prefix ## suffix(void) __compiletime_error(msg); \
-		if (!(condition))					\
-			prefix ## suffix();				\
-	} while (0)
-#else
-#include <libklib/build_bug.h>
-# define __compiletime_assert(condition, msg, prefix, suffix)	\
-	BUILD_BUG_ON(!(condition))
-#endif
-
-#define _compiletime_assert(condition, msg, prefix, suffix) \
-	__compiletime_assert(condition, msg, prefix, suffix)
-
-/**
- * compiletime_assert - break build and emit msg if condition is false
- * @condition: a compile-time constant condition to check
- * @msg:       a message to emit if condition is false
- *
- * In tradition of POSIX assert, this macro will break the build if the
- * supplied condition is *false*, emitting the supplied error message if the
- * compiler has support to do so.
- */
-#define compiletime_assert(condition, msg) \
-	_compiletime_assert(condition, msg, __compiletime_assert_, __COUNTER__)
-
-#define compiletime_assert_atomic_type(t)				\
-	compiletime_assert(__native_word(t),				\
-		"Need native word sized stores/loads for atomicity.")
-
-/*
- * Yes, this permits 64-bit accesses on 32-bit architectures. These will
- * actually be atomic in some cases (namely Armv7 + LPAE), but for others we
- * rely on the access being split into 2x32-bit accesses for a 32-bit quantity
- * (e.g. a virtual address) and a strong prevailing wind.
- */
-#define compiletime_assert_rwonce_type(t)					\
-	compiletime_assert(__native_word(t) || sizeof(t) == sizeof(long long),	\
-		"Unsupported access size for {READ,WRITE}_ONCE().")
 
 /* &a[0] degrades to a pointer: a different type from an array */
 #define __must_be_array(a)	BUILD_BUG_ON_ZERO(__same_type((a), &(a)[0]))
