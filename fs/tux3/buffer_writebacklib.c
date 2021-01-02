@@ -27,7 +27,7 @@ static int tux3_clear_page_dirty_for_io(struct page *page, int outside)
 
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 
-	if (mapping && mapping_cap_account_dirty(mapping)) {
+	if (mapping && mapping_can_writeback(mapping)) {
 		struct inode *inode = mapping->host;
 		struct bdi_writeback *wb;
 		struct wb_lock_cookie cookie = {};
@@ -124,7 +124,7 @@ __tux3_test_set_page_writeback(struct page *page, bool keep_write,
 #endif
 
 skip_tag_set:
-			if (bdi_cap_account_writeback(bdi))
+			if (bdi->capabilities & BDI_CAP_WRITEBACK_ACCT)
 				inc_wb_stat(inode_to_wb(inode), WB_WRITEBACK);
 		}
 		/* If PageForked(), don't touch tag */
