@@ -13,6 +13,7 @@
 
 #ifndef __ASSEMBLY__
 
+#include <libklib/compiler.h>
 #include <libklib/rwonce.h>
 
 #ifndef nop

@@ -221,10 +221,6 @@ static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
 #define asm_inline asm
 #endif
 
-#ifndef __no_fgcse
-# define __no_fgcse
-#endif
-
 /* Are two types/vars the same type (ignoring qualifiers)? */
 #define __same_type(a, b) __builtin_types_compatible_p(typeof(a), typeof(b))
 
