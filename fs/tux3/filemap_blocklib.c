@@ -657,15 +657,13 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page)
 	 */
 	if (page_mapped(page)) {
 #if 1
-		loff_t holelen;
-
-		holelen = PageTransHuge(page) ? HPAGE_PMD_SIZE : PAGE_SIZE;
+		loff_t holelen = (loff_t)thp_nr_pages(page) << PAGE_SHIFT;
 		unmap_mapping_range(mapping,
 				    (loff_t)page->index << PAGE_SHIFT,
 				    holelen, false);
 #else
 		/* unmap_mapping_pages() is not exported */
-		pgoff_t nr = PageTransHuge(page) ? HPAGE_PMD_NR : 1;
+		unsigned int nr = thp_nr_pages(page);
 		unmap_mapping_pages(mapping, page->index, nr, false);
 #endif
 
