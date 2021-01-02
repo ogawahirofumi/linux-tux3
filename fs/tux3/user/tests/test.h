@@ -5,7 +5,7 @@
 #include <sys/types.h>
 
 #ifndef __section
-#define __section(S)                    __attribute__((__section__(#S)))
+#define __section(S)                    __attribute__((__section__(S)))
 #endif
 #ifndef __aligned
 #define __aligned(x)                    __attribute__((__aligned__(x)))
@@ -41,7 +41,7 @@ struct test_define {
 static struct test_define TEST_DEFINE_NAME(__f)			\
 	__used							\
 	__aligned(16)						\
-	__section(test_define) = {				\
+	__section("test_define") = {				\
 		.type = __t,					\
 		.name = __n,					\
 		.test = __f,					\
