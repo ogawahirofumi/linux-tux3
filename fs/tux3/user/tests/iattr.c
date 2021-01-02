@@ -41,8 +41,8 @@ static void test01(void *_arg)
 	i_uid_write(inode1, 0x12121212);
 	i_gid_write(inode1, 0x34343434);
 	inode1->i_size	= 0x123456789ULL;
-	inode1->i_ctime	= spectime(0xdec0de01dec0de02ULL);
-	inode1->i_mtime	= spectime(0xbadface1badface2ULL);
+	inode1->i_ctime	= spectime(0x0ec0de01dec0de02ULL);
+	inode1->i_mtime	= spectime(0x0adface1badface2ULL);
 	tux_inode(inode1)->btree = (struct btree){
 		.root = { .block = 0xcaba1f00dULL, .depth = 4 },
 	};
