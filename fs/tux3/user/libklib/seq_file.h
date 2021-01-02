@@ -13,10 +13,15 @@ struct seq_file {
 	void *private;
 };
 
-/*
- * seq_files have a buffer which can may overflow. When this happens a larger
+/**
+ * seq_has_overflowed - check if the buffer has overflowed
+ * @m: the seq_file handle
+ *
+ * seq_files have a buffer which may overflow. When this happens a larger
  * buffer is reallocated and all the data will be printed again.
  * The overflow state is true when m->count == m->size.
+ *
+ * Returns true if the buffer received more than it can hold.
  */
 static inline bool seq_has_overflowed(struct seq_file *m)
 {
