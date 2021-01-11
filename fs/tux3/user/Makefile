@@ -163,11 +163,11 @@ libklib/libklib.a-objs = libklib/find_bit.o libklib/fs.o libklib/fs_types.o \
 all-bin		+= tux3
 tux3-objs	= tux3.o $(all-static)
 
-ifeq ($(shell pkg-config fuse && echo found), found)
+ifeq ($(shell pkg-config fuse3 && echo found), found)
 	all-bin += tux3fuse
 	tux3fuse-objs = tux3fuse.o $(all-static)
-	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse)
-	LIBS_tux3fuse = -lfuse
+	CFLAGS_tux3fuse.o = $(shell pkg-config --cflags fuse3)
+	LIBS_tux3fuse = $(shell pkg-config --libs fuse3)
 endif
 
 # tests/*

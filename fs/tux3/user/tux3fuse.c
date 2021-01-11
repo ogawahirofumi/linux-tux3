@@ -41,9 +41,8 @@
 
 #include <linux/fs.h>	/* for ioctl */
 
-#define FUSE_USE_VERSION 26
-#include <fuse.h>
-#include <fuse/fuse_lowlevel.h>
+#define FUSE_USE_VERSION 35
+#include <fuse_lowlevel.h>
 
 #undef trace
 #define trace trace_on
@@ -504,9 +503,9 @@ static void tux3fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name)
 	fuse_reply_err(req, -err);
 }
 
-static void tux3fuse_rename(fuse_req_t req,
-			    fuse_ino_t parent, const char *name,
-			    fuse_ino_t newparent, const char *newname)
+static void tux3fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
+			    fuse_ino_t newparent, const char *newname,
+			    unsigned int flags)
 {
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *olddir, *newdir;
@@ -526,7 +525,7 @@ static void tux3fuse_rename(fuse_req_t req,
 	}
 
 	err = tuxrename(olddir, name, strlen(name), newdir, newname,
-			strlen(newname));
+			strlen(newname), flags);
 
 	iput(newdir);
 error_old:
@@ -1010,8 +1009,8 @@ static void tux3fuse_bmap(fuse_req_t req, fuse_ino_t ino, size_t blocksize,
 	fuse_reply_err(req, ENOSYS);
 }
 
-static void tux3fuse_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
-			   struct fuse_file_info *fi, unsigned flags,
+static void tux3fuse_ioctl(fuse_req_t req, fuse_ino_t ino, unsigned int cmd,
+			   void *arg, struct fuse_file_info *fi, unsigned flags,
 			   const void *in_buf, size_t in_bufsz,
 			   size_t out_bufsz)
 {
@@ -1032,7 +1031,7 @@ static void tux3fuse_ioctl(fuse_req_t req, fuse_ino_t ino, int cmd, void *arg,
 	fuse_reply_err(req, ENOTTY);
 }
 
-static struct fuse_lowlevel_ops tux3_ops = {
+static const struct fuse_lowlevel_ops tux3_ll_ops = {
 	.init		= tux3fuse_init,
 	.destroy	= tux3fuse_destroy,
 	.lookup		= tux3fuse_lookup,
@@ -1073,19 +1072,18 @@ static struct fuse_lowlevel_ops tux3_ops = {
 	/* .poll */
 };
 
-enum {
-	/* tux3fuse options */
-	FUSE_OPT_KEY_TUX3_HELP,
-};
+static void tux3fuse_usage(const char *name)
+{
+	fprintf(stderr,
+		"Usage: %s [options] <volume> <mount-point>\n"
+		"\n"
+		"Options:\n", name);
+		fuse_cmdline_help();
+		fuse_lowlevel_help();
+}
 
-static struct fuse_opt tux3fuse_options[] = {
-	FUSE_OPT_KEY("-h",	FUSE_OPT_KEY_TUX3_HELP),
-	FUSE_OPT_KEY("--help",	FUSE_OPT_KEY_TUX3_HELP),
-	FUSE_OPT_END
-};
-
-static int tux3fuse_parse_options(void *data, const char *arg,
-				  int key, struct fuse_args *outargs)
+static int tux3fuse_parse_options(void *data, const char *arg, int key,
+				  struct fuse_args *outargs)
 {
 	struct tux3fuse *tux3fuse = data;
 
@@ -1095,7 +1093,7 @@ static int tux3fuse_parse_options(void *data, const char *arg,
 	 */
 	if (key == FUSE_OPT_KEY_NONOPT) {
 		if (!tux3fuse->volname) {
-			tux3fuse->volname = canonicalize_file_name(arg);
+			tux3fuse->volname = realpath(arg, NULL);
 			if (!tux3fuse->volname) {
 				fprintf(stderr, "Volume not found: %s: %s\n",
 					arg, strerror(errno));
@@ -1103,16 +1101,6 @@ static int tux3fuse_parse_options(void *data, const char *arg,
 			}
 			return 0; /* We handled this option */
 		}
-	} else if (key == FUSE_OPT_KEY_TUX3_HELP) {
-		fprintf(stderr,
-			"Usage: %s [options] <volume> <mount-point>\n"
-			"\n"
-			"Options:\n"
-			"    -o opt,[opt...]        mount options\n"
-			"    -h   --help            print help\n"
-			"    -V   --version         print version\n"
-			"\n", outargs->argv[0]);
-		return fuse_opt_add_arg(outargs, "-ho");
 	}
 
 	/* Pass all other options to FUSE. */
@@ -1122,10 +1110,9 @@ static int tux3fuse_parse_options(void *data, const char *arg,
 int main(int argc, char *argv[])
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-	struct fuse_chan *fc;
-	struct fuse_session *fs;
-	char *mountpoint;
-	int foreground;
+	struct fuse_session *se = NULL;
+	struct fuse_cmdline_opts opts = {};
+	struct fuse_loop_config config;
 	int err = -1;
 
 	struct tux3fuse tux3fuse = {};
@@ -1140,40 +1127,63 @@ int main(int argc, char *argv[])
 		args = usage_args;
 	}
 
-	if (fuse_opt_parse(&args, &tux3fuse, tux3fuse_options,
+	if (fuse_opt_parse(&args, &tux3fuse, NULL,
 			   tux3fuse_parse_options) == -1)
 		goto error;
-
-	if (fuse_parse_cmdline(&args, &mountpoint, NULL, &foreground) == -1)
+	if (fuse_parse_cmdline(&args, &opts) != 0)
 		goto error;
 
-	fc = fuse_mount(mountpoint, &args);
-	if (!fc)
+	if (opts.show_help) {
+		tux3fuse_usage(argv[0]);
+		err = 0;
 		goto error;
-
-	fs = fuse_lowlevel_new(&args, &tux3_ops, sizeof(tux3_ops), &tux3fuse);
-	if (fs) {
-		if (fuse_set_signal_handlers(fs) != -1) {
-			fuse_session_add_chan(fs, fc);
-
-			if (!foreground)
-				printf("Running in background\n");
-			fuse_daemonize(foreground);
-
-			err = fuse_session_loop(fs);
-
-			fuse_remove_signal_handlers(fs);
-			fuse_session_remove_chan(fc);
-		}
-		fuse_session_destroy(fs);
+	} else if (opts.show_version) {
+		printf("FUSE library version %s\n", fuse_pkgversion());
+		fuse_lowlevel_version();
+		err = 0;
+		goto error;
+	}
+	if (opts.mountpoint == NULL) {
+		tux3fuse_usage(argv[0]);
+		goto error;
 	}
 
-	fuse_unmount(mountpoint, fc);
+	se = fuse_session_new(&args, &tux3_ll_ops, sizeof(tux3_ll_ops),
+			      &tux3fuse);
+	if (se == NULL)
+		goto error;
 
+	if (fuse_set_signal_handlers(se) != 0)
+		goto error;
+
+	if (fuse_session_mount(se, opts.mountpoint) != 0)
+		goto error_signal;
+
+	fuse_daemonize(opts.foreground);
+
+	opts.singlethread = 1;
+	/* Block until ctrl+c or fusermount -u */
+	if (opts.singlethread) {
+		err = fuse_session_loop(se);
+	} else {
+		config.clone_fd = opts.clone_fd;
+		config.max_idle_threads = opts.max_idle_threads;
+		err = fuse_session_loop_mt(se, &config);
+	}
+
+	fuse_session_unmount(se);
+
+error_signal:
+	fuse_remove_signal_handlers(se);
 error:
-	fuse_opt_free_args(&args);
+	if (se)
+		fuse_session_destroy(se);
+
+	if (opts.mountpoint)
+		free(opts.mountpoint);
 	if (tux3fuse.volname)
 		free(tux3fuse.volname);
+	fuse_opt_free_args(&args);
 
 	return err ? 1 : 0;
 }

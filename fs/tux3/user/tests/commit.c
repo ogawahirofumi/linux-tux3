@@ -904,25 +904,29 @@ static void test06(void *_arg)
 			int err;
 			/* Test rename("file", "dir") */
 			err = tuxrename(sb->rootdir, r[F].name, r[F].namelen,
-					sb->rootdir, r[D].name, r[D].namelen);
+					sb->rootdir, r[D].name, r[D].namelen,
+					0);
 			test_assert(err == -EISDIR);
 
 			/* Test rename("dir", "file") */
 			err = tuxrename(sb->rootdir, r[D].name, r[D].namelen,
-					sb->rootdir, r[F].name, r[F].namelen);
+					sb->rootdir, r[F].name, r[F].namelen,
+					0);
 			test_assert(err == -ENOTDIR);
 
 			/* Test rename("child", "dir/child") */
 			unsigned int nlink = dir->i_nlink;
 			err = tuxrename(sb->rootdir, r[C].name, r[C].namelen,
-					dir, r[C].name, r[C].namelen);
+					dir, r[C].name, r[C].namelen,
+					0);
 			test_assert(err == 0);
 			test_assert(dir->i_nlink == nlink + 1);
 			check_parent_inum(dir, r[C].name, r[C].namelen);
 
 			/* Test rename("dir/child", "child") */
 			err = tuxrename(dir, r[C].name, r[C].namelen,
-					sb->rootdir, r[C].name, r[C].namelen);
+					sb->rootdir, r[C].name, r[C].namelen,
+					0);
 			test_assert(err == 0);
 			test_assert(dir->i_nlink == nlink);
 			check_parent_inum(sb->rootdir, r[C].name, r[C].namelen);
@@ -930,7 +934,8 @@ static void test06(void *_arg)
 			/* Test rename("child2", "dir/child2") */
 			nlink = dir->i_nlink;
 			err = tuxrename(sb->rootdir, r[C2].name, r[C2].namelen,
-					dir, r[C2].name, r[C2].namelen);
+					dir, r[C2].name, r[C2].namelen,
+					0);
 			test_assert(err == 0);
 			test_assert(dir->i_nlink == nlink + 1);
 			check_parent_inum(dir, r[C2].name, r[C2].namelen);
@@ -938,7 +943,8 @@ static void test06(void *_arg)
 
 			/* Test rename("before", "after") */
 			err = tuxrename(sb->rootdir, r[B].name, r[B].namelen,
-					sb->rootdir, r[A].name, r[A].namelen);
+					sb->rootdir, r[A].name, r[A].namelen,
+					0);
 			test_assert(!err);
 			/* Update inum for rename test */
 			r[A].inum = r[B].inum;
@@ -946,7 +952,8 @@ static void test06(void *_arg)
 
 			/* Test rename("before2", "overwrite") */
 			err = tuxrename(sb->rootdir, r[B2].name, r[B2].namelen,
-					sb->rootdir, r[O].name, r[O].namelen);
+					sb->rootdir, r[O].name, r[O].namelen,
+					0);
 			test_assert(!err);
 			/* Update inum for rename test */
 			r[O].inum = r[B2].inum;
