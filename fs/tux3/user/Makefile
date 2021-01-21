@@ -96,6 +96,9 @@ CHECKFLAGS += $(shell if gcc -print-multiarch > /dev/null 2>&1; then \
 CHECKFLAGS += -D__CHECKER__
 CHECKFLAGS += -Wsparse-all
 CHECKFLAGS += -Wno-unknown-attribute -Wno-transparent-union -Wno-return-void
+# suppress flexible array warnings
+CHECKFLAGS += -Wno-flexible-array-sizeof -Wno-flexible-array-nested
+CHECKFLAGS += -Wno-flexible-array-array
 # suppress potentially expensive ptr sub
 CHECKFLAGS += -Wno-ptr-subtraction-blows
 # suppress non-static warning
