@@ -62,6 +62,17 @@ static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
 /* Attributes */
 #include <libklib/compiler_attributes.h>
 
+/* Builtins */
+
+/*
+ * __has_builtin is supported on gcc >= 10, clang >= 3 and icc >= 21.
+ * In the meantime, to support gcc < 10, we implement __has_builtin
+ * by hand.
+ */
+#ifndef __has_builtin
+#define __has_builtin(x) (0)
+#endif
+
 /* Compiler specific macros. */
 #ifdef __clang__
 #include <libklib/compiler-clang.h>
@@ -84,12 +95,6 @@ static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
  */
 #ifdef CONFIG_HAVE_ARCH_COMPILER_H
 #include <asm/compiler.h>
-#endif
-
-#ifdef CONFIG_ENABLE_MUST_CHECK
-#define __must_check		__attribute__((__warn_unused_result__))
-#else
-#define __must_check
 #endif
 
 #if defined(CC_USING_HOTPATCH)
