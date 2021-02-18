@@ -33,6 +33,7 @@
 #include <libklib/list_sort.h>
 #include <libklib/barrier.h>
 #include <libklib/log2.h>
+#include <libklib/math.h>
 #include <libklib/minmax.h>
 #include <libklib/rcupdate.h>
 #include <libklib/wait.h>
@@ -78,64 +79,7 @@
 
 #define abs64(x)	llabs(x)
 
-/*
- * This looks more complex than it should be. But we need to
- * get the type for the ~ right in round_down (it needs to be
- * as wide as the result!), and we want to evaluate the macro
- * arguments just once each.
- */
-#define __round_mask(x, y) ((__typeof__(x))((y)-1))
-/**
- * round_up - round up to next specified power of 2
- * @x: the value to round
- * @y: multiple to round up to (must be a power of 2)
- *
- * Rounds @x up to next multiple of @y (which must be a power of 2).
- * To perform arbitrary rounding up, use roundup() below.
- */
-#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
-/**
- * round_down - round down to next specified power of 2
- * @x: the value to round
- * @y: multiple to round down to (must be a power of 2)
- *
- * Rounds @x down to next multiple of @y (which must be a power of 2).
- * To perform arbitrary rounding down, use rounddown() below.
- */
-#define round_down(x, y) ((x) & ~__round_mask(x, y))
-
 #define typeof_member(T, m)	typeof(((T*)0)->m)
-
-#define DIV_ROUND_UP __KERNEL_DIV_ROUND_UP
-
-/**
- * roundup - round up to the next specified multiple
- * @x: the value to up
- * @y: multiple to round up to
- *
- * Rounds @x up to next multiple of @y. If @y will always be a power
- * of 2, consider using the faster round_up().
- */
-#define roundup(x, y) (					\
-{							\
-	typeof(y) __y = y;				\
-	(((x) + (__y - 1)) / __y) * __y;		\
-}							\
-)
-/**
- * rounddown - round down to next specified multiple
- * @x: the value to round
- * @y: multiple to round down to
- *
- * Rounds @x down to next multiple of @y. If @y will always be a power
- * of 2, consider using the faster round_down().
- */
-#define rounddown(x, y) (				\
-{							\
-	typeof(x) __x = (x);				\
-	__x - (__x % (y));				\
-}							\
-)
 
 /**
  * upper_32_bits - return bits 32-63 of a number
