@@ -15,7 +15,7 @@
 #define arch_sync_cmpxchg(ptr, old, new)	arch_cmpxchg(ptr, old, new)
 #define arch_cmpxchg_local(ptr, old, new)	arch_cmpxchg(ptr, old, new)
 
-#define try_cmpxchg(ptr, pold, new)	({				\
+#define arch_try_cmpxchg(ptr, pold, new)	({			\
 	klib_atomic_compare_exchange_n(ptr, pold, new, false,		\
 				    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST); \
 })
