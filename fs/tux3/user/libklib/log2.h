@@ -1,7 +1,6 @@
 #ifndef LIBKLIB_LOG2_H
 #define LIBKLIB_LOG2_H
 
-#include <stdbool.h>
 #include <libklib/types.h>
 #include <libklib/compiler.h>
 #include <libklib/bitops.h>

@@ -1,7 +1,7 @@
 #ifndef LIBKLIB_UIDGID_H
 #define LIBKLIB_UIDGID_H
 
-#include <stdbool.h>
+#include <libklib/types.h>
 
 /*
  * A set of types for the internal kernel types representing uids and gids.

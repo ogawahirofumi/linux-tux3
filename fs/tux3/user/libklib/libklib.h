@@ -5,7 +5,6 @@
 #define _LINUX_TYPES_H
 
 #include <stddef.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <endian.h>

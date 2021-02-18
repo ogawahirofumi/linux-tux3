@@ -1,6 +1,10 @@
 /* based on lib/find_bit.c */
 
-#include <libklib/libklib.h>
+#include <libklib/bitops.h>
+#include <libklib/bitmap.h>
+#include <libklib/math.h>
+#include <libklib/minmax.h>
+#include <libklib/swab.h>
 
 /* from include/linux/bitmap.h */
 #define BITMAP_FIRST_WORD_MASK(start) (~0UL << ((start) & (BITS_PER_LONG - 1)))

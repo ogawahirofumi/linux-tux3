@@ -3,7 +3,7 @@
 
 /* based on arch/x86/include/asm/atomic.h */
 
-#include <stdbool.h>
+#include <libklib/types.h>
 #include <libklib/bug.h>
 #include <libklib/compiler.h>
 #include <libklib/cmpxchg.h>

@@ -1,6 +1,8 @@
 #ifndef LIBKLIB_TYPES_H
 #define LIBKLIB_TYPES_H
 
+#include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 typedef unsigned short		umode_t;

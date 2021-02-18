@@ -2,7 +2,6 @@
 #define LIBKLIB_SEQ_FILE_H
 
 #include <stdarg.h>
-#include <stdbool.h>
 #include <libklib/types.h>
 #include <libklib/compiler.h>
 

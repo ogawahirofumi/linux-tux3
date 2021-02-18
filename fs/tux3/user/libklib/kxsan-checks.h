@@ -1,6 +1,8 @@
 #ifndef LIBKLIB_KXSCAN_CHECKS_H
 #define LIBKLIB_KXSCAN_CHECKS_H
 
+#include <libklib/types.h>
+
 /*
  * Based on linux/include/linux/kasan-checks.h
  */
