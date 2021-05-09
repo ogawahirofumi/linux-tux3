@@ -100,7 +100,7 @@ static struct bio *bufvec_bio_alloc(struct sb *sb, unsigned int count,
 	gfp_t gfp_flags = GFP_NOFS;
 	struct bio *bio;
 
-	count = min_t(unsigned int, count, BIO_MAX_PAGES);
+	count = bio_max_segs(count);
 
 	bio = bio_alloc(gfp_flags, count);
 	/* This retry is from mpage_alloc() */
