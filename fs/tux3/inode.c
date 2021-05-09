@@ -852,13 +852,14 @@ static inline void tux_setup_inode_common(struct inode *inode)
 	}
 }
 
-int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
+int tux3_setattr(struct user_namespace *mnt_userns,
+		 struct dentry *dentry, struct iattr *iattr)
 {
 	struct inode *inode = d_inode(dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err, need_truncate = 0, need_lock = 0;
 
-	err = setattr_prepare(dentry, iattr);
+	err = setattr_prepare(&init_user_ns, dentry, iattr);
 	if (err)
 		return err;
 
@@ -881,7 +882,7 @@ int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 		err = tux3_truncate(inode, iattr->ia_size);
 	if (!err) {
 		tux3_iattrdirty(inode);
-		setattr_copy(inode, iattr);
+		setattr_copy(&init_user_ns, inode, iattr);
 		tux3_mark_inode_dirty(inode);
 	}
 
@@ -894,13 +895,13 @@ unlock:
 }
 
 #ifdef __KERNEL__
-int tux3_getattr(const struct path *path, struct kstat *stat,
-		 u32 request_mask, unsigned int flags)
+int tux3_getattr(struct user_namespace *mnt_uerns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int flags)
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 
-	generic_fillattr(inode, stat);
+	generic_fillattr(&init_user_ns, inode, stat);
 	stat->ino = tux_inode(inode)->inum;
 	/*
 	 * FIXME: need to implement ->i_blocks?
