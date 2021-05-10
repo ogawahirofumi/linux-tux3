@@ -957,9 +957,6 @@ int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 static int tux3_file_update_time(struct inode *inode, struct timespec64 *time,
 				 int flags)
 {
-	int iflags = I_DIRTY_TIME;
-	bool dirty = false;
-
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
 		inode->i_atime = *time;
@@ -967,20 +964,7 @@ static int tux3_file_update_time(struct inode *inode, struct timespec64 *time,
 		return 0;
 
 	tux3_iattrdirty(inode);
-	if (flags & S_VERSION)
-		dirty = inode_maybe_inc_iversion(inode, false);
-	if (flags & S_CTIME)
-		inode->i_ctime = *time;
-	if (flags & S_MTIME)
-		inode->i_mtime = *time;
-	if ((flags & (S_ATIME | S_CTIME | S_MTIME)) &&
-	    !(inode->i_sb->s_flags & SB_LAZYTIME))
-		dirty = true;
-
-	if (dirty)
-		iflags |= I_DIRTY_SYNC;
-	__mark_inode_dirty(inode, iflags);
-	return 0;
+	return generic_update_time(inode, time, flags);
 }
 
 /*
@@ -1011,8 +995,7 @@ static int tux3_special_update_time(struct inode *inode,
 				    struct timespec64 *time, int flags)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
-	int iflags = I_DIRTY_TIME;
-	bool dirty = false;
+	int err;
 
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
@@ -1023,22 +1006,10 @@ static int tux3_special_update_time(struct inode *inode,
 	/* FIXME: no inode_lock, so this is racy */
 	if (change_begin(sb, 1))
 		return -ENOSPC;
-	if (flags & S_VERSION)
-		dirty = inode_maybe_inc_iversion(inode, false);
-	if (flags & S_CTIME)
-		inode->i_ctime = *time;
-	if (flags & S_MTIME)
-		inode->i_mtime = *time;
-	if ((flags & (S_ATIME | S_CTIME | S_MTIME)) &&
-	    !(inode->i_sb->s_flags & SB_LAZYTIME))
-		dirty = true;
-
-	if (dirty)
-		iflags |= I_DIRTY_SYNC;
-	__mark_inode_dirty(inode, iflags);
+	err = generic_update_time(inode, time, flags);
 	change_end(sb);
 
-	return 0;
+	return err;
 }
 
 #include "inode_vfslib.c"
