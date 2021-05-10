@@ -84,9 +84,11 @@ struct iattr {
 };
 
 struct dentry;
-int setattr_prepare(struct dentry *dentry, struct iattr *attr);
+int setattr_prepare(struct user_namespace *mnt_userns, struct dentry *dentry,
+		    struct iattr *attr);
 int inode_newsize_ok(const struct inode *inode, loff_t offset);
-void setattr_copy(struct inode *inode, const struct iattr *attr);
+void setattr_copy(struct user_namespace *mnt_userns, struct inode *inode,
+		  const struct iattr *attr);
 
 /* Generic inode */
 struct inode {

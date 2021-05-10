@@ -6,7 +6,8 @@
  * Attribute stuff
  */
 
-int setattr_prepare(struct dentry *dentry, struct iattr *attr)
+int setattr_prepare(struct user_namespace *mnt_userns, struct dentry *dentry,
+		    struct iattr *attr)
 {
 	struct inode *inode = d_inode(dentry);
 	unsigned int ia_valid = attr->ia_valid;
@@ -27,33 +28,27 @@ int setattr_prepare(struct dentry *dentry, struct iattr *attr)
 
 #ifdef __KERNEL__
 	/* Make sure a caller can chown. */
-	if ((ia_valid & ATTR_UID) &&
-	    (!uid_eq(current_fsuid(), inode->i_uid) ||
-	     !uid_eq(attr->ia_uid, inode->i_uid)) &&
-	    !capable_wrt_inode_uidgid(inode, CAP_CHOWN))
+	if ((ia_valid & ATTR_UID) && !chown_ok(mnt_userns, inode, attr->ia_uid))
 		return -EPERM;
 
 	/* Make sure caller can chgrp. */
-	if ((ia_valid & ATTR_GID) &&
-	    (!uid_eq(current_fsuid(), inode->i_uid) ||
-	    (!in_group_p(attr->ia_gid) && !gid_eq(attr->ia_gid, inode->i_gid))) &&
-	    !capable_wrt_inode_uidgid(inode, CAP_CHOWN))
+	if ((ia_valid & ATTR_GID) && !chgrp_ok(mnt_userns, inode, attr->ia_gid))
 		return -EPERM;
 
 	/* Make sure a caller can chmod. */
 	if (ia_valid & ATTR_MODE) {
-		if (!inode_owner_or_capable(inode))
+		if (!inode_owner_or_capable(mnt_userns, inode))
 			return -EPERM;
 		/* Also check the setgid bit! */
 		if (!in_group_p((ia_valid & ATTR_GID) ? attr->ia_gid :
-				inode->i_gid) &&
-		    !capable_wrt_inode_uidgid(inode, CAP_FSETID))
+				i_gid_into_mnt(mnt_userns, inode)) &&
+		    !capable_wrt_inode_uidgid(mnt_userns, inode, CAP_FSETID))
 			attr->ia_mode &= ~S_ISGID;
 	}
 
 	/* Check for setting the inode time. */
 	if (ia_valid & (ATTR_MTIME_SET | ATTR_ATIME_SET | ATTR_TIMES_SET)) {
-		if (!inode_owner_or_capable(inode))
+		if (!inode_owner_or_capable(mnt_userns, inode))
 			return -EPERM;
 	}
 #endif /* __KERNEL__ */
@@ -64,7 +59,7 @@ kill_priv:
 #ifdef __KERNEL__
 		int error;
 
-		error = security_inode_killpriv(dentry);
+		error = security_inode_killpriv(mnt_userns, dentry);
 		if (error)
 			return error;
 #endif
@@ -96,7 +91,8 @@ out_big:
 	return -EFBIG;
 }
 
-void setattr_copy(struct inode *inode, const struct iattr *attr)
+void setattr_copy(struct user_namespace *mnt_userns, struct inode *inode,
+		  const struct iattr *attr)
 {
 	unsigned int ia_valid = attr->ia_valid;
 

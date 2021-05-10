@@ -447,7 +447,7 @@ int tuxtruncate(struct inode *inode, loff_t size)
 	if (size < 0)
 		return -EINVAL;
 
-	return tux3_setattr(&dentry, &iattrs);
+	return tux3_setattr(&init_user_ns, &dentry, &iattrs);
 }
 
 /* Easy way to make a dummy inode. */

@@ -278,7 +278,7 @@ static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 	};
 	struct iattr iattr;
 	tux3fuse_to_iattr(inode, &iattr, attr, to_set);
-	int err = tux3_setattr(&dentry, &iattr);
+	int err = tux3_setattr(&init_user_ns, &dentry, &iattr);
 	if (err) {
 		fuse_reply_err(req, -err);
 		return;
