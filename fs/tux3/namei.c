@@ -59,8 +59,8 @@ out:
 }
 
 #ifdef __KERNEL__
-static int tux3_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
-		      dev_t rdev)
+static int tux3_mknod(struct user_namespace *mnt_uerns, struct inode *dir,
+		      struct dentry *dentry, umode_t mode, dev_t rdev)
 {
 	struct tux_iattr iattr = {
 		.uid	= current_fsuid(),
@@ -72,15 +72,16 @@ static int tux3_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return __tux3_mknod(dir, dentry, &iattr);
 }
 
-static int tux3_create(struct inode *dir, struct dentry *dentry, umode_t mode,
-		       bool excl)
+static int tux3_create(struct user_namespace *mnt_uerns, struct inode *dir,
+		       struct dentry *dentry, umode_t mode, bool excl)
 {
-	return tux3_mknod(dir, dentry, mode, 0);
+	return tux3_mknod(mnt_uerns, dir, dentry, mode, 0);
 }
 
-static int tux3_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+static int tux3_mkdir(struct user_namespace *mnt_uerns, struct inode *dir,
+		      struct dentry *dentry, umode_t mode)
 {
-	return tux3_mknod(dir, dentry, S_IFDIR | mode, 0);
+	return tux3_mknod(mnt_uerns, dir, dentry, S_IFDIR | mode, 0);
 }
 #endif /* __KERNEL__ */
 
@@ -161,8 +162,8 @@ out:
 }
 
 #ifdef __KERNEL__
-static int tux3_symlink(struct inode *dir, struct dentry *dentry,
-			const char *symname)
+static int tux3_symlink(struct user_namespace *mnt_userns, struct inode *dir,
+			struct dentry *dentry, const char *symname)
 {
 	struct tux_iattr iattr = {
 		.uid	= current_fsuid(),
@@ -221,7 +222,8 @@ static int tux3_rmdir(struct inode *dir, struct dentry *dentry)
 	return err;
 }
 
-static int tux3_rename(struct inode *old_dir, struct dentry *old_dentry,
+static int tux3_rename(struct user_namespace *mnt_userns,
+		       struct inode *old_dir, struct dentry *old_dentry,
 		       struct inode *new_dir, struct dentry *new_dentry,
 		       unsigned int flags)
 {

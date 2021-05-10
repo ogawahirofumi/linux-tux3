@@ -852,13 +852,14 @@ static inline void tux_setup_inode_common(struct inode *inode)
 	}
 }
 
-int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
+int tux3_setattr(struct user_namespace *mnt_userns,
+		 struct dentry *dentry, struct iattr *iattr)
 {
 	struct inode *inode = d_inode(dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 	int err, need_truncate = 0, need_lock = 0;
 
-	err = setattr_prepare(dentry, iattr);
+	err = setattr_prepare(&init_user_ns, dentry, iattr);
 	if (err)
 		return err;
 
@@ -881,7 +882,7 @@ int tux3_setattr(struct dentry *dentry, struct iattr *iattr)
 		err = tux3_truncate(inode, iattr->ia_size);
 	if (!err) {
 		tux3_iattrdirty(inode);
-		setattr_copy(inode, iattr);
+		setattr_copy(&init_user_ns, inode, iattr);
 		tux3_mark_inode_dirty(inode);
 	}
 
@@ -894,13 +895,13 @@ unlock:
 }
 
 #ifdef __KERNEL__
-int tux3_getattr(const struct path *path, struct kstat *stat,
-		 u32 request_mask, unsigned int flags)
+int tux3_getattr(struct user_namespace *mnt_uerns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int flags)
 {
 	struct inode *inode = d_inode(path->dentry);
 	struct sb *sb = tux_sb(inode->i_sb);
 
-	generic_fillattr(inode, stat);
+	generic_fillattr(&init_user_ns, inode, stat);
 	stat->ino = tux_inode(inode)->inum;
 	/*
 	 * FIXME: need to implement ->i_blocks?
@@ -956,9 +957,6 @@ int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 static int tux3_file_update_time(struct inode *inode, struct timespec64 *time,
 				 int flags)
 {
-	int iflags = I_DIRTY_TIME;
-	bool dirty = false;
-
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
 		inode->i_atime = *time;
@@ -966,20 +964,7 @@ static int tux3_file_update_time(struct inode *inode, struct timespec64 *time,
 		return 0;
 
 	tux3_iattrdirty(inode);
-	if (flags & S_VERSION)
-		dirty = inode_maybe_inc_iversion(inode, false);
-	if (flags & S_CTIME)
-		inode->i_ctime = *time;
-	if (flags & S_MTIME)
-		inode->i_mtime = *time;
-	if ((flags & (S_ATIME | S_CTIME | S_MTIME)) &&
-	    !(inode->i_sb->s_flags & SB_LAZYTIME))
-		dirty = true;
-
-	if (dirty)
-		iflags |= I_DIRTY_SYNC;
-	__mark_inode_dirty(inode, iflags);
-	return 0;
+	return generic_update_time(inode, time, flags);
 }
 
 /*
@@ -1010,8 +995,7 @@ static int tux3_special_update_time(struct inode *inode,
 				    struct timespec64 *time, int flags)
 {
 	struct sb *sb = tux_sb(inode->i_sb);
-	int iflags = I_DIRTY_TIME;
-	bool dirty = false;
+	int err;
 
 	/* FIXME: atime is not supported yet */
 	if (flags & S_ATIME)
@@ -1022,22 +1006,10 @@ static int tux3_special_update_time(struct inode *inode,
 	/* FIXME: no inode_lock, so this is racy */
 	if (change_begin(sb, 1))
 		return -ENOSPC;
-	if (flags & S_VERSION)
-		dirty = inode_maybe_inc_iversion(inode, false);
-	if (flags & S_CTIME)
-		inode->i_ctime = *time;
-	if (flags & S_MTIME)
-		inode->i_mtime = *time;
-	if ((flags & (S_ATIME | S_CTIME | S_MTIME)) &&
-	    !(inode->i_sb->s_flags & SB_LAZYTIME))
-		dirty = true;
-
-	if (dirty)
-		iflags |= I_DIRTY_SYNC;
-	__mark_inode_dirty(inode, iflags);
+	err = generic_update_time(inode, time, flags);
 	change_end(sb);
 
-	return 0;
+	return err;
 }
 
 #include "inode_vfslib.c"

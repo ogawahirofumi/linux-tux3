@@ -777,8 +777,8 @@ extern const struct address_space_operations tux_blk_aops;
 extern const struct address_space_operations tux_vol_aops;
 
 /* inode.c */
-int tux3_getattr(const struct path *path, struct kstat *stat,
-		 u32 request_mask, unsigned int flags);
+int tux3_getattr(struct user_namespace *mnt_uerns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int flags);
 int tux3_sync_file(struct file *file, loff_t start, loff_t end, int datasync);
 int tux3_no_update_time(struct inode *inode, struct timespec64 *time, int flags);
 
@@ -1019,7 +1019,8 @@ int tux3_purge_inode(struct inode *inode, struct tux3_iattr_data *idata,
 		     unsigned delta);
 int tux3_drop_inode(struct inode *inode);
 void tux3_evict_inode(struct inode *inode);
-int tux3_setattr(struct dentry *dentry, struct iattr *iattr);
+int tux3_setattr(struct user_namespace *mnt_userns,
+		 struct dentry *dentry, struct iattr *iattr);
 void iget_if_dirty(struct inode *inode);
 
 /* log.c */
