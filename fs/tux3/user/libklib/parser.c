@@ -16,7 +16,7 @@
 #define simple_strtol(a, b, c)		strtol(a, b, c)
 
 /**
- * match_one: - Determines if a string matches a simple pattern
+ * match_one - Determines if a string matches a simple pattern
  * @s: the string to examine for presence of the pattern
  * @p: the string containing the pattern
  * @args: array of %MAX_OPT_ARGS &substring_t elements. Used to return match
@@ -94,7 +94,7 @@ static int match_one(char *s, const char *p, substring_t args[])
 }
 
 /**
- * match_token: - Find a token (and optional args) in a string
+ * match_token - Find a token (and optional args) in a string
  * @s: the string to examine for token/argument pairs
  * @table: match_table_t describing the set of allowed option tokens and the
  * arguments that may be associated with them. Must be terminated with a
@@ -118,7 +118,7 @@ int match_token(char *s, const match_table_t table, substring_t args[])
 }
 
 /**
- * match_number: scan a number in the given base from a substring_t
+ * match_number - scan a number in the given base from a substring_t
  * @s: substring to be scanned
  * @result: resulting integer on success
  * @base: base to use when converting string
@@ -151,7 +151,7 @@ static int match_number(substring_t *s, int *result, int base)
 }
 
 /**
- * match_int: - scan a decimal representation of an integer from a substring_t
+ * match_int - scan a decimal representation of an integer from a substring_t
  * @s: substring_t to be scanned
  * @result: resulting integer on success
  *
@@ -165,7 +165,7 @@ int match_int(substring_t *s, int *result)
 }
 
 /**
- * match_octal: - scan an octal representation of an integer from a substring_t
+ * match_octal - scan an octal representation of an integer from a substring_t
  * @s: substring_t to be scanned
  * @result: resulting integer on success
  *
@@ -179,7 +179,7 @@ int match_octal(substring_t *s, int *result)
 }
 
 /**
- * match_hex: - scan a hex representation of an integer from a substring_t
+ * match_hex - scan a hex representation of an integer from a substring_t
  * @s: substring_t to be scanned
  * @result: resulting integer on success
  *
@@ -193,7 +193,7 @@ int match_hex(substring_t *s, int *result)
 }
 
 /**
- * match_wildcard: - parse if a string matches given wildcard pattern
+ * match_wildcard - parse if a string matches given wildcard pattern
  * @pattern: wildcard pattern
  * @str: the string to be parsed
  *
@@ -243,7 +243,7 @@ bool match_wildcard(const char *pattern, const char *str)
 }
 
 /**
- * match_strlcpy: - Copy the characters from a substring_t to a sized buffer
+ * match_strlcpy - Copy the characters from a substring_t to a sized buffer
  * @dest: where to copy to
  * @src: &substring_t to copy
  * @size: size of destination buffer
@@ -265,7 +265,7 @@ size_t match_strlcpy(char *dest, const substring_t *src, size_t size)
 }
 
 /**
- * match_strdup: - allocate a new string with the contents of a substring_t
+ * match_strdup - allocate a new string with the contents of a substring_t
  * @s: &substring_t to copy
  *
  * Description: Allocates and returns a string filled with the contents of
