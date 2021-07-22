@@ -663,9 +663,8 @@ static void tux3_truncatepage(struct address_space *mapping, struct page *page)
 				    (loff_t)page->index << PAGE_SHIFT,
 				    holelen, false);
 #else
-		/* unmap_mapping_pages() is not exported */
-		unsigned int nr = thp_nr_pages(page);
-		unmap_mapping_pages(mapping, page->index, nr, false);
+		/* unmap_mapping_page() is not exported */
+		unmap_mapping_page(page);
 #endif
 
 	}
