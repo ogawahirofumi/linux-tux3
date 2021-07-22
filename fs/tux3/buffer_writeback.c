@@ -640,8 +640,8 @@ static void bufvec_cancel_dirty_outside(struct bufvec *bufvec)
 	bufvec_cancel_and_unlock_page(page, outside_index);
 }
 
-static int buffer_index_cmp(void *priv, struct list_head *a,
-			    struct list_head *b)
+static int buffer_index_cmp(void *priv, const struct list_head *a,
+			    const struct list_head *b)
 {
 	struct buffer_head *buf_a, *buf_b;
 

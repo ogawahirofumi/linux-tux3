@@ -559,7 +559,8 @@ int tux3_flush_inode_internal(struct inode *inode, unsigned delta,
 	return err;
 }
 
-static int inode_inum_cmp(void *priv, struct list_head *a, struct list_head *b)
+static int inode_inum_cmp(void *priv, const struct list_head *a,
+			  const struct list_head *b)
 {
 	struct tux3_inode *ta, *tb;
 	struct inode_delta_dirty *i_ddc;
