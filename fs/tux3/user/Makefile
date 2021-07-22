@@ -25,6 +25,8 @@ CFLAGS	+= -Wundef -Wstrict-prototypes -Werror-implicit-function-declaration
 CFLAGS	+= -Wno-unused-parameter -Wno-sign-compare
 CFLAGS	+= -Wno-missing-field-initializers
 #CFLAGS += -Wp,-Wunused-macros
+# those warnings are enabled only if W=2 in kernel build
+CFLAGS	+= -Wno-type-limits
 
 # Debugging
 #
