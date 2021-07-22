@@ -216,6 +216,14 @@ static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
 # define __noscs
 #endif
 
+#ifndef __nocfi
+# define __nocfi
+#endif
+
+#ifndef __cficanonical
+# define __cficanonical
+#endif
+
 #ifndef asm_volatile_goto
 #define asm_volatile_goto(x...) asm goto(x)
 #endif
