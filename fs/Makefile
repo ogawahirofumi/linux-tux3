@@ -75,6 +75,7 @@ obj-$(CONFIG_EXT4_FS)		+= ext4/
 # by giving the rootfstype= parameter.
 obj-$(CONFIG_EXT2_FS)		+= ext2/
 obj-$(CONFIG_JBD2)		+= jbd2/
+obj-$(CONFIG_TUX3)		+= tux3/
 obj-$(CONFIG_CRAMFS)		+= cramfs/
 obj-$(CONFIG_SQUASHFS)		+= squashfs/
 obj-y				+= ramfs/
