@@ -13,6 +13,7 @@
 
 #include "test.h"
 #include "bench.h"
+#include "../aligncheck.h"
 
 /* dummy define to guarantee define at least one TEST_DEFINE(). */
 static void test_dummy(void *_arg)
@@ -161,6 +162,9 @@ int test_init(int argc, char *argv[])
 	test_env.nest = -1;
 	test_env.forked = 0;
 	test_env.filtered = false;
+
+	/* Make sure aligncheck is initialized */
+	init_alignment_check();
 
 	return optind;
 }

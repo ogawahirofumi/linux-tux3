@@ -98,6 +98,7 @@ rettype name proto							\
 									\
 	va_start(ap, last);						\
 	ret = libc_##vname(args, ap);					\
+	va_end(ap);							\
 									\
 	recursive_##name--;						\
 	if (recursive_##name == 0)					\
@@ -106,14 +107,20 @@ rettype name proto							\
 	return ret;							\
 }
 
-ALIGN_HOOK_VAARG(int, printf, vprintf, (const char *restrict format, ...),
+ALIGN_HOOK_VAARG(int, printf, vprintf, (const char *__restrict format, ...),
 		 format, format);
 ALIGN_HOOK_VAARG(int, fprintf, vfprintf,
-		 (FILE *stream, const char *restrict format, ...),
+		 (FILE *stream, const char *__restrict format, ...),
 		 format, stream, format);
 
 void init_alignment_check(void)
 {
+	static bool initialized;
+
+	if (initialized)
+		return;
+	initialized = true;
+
 	libc_vprintf = dlsym(RTLD_NEXT, "vprintf");
 	libc_vfprintf = dlsym(RTLD_NEXT, "vfprintf");
 	libc_puts = dlsym(RTLD_NEXT, "puts");
