@@ -2,6 +2,7 @@
 #define LIBKLIB_BUG_H
 
 #include <stdio.h>
+#include <libklib/once_lite.h>
 
 /*
  * Don't use BUG() or BUG_ON() unless there's really no way out; one
@@ -63,24 +64,12 @@
 })
 #endif
 
-#define WARN_ON_ONCE(condition)	({				\
-	static bool __warned;					\
-	int __ret_warn_once = !!(condition);			\
-								\
-	if (unlikely(__ret_warn_once))				\
-		if (WARN_ON(!__warned)) 			\
-			__warned = true;			\
-	unlikely(__ret_warn_once);				\
-})
+#ifndef WARN_ON_ONCE
+#define WARN_ON_ONCE(condition)					\
+	DO_ONCE_LITE_IF(condition, WARN_ON, 1)
+#endif
 
-#define WARN_ONCE(condition, format...)	({			\
-	static bool __warned;					\
-	int __ret_warn_once = !!(condition);			\
-								\
-	if (unlikely(__ret_warn_once))				\
-		if (WARN(!__warned, format)) 			\
-			__warned = true;			\
-	unlikely(__ret_warn_once);				\
-})
+#define WARN_ONCE(condition, format...)				\
+	DO_ONCE_LITE_IF(condition, WARN, 1, format)
 
 #endif /* !LIBKLIB_BUG_H */
