@@ -45,8 +45,6 @@ CFLAGS	+= -DSMALL_PAGE_SIZE_DEBUG=1
 ifeq ($(ALIGN_CHECK),1)
 CFLAGS	+= -DALIGN_CHECK=1
 LIBS += -ldl
-# prevent unaligned error
-NEED_MEMMOVE_UNALIGNED = 1
 endif
 # use refcount_t debugging
 CFLAGS	+= -DCONFIG_REFCOUNT_FULL=1
@@ -60,15 +58,8 @@ CFLAGS	+= -fsanitize=address -fsanitize=leak
 endif
 ifeq ($(UBSAN),1)
 CFLAGS	+= -fsanitize=undefined
-# prevent unaligned error
-NEED_MEMMOVE_UNALIGNED = 1
 endif
 #CFLAGS += -fsanitize=thread
-
-ifeq ($(NEED_MEMMOVE_UNALIGNED),1)
-# To use memmove() for unaligned access
-CFLAGS	+= -DCONFIG_MEMMOVE_UNALIGNED_ACCESS=1
-endif
 
 # gcov
 ifneq ($(GCOV),)
