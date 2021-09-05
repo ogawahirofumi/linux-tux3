@@ -77,12 +77,8 @@
 	__ret;								\
 })
 
-#ifdef ARCH_ATOMIC
 #include <libklib/atomic-arch-fallback.h>
 #include <libklib/atomic-instrumented.h>
-#else
-#include <libklib/atomic-fallback.h>
-#endif
 
 #include <libklib/atomic-long.h>
 

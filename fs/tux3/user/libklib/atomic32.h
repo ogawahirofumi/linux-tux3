@@ -244,6 +244,4 @@ static __always_inline int arch_atomic_fetch_xor(int i, atomic_t *v)
 
 #include <libklib/atomic64.h>
 
-#define ARCH_ATOMIC
-
 #endif /* LIBKLIB_ASM_ATOMIC32_H */
