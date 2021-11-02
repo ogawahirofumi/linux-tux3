@@ -1,5 +1,6 @@
-#ifndef LIBKLIB_BITOPS_ATOMIC_H
-#define LIBKLIB_BITOPS_ATOMIC_H
+/* SPDX-License-Identifier: GPL-2.0 */
+#ifndef LIBKLIB_ASM_GENERIC_BITOPS_ATOMIC_H_
+#define LIBKLIB_ASM_GENERIC_BITOPS_ATOMIC_H_
 
 #include <libklib/atomic.h>
 
@@ -8,25 +9,29 @@
  * See Documentation/atomic_bitops.txt for details.
  */
 
-static __always_inline void set_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline void
+arch_set_bit(unsigned int nr, volatile unsigned long *p)
 {
 	p += BIT_WORD(nr);
-	atomic_long_or(BIT_MASK(nr), (atomic_long_t *)p);
+	arch_atomic_long_or(BIT_MASK(nr), (atomic_long_t *)p);
 }
 
-static __always_inline void clear_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline void
+arch_clear_bit(unsigned int nr, volatile unsigned long *p)
 {
 	p += BIT_WORD(nr);
-	atomic_long_andnot(BIT_MASK(nr), (atomic_long_t *)p);
+	arch_atomic_long_andnot(BIT_MASK(nr), (atomic_long_t *)p);
 }
 
-static __always_inline void change_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline void
+arch_change_bit(unsigned int nr, volatile unsigned long *p)
 {
 	p += BIT_WORD(nr);
-	atomic_long_xor(BIT_MASK(nr), (atomic_long_t *)p);
+	arch_atomic_long_xor(BIT_MASK(nr), (atomic_long_t *)p);
 }
 
-static inline int test_and_set_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline int
+arch_test_and_set_bit(unsigned int nr, volatile unsigned long *p)
 {
 	long old;
 	unsigned long mask = BIT_MASK(nr);
@@ -35,11 +40,12 @@ static inline int test_and_set_bit(unsigned int nr, volatile unsigned long *p)
 	if (READ_ONCE(*p) & mask)
 		return 1;
 
-	old = atomic_long_fetch_or(mask, (atomic_long_t *)p);
+	old = arch_atomic_long_fetch_or(mask, (atomic_long_t *)p);
 	return !!(old & mask);
 }
 
-static inline int test_and_clear_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline int
+arch_test_and_clear_bit(unsigned int nr, volatile unsigned long *p)
 {
 	long old;
 	unsigned long mask = BIT_MASK(nr);
@@ -48,18 +54,21 @@ static inline int test_and_clear_bit(unsigned int nr, volatile unsigned long *p)
 	if (!(READ_ONCE(*p) & mask))
 		return 0;
 
-	old = atomic_long_fetch_andnot(mask, (atomic_long_t *)p);
+	old = arch_atomic_long_fetch_andnot(mask, (atomic_long_t *)p);
 	return !!(old & mask);
 }
 
-static inline int test_and_change_bit(unsigned int nr, volatile unsigned long *p)
+static __always_inline int
+arch_test_and_change_bit(unsigned int nr, volatile unsigned long *p)
 {
 	long old;
 	unsigned long mask = BIT_MASK(nr);
 
 	p += BIT_WORD(nr);
-	old = atomic_long_fetch_xor(mask, (atomic_long_t *)p);
+	old = arch_atomic_long_fetch_xor(mask, (atomic_long_t *)p);
 	return !!(old & mask);
 }
 
-#endif /* !LIBKLIB_BITOPS_ATOMIC_H */
+#include <libklib/bitops/instrumented-atomic.h>
+
+#endif /* LIBKLIB_ASM_GENERIC_BITOPS_ATOMIC_H */
