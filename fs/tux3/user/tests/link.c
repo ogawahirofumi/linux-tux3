@@ -166,7 +166,6 @@ static void test_flink(void *_arg)
 	/* make empty head test */
 	while (!flink_empty(&head))
 		flink_del_front(&head);
-	flink_check_entries(&head);
 	test_assert(flink_empty(&head));
 
 	/* flink_add_front() with empty head test */
@@ -183,7 +182,6 @@ static void test_flink(void *_arg)
 	flink_del_front(&head);
 	flink_check_entries(&head, &node5);
 	flink_del_front(&head);
-	flink_check_entries(&head);
 	test_assert(flink_empty(&head));
 
 	/* flink_add_tail() with empty head test */
@@ -200,7 +198,6 @@ static void test_flink(void *_arg)
 	flink_del_next(&node4.link, &head);
 	flink_check_entries(&head, &node4);
 	flink_del_next(&node4.link, &head);
-	flink_check_entries(&head);
 	test_assert(flink_empty(&head));
 
 	/* flink_add_next() with empty head test */
@@ -251,7 +248,6 @@ static void test_flink(void *_arg)
 	flink_check_entries(&head, &node1, &node3, &node2);
 	flink_for_each_safe(pos, prev, n, &head)
 		flink_del_next(prev, &head);
-	flink_check_entries(&head);
 	test_assert(flink_empty(&head));
 }
 TEST_DEFINE(TEST_UNIT, "flink", test_flink);
