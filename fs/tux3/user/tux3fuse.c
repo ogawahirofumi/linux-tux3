@@ -173,7 +173,7 @@ static void tux3fuse_fill_ep(struct fuse_entry_param *ep, struct inode *inode)
 
 static void tux3fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
 {
-	trace("(%lx, '%s')", parent, name);
+	trace("(%llx, '%s')", (u64)parent, name);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *dir, *inode;
 
@@ -198,7 +198,7 @@ static void tux3fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *name)
 }
 
 static void tux3fuse_forget(fuse_req_t req, fuse_ino_t ino,
-			    unsigned long nlookup)
+			    uint64_t nlookup)
 {
 	fuse_reply_none(req);
 }
@@ -206,7 +206,7 @@ static void tux3fuse_forget(fuse_req_t req, fuse_ino_t ino,
 static void tux3fuse_getattr(fuse_req_t req, fuse_ino_t ino,
 			     struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
 
@@ -263,7 +263,7 @@ static void tux3fuse_to_iattr(struct inode *inode, struct iattr *iattr,
 static void tux3fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr,
 			     int to_set, struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
 
@@ -297,7 +297,7 @@ static void tux3fuse_readlink(fuse_req_t req, fuse_ino_t ino)
 	struct inode *inode;
 	int ret;
 
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 
 	inode = tux3fuse_iget(sb, ino);
 	if (IS_ERR(inode)) {
@@ -349,8 +349,8 @@ static void tux3fuse_mknod(fuse_req_t req, fuse_ino_t parent, const char *name,
 	const struct fuse_ctx *ctx = fuse_req_ctx(req);
 	struct inode *inode;
 
-	trace("(%lx, '%s', uid = %u, gid = %u, mode = %o, rdev %llx)",
-	      parent, name, ctx->uid, ctx->gid, mode, (u64)rdev);
+	trace("(%llx, '%s', uid = %u, gid = %u, mode = %o, rdev %llx)",
+	      (u64)parent, name, ctx->uid, ctx->gid, mode, (u64)rdev);
 
 	inode = __tux3fuse_mknod(req, parent, name, mode, rdev);
 	if (IS_ERR(inode)) {
@@ -371,8 +371,8 @@ static void tux3fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name,
 	const struct fuse_ctx *ctx = fuse_req_ctx(req);
 	struct inode *inode;
 
-	trace("(%lx, '%s', uid = %u, gid = %u, mode = %o)",
-	      parent, name, ctx->uid, ctx->gid, mode);
+	trace("(%llx, '%s', uid = %u, gid = %u, mode = %o)",
+	      (u64)parent, name, ctx->uid, ctx->gid, mode);
 
 	inode = __tux3fuse_mknod(req, parent, name, S_IFDIR | mode, 0);
 	if (IS_ERR(inode)) {
@@ -394,7 +394,7 @@ static void tux3fuse_link(fuse_req_t req, fuse_ino_t ino,
 	struct inode *src_inode, *dir, *inode;
 	int err;
 
-	trace("(%lx, %lx, '%s')", ino, newparent, newname);
+	trace("(%llx, %llx, '%s')", (u64)ino, (u64)newparent, newname);
 
 	src_inode = tux3fuse_iget(sb, ino);
 	if (IS_ERR(src_inode)) {
@@ -439,7 +439,7 @@ static void tux3fuse_symlink(fuse_req_t req, const char *link,
 	struct inode *dir, *inode;
 	int err;
 
-	trace("('%s', %lx, '%s')", link, parent, name);
+	trace("('%s', %llx, '%s')", link, (u64)parent, name);
 
 	dir = tux3fuse_iget(sb, parent);
 	if (IS_ERR(dir)) {
@@ -469,7 +469,7 @@ static void tux3fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name)
 	struct inode *dir;
 	int err;
 
-	trace("(%lx, '%s')", parent, name);
+	trace("(%llx, '%s')", (u64)parent, name);
 
 	dir = tux3fuse_iget(sb, parent);
 	err = PTR_ERR(dir);
@@ -489,7 +489,7 @@ static void tux3fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name)
 	struct inode *dir;
 	int err;
 
-	trace("(%lx, '%s')", parent, name);
+	trace("(%llx, '%s')", (u64)parent, name);
 
 	dir = tux3fuse_iget(sb, parent);
 	err = PTR_ERR(dir);
@@ -511,7 +511,8 @@ static void tux3fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name,
 	struct inode *olddir, *newdir;
 	int err;
 
-	trace("(%lx, '%s', %lx, '%s')", parent, name, newparent, newname);
+	trace("(%llx, '%s', %llx, '%s')",
+	      (u64)parent, name, (u64)newparent, newname);
 
 	olddir = tux3fuse_iget(sb, parent);
 	if (IS_ERR(olddir)) {
@@ -540,8 +541,8 @@ static void tux3fuse_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 	const struct fuse_ctx *ctx = fuse_req_ctx(req);
 	struct inode *inode;
 
-	trace("(%lx, '%s', uid = %u, gid = %u, mode = %o)",
-	      parent, name, ctx->uid, ctx->gid, mode);
+	trace("(%llx, '%s', uid = %u, gid = %u, mode = %o)",
+	      (u64)parent, name, ctx->uid, ctx->gid, mode);
 
 	inode = __tux3fuse_mknod(req, parent, name, mode, 0);
 	if (IS_ERR(inode)) {
@@ -559,7 +560,7 @@ static void tux3fuse_create(fuse_req_t req, fuse_ino_t parent, const char *name,
 static void tux3fuse_open(fuse_req_t req, fuse_ino_t ino,
 			  struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
 
@@ -582,7 +583,7 @@ static void tux3fuse_flush(fuse_req_t req, fuse_ino_t ino,
 static void tux3fuse_release(fuse_req_t req, fuse_ino_t ino,
 			     struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
 	iput(inode);
 	fuse_reply_err(req, 0);
@@ -592,7 +593,7 @@ static void tux3fuse_release(fuse_req_t req, fuse_ino_t ino,
 static void tux3fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size,
 			  off_t offset, struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
 	struct file *file = &(struct file)FILE_INIT(inode, 0);
 	int err;
@@ -635,7 +636,7 @@ error:
 static void tux3fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
 			   size_t size, off_t offset, struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
 	struct file *file = &(struct file)FILE_INIT(inode, 0);
 
@@ -655,14 +656,14 @@ static void tux3fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf,
 static void tux3fuse_opendir(fuse_req_t req, fuse_ino_t ino,
 			     struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	tux3fuse_open(req, ino, fi);
 }
 
 static void tux3fuse_releasedir(fuse_req_t req, fuse_ino_t ino,
 				struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	tux3fuse_release(req, ino, fi);
 }
 
@@ -727,7 +728,7 @@ static int tux3fuse_filler(struct dir_context *ctx, const char *name,
 static void tux3fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size,
 			     off_t offset, struct fuse_file_info *fi)
 {
-	trace("(%lx)", ino);
+	trace("(%llx)", (u64)ino);
 	struct inode *inode = (struct inode *)(unsigned long)fi->fh;
 	struct file *dirfile = &(struct file)FILE_INIT(inode, offset);
 	char *buf;
@@ -849,7 +850,7 @@ static int xattr_prefix_check(const char *name)
 static void tux3fuse_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
 			      const char *value, size_t size, int flags)
 {
-	trace("(%lx, '%s'='%s')", ino, name, value);
+	trace("(%llx, '%s'='%s')", (u64)ino, name, value);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
 	int err;
@@ -875,7 +876,7 @@ static void tux3fuse_setxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
 static void tux3fuse_getxattr(fuse_req_t req, fuse_ino_t ino, const char *name,
 			      size_t maxsize)
 {
-	trace("(%lx, '%s')", ino, name);
+	trace("(%llx, '%s')", (u64)ino, name);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
 	int err;
@@ -915,7 +916,7 @@ out:
 
 static void tux3fuse_listxattr(fuse_req_t req, fuse_ino_t ino, size_t size)
 {
-	trace("(%lx, %zu)", ino, size);
+	trace("(%llx, %zu)", (u64)ino, size);
 	struct sb *sb = tux3fuse_get_sb(req);
 	struct inode *inode;
 
@@ -960,7 +961,7 @@ static void tux3fuse_removexattr(fuse_req_t req, fuse_ino_t ino,
 	struct inode *inode;
 	int err;
 
-	trace("(%lx, '%s')", ino, name);
+	trace("(%llx, '%s')", (u64)ino, name);
 
 	err = xattr_prefix_check(name);
 	if (err) {
@@ -1014,8 +1015,8 @@ static void tux3fuse_ioctl(fuse_req_t req, fuse_ino_t ino, unsigned int cmd,
 			   const void *in_buf, size_t in_bufsz,
 			   size_t out_bufsz)
 {
-	trace("(%lx, 0x%08x, %p, %p, %x, %p, %zu, %zu)",
-	      ino, cmd, arg, fi, flags, in_buf, in_bufsz, out_bufsz);
+	trace("(%llx, 0x%08x, %p, %p, %x, %p, %zu, %zu)",
+	      (u64)ino, cmd, arg, fi, flags, in_buf, in_bufsz, out_bufsz);
 
 	switch (cmd) {
 	case FS_IOC_GETFLAGS:
