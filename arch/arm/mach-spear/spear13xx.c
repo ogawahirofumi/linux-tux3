@@ -4,7 +4,7 @@
  * SPEAr13XX machines common source file
  *
  * Copyright (C) 2012 ST Microelectronics
- * Viresh Kumar <viresh.linux@gmail.com>
+ * Viresh Kumar <vireshk@kernel.org>
  *
  * This file is licensed under the terms of the GNU General Public
  * License version 2. This program is licensed "as is" without any
@@ -15,6 +15,7 @@
 
 #include <linux/amba/pl022.h>
 #include <linux/clk.h>
+#include <linux/clk/spear.h>
 #include <linux/clocksource.h>
 #include <linux/err.h>
 #include <linux/of.h>
@@ -124,5 +125,5 @@ void __init spear13xx_timer_init(void)
 	clk_put(pclk);
 
 	spear_setup_of_timer();
-	clocksource_of_init();
+	timer_probe();
 }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Freescale SPI/eSPI controller driver library.
  *
@@ -10,17 +11,13 @@
  * Author: Anton Vorontsov <avorontsov@ru.mvista.com>
  *
  * Copyright 2010 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
  */
 #include <linux/dma-mapping.h>
 #include <linux/fsl_devices.h>
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
+#include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/spi/spi.h>
 #ifdef CONFIG_FSL_SOC
@@ -35,7 +32,8 @@ void mpc8xxx_spi_rx_buf_##type(u32 data, struct mpc8xxx_spi *mpc8xxx_spi) \
 	type *rx = mpc8xxx_spi->rx;					  \
 	*rx++ = (type)(data >> mpc8xxx_spi->rx_shift);			  \
 	mpc8xxx_spi->rx = rx;						  \
-}
+}									  \
+EXPORT_SYMBOL_GPL(mpc8xxx_spi_rx_buf_##type);
 
 #define MPC8XXX_SPI_TX_BUF(type)				\
 u32 mpc8xxx_spi_tx_buf_##type(struct mpc8xxx_spi *mpc8xxx_spi)	\
@@ -47,7 +45,8 @@ u32 mpc8xxx_spi_tx_buf_##type(struct mpc8xxx_spi *mpc8xxx_spi)	\
 	data = *tx++ << mpc8xxx_spi->tx_shift;			\
 	mpc8xxx_spi->tx = tx;					\
 	return data;						\
-}
+}								\
+EXPORT_SYMBOL_GPL(mpc8xxx_spi_tx_buf_##type);
 
 MPC8XXX_SPI_RX_BUF(u8)
 MPC8XXX_SPI_RX_BUF(u16)
@@ -60,6 +59,7 @@ struct mpc8xxx_spi_probe_info *to_of_pinfo(struct fsl_spi_platform_data *pdata)
 {
 	return container_of(pdata, struct mpc8xxx_spi_probe_info, pdata);
 }
+EXPORT_SYMBOL_GPL(to_of_pinfo);
 
 const char *mpc8xxx_spi_strmode(unsigned int flags)
 {
@@ -75,6 +75,7 @@ const char *mpc8xxx_spi_strmode(unsigned int flags)
 	}
 	return "CPU";
 }
+EXPORT_SYMBOL_GPL(mpc8xxx_spi_strmode);
 
 void mpc8xxx_spi_probe(struct device *dev, struct resource *mem,
 			unsigned int irq)
@@ -102,31 +103,12 @@ void mpc8xxx_spi_probe(struct device *dev, struct resource *mem,
 	mpc8xxx_spi->rx_shift = 0;
 	mpc8xxx_spi->tx_shift = 0;
 
-	init_completion(&mpc8xxx_spi->done);
-
 	master->bus_num = pdata->bus_num;
 	master->num_chipselect = pdata->max_chipselect;
 
 	init_completion(&mpc8xxx_spi->done);
 }
-
-int mpc8xxx_spi_remove(struct device *dev)
-{
-	struct mpc8xxx_spi *mpc8xxx_spi;
-	struct spi_master *master;
-
-	master = dev_get_drvdata(dev);
-	mpc8xxx_spi = spi_master_get_devdata(master);
-
-	spi_unregister_master(master);
-
-	free_irq(mpc8xxx_spi->irq, mpc8xxx_spi);
-
-	if (mpc8xxx_spi->spi_remove)
-		mpc8xxx_spi->spi_remove(mpc8xxx_spi);
-
-	return 0;
-}
+EXPORT_SYMBOL_GPL(mpc8xxx_spi_probe);
 
 int of_mpc8xxx_spi_probe(struct platform_device *ofdev)
 {
@@ -173,3 +155,6 @@ int of_mpc8xxx_spi_probe(struct platform_device *ofdev)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(of_mpc8xxx_spi_probe);
+
+MODULE_LICENSE("GPL");

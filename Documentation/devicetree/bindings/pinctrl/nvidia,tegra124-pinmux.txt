@@ -6,7 +6,8 @@ nvidia,tegra30-pinmux.txt. In fact, this document assumes that binding as
 a baseline, and only documents the differences between the two bindings.
 
 Required properties:
-- compatible: "nvidia,tegra124-pinmux"
+- compatible: For Tegra124, must contain "nvidia,tegra124-pinmux".  For
+  Tegra132, must contain '"nvidia,tegra132-pinmux", "nvidia-tegra124-pinmux"'.
 - reg: Should contain a list of base address and size pairs for:
     -- first entry - the drive strength and pad control registers.
     -- second entry - the pinmux registers
@@ -16,7 +17,7 @@ Tegra124 adds the following optional properties for pin configuration subnodes.
 The macros for options are defined in the
 	include/dt-binding/pinctrl/pinctrl-tegra.h.
 - nvidia,enable-input: Integer. Enable the pin's input path.
-		enable :TEGRA_PIN_ENABLE0 and
+		enable :TEGRA_PIN_ENABLE and
 		disable or output only: TEGRA_PIN_DISABLE.
 - nvidia,open-drain: Integer.
 		enable: TEGRA_PIN_ENABLE.

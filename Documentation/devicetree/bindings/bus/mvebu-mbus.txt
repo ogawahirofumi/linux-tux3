@@ -6,8 +6,8 @@ Required properties:
 - compatible:	 Should be set to one of the following:
 		 marvell,armada370-mbus
 		 marvell,armadaxp-mbus
-		 marvell,armada370-mbus
-		 marvell,armadaxp-mbus
+		 marvell,armada375-mbus
+		 marvell,armada380-mbus
 		 marvell,kirkwood-mbus
 		 marvell,dove-mbus
 		 marvell,orion5x-88f5281-mbus
@@ -227,7 +227,6 @@ See the example below, where a more complete device tree is shown:
 		};
 
 		devbus-bootcs {
-			status = "okay";
 			ranges = <0 MBUS_ID(0x01, 0x2f) 0 0x8000000>;
 
 			/* NOR */
@@ -240,7 +239,6 @@ See the example below, where a more complete device tree is shown:
 
 		pcie-controller {
 			compatible = "marvell,armada-xp-pcie";
-			status = "okay";
 			device_type = "pci";
 
 			#address-cells = <3>;
@@ -258,7 +256,6 @@ See the example below, where a more complete device tree is shown:
 
 			pcie@1,0 {
 				/* Port 0, Lane 0 */
-				status = "okay";
 			};
 		};
 

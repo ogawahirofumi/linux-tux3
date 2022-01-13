@@ -1,22 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 1996, 2003 VIA Networking Technologies, Inc.
  * All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * File: dpc.c
  *
  * Purpose: handle dpc rx functions
  *
@@ -47,7 +32,7 @@ static bool vnt_rx_data(struct vnt_private *priv, struct sk_buff *skb,
 	__le64 *tsf_time;
 	u16 frame_size;
 	int ii, r;
-	u8 *rx_sts, *rx_rate, *sq;
+	u8 *rx_rate;
 	u8 *skb_data;
 	u8 rate_idx = 0;
 	u8 rate[MAX_RATE] = {2, 4, 11, 22, 12, 18, 24, 36, 48, 72, 96, 108};
@@ -62,7 +47,6 @@ static bool vnt_rx_data(struct vnt_private *priv, struct sk_buff *skb,
 
 	skb_data = (u8 *)skb->data;
 
-	rx_sts = skb_data;
 	rx_rate = skb_data + 1;
 
 	sband = hw->wiphy->bands[hw->conf.chandef.chan->band];
@@ -87,10 +71,11 @@ static bool vnt_rx_data(struct vnt_private *priv, struct sk_buff *skb,
 	}
 
 	tsf_time = (__le64 *)(skb_data + bytes_received - 12);
-	sq = skb_data + bytes_received - 4;
 	new_rsr = skb_data + bytes_received - 3;
 	rssi = skb_data + bytes_received - 2;
 	rsr = skb_data + bytes_received - 1;
+	if (*rsr & (RSR_IVLDTYP | RSR_IVLDLEN))
+		return false;
 
 	RFvRSSITodBm(priv, *rssi, &rx_dbm);
 
@@ -106,20 +91,21 @@ static bool vnt_rx_data(struct vnt_private *priv, struct sk_buff *skb,
 	rx_status.flag = 0;
 	rx_status.freq = hw->conf.chandef.chan->center_freq;
 
+	if (!(*rsr & RSR_CRCOK))
+		rx_status.flag |= RX_FLAG_FAILED_FCS_CRC;
+
 	hdr = (struct ieee80211_hdr *)(skb->data);
 	fc = hdr->frame_control;
 
 	rx_status.rate_idx = rate_idx;
 
 	if (ieee80211_has_protected(fc)) {
-		if (priv->byLocalID > REV_ID_VT3253_A1)
-			rx_status.flag = RX_FLAG_DECRYPTED;
-	}
+		if (priv->local_id > REV_ID_VT3253_A1)
+			rx_status.flag |= RX_FLAG_DECRYPTED;
 
-	if (priv->vif && priv->bDiversityEnable) {
-		if (ieee80211_is_data(fc) &&
-		    (frame_size > 50) && priv->vif->bss_conf.assoc)
-			BBvAntennaDiversity(priv, priv->rx_rate, 0);
+		/* Drop packet */
+		if (!(*new_rsr & NEWRSR_DECRYPTOK))
+			return false;
 	}
 
 	memcpy(IEEE80211_SKB_RXCB(skb), &rx_status, sizeof(rx_status));
@@ -129,19 +115,19 @@ static bool vnt_rx_data(struct vnt_private *priv, struct sk_buff *skb,
 	return true;
 }
 
-bool vnt_receive_frame(struct vnt_private *priv, PSRxDesc curr_rd)
+bool vnt_receive_frame(struct vnt_private *priv, struct vnt_rx_desc *curr_rd)
 {
-	PDEVICE_RD_INFO rd_info = curr_rd->pRDInfo;
+	struct vnt_rd_info *rd_info = curr_rd->rd_info;
 	struct sk_buff *skb;
 	u16 frame_size;
 
 	skb = rd_info->skb;
 
-	pci_unmap_single(priv->pcid, rd_info->skb_dma,
-			 priv->rx_buf_sz, PCI_DMA_FROMDEVICE);
+	dma_unmap_single(&priv->pcid->dev, rd_info->skb_dma,
+			 priv->rx_buf_sz, DMA_FROM_DEVICE);
 
-	frame_size = le16_to_cpu(curr_rd->m_rd1RD1.wReqCount)
-			- cpu_to_le16(curr_rd->m_rd0RD0.wResCount);
+	frame_size = le16_to_cpu(curr_rd->rd1.req_count)
+			- le16_to_cpu(curr_rd->rd0.res_count);
 
 	if ((frame_size > 2364) || (frame_size < 33)) {
 		/* Frame Size error drop this packet.*/

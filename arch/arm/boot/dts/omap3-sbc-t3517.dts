@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Suppport for CompuLab SBC-T3517 with CM-T3517
  */
@@ -69,3 +70,7 @@
 	};
 };
 
+&gpmc {
+	ranges = <4 0 0x2d000000 0x01000000>,	/* SB-T35 SMSC9x Eth */
+		 <0 0 0x00000000 0x01000000>;	/* CM-T3x NAND */
+};

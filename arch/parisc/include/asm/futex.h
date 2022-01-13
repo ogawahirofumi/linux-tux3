@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_PARISC_FUTEX_H
 #define _ASM_PARISC_FUTEX_H
-
-#ifdef __KERNEL__
 
 #include <linux/futex.h>
 #include <linux/uaccess.h>
@@ -12,122 +11,85 @@
    sixteen four-word locks. */
 
 static inline void
-_futex_spin_lock_irqsave(u32 __user *uaddr, unsigned long int *flags)
+_futex_spin_lock(u32 __user *uaddr)
 {
 	extern u32 lws_lock_start[];
-	long index = ((long)uaddr & 0xf0) >> 2;
+	long index = ((long)uaddr & 0x7f8) >> 1;
 	arch_spinlock_t *s = (arch_spinlock_t *)&lws_lock_start[index];
-	local_irq_save(*flags);
+	preempt_disable();
 	arch_spin_lock(s);
 }
 
 static inline void
-_futex_spin_unlock_irqrestore(u32 __user *uaddr, unsigned long int *flags)
+_futex_spin_unlock(u32 __user *uaddr)
 {
 	extern u32 lws_lock_start[];
-	long index = ((long)uaddr & 0xf0) >> 2;
+	long index = ((long)uaddr & 0x7f8) >> 1;
 	arch_spinlock_t *s = (arch_spinlock_t *)&lws_lock_start[index];
 	arch_spin_unlock(s);
-	local_irq_restore(*flags);
+	preempt_enable();
 }
 
 static inline int
-futex_atomic_op_inuser (int encoded_op, u32 __user *uaddr)
+arch_futex_atomic_op_inuser(int op, int oparg, int *oval, u32 __user *uaddr)
 {
-	unsigned long int flags;
-	u32 val;
-	int op = (encoded_op >> 28) & 7;
-	int cmp = (encoded_op >> 24) & 15;
-	int oparg = (encoded_op << 8) >> 20;
-	int cmparg = (encoded_op << 20) >> 20;
-	int oldval = 0, ret;
-	if (encoded_op & (FUTEX_OP_OPARG_SHIFT << 28))
-		oparg = 1 << oparg;
+	int oldval, ret;
+	u32 tmp;
 
-	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(*uaddr)))
-		return -EFAULT;
+	ret = -EFAULT;
 
-	pagefault_disable();
+	_futex_spin_lock(uaddr);
+	if (unlikely(get_user(oldval, uaddr) != 0))
+		goto out_pagefault_enable;
 
-	_futex_spin_lock_irqsave(uaddr, &flags);
+	ret = 0;
+	tmp = oldval;
 
 	switch (op) {
 	case FUTEX_OP_SET:
-		/* *(int *)UADDR2 = OPARG; */
-		ret = get_user(oldval, uaddr);
-		if (!ret)
-			ret = put_user(oparg, uaddr);
+		tmp = oparg;
 		break;
 	case FUTEX_OP_ADD:
-		/* *(int *)UADDR2 += OPARG; */
-		ret = get_user(oldval, uaddr);
-		if (!ret) {
-			val = oldval + oparg;
-			ret = put_user(val, uaddr);
-		}
+		tmp += oparg;
 		break;
 	case FUTEX_OP_OR:
-		/* *(int *)UADDR2 |= OPARG; */
-		ret = get_user(oldval, uaddr);
-		if (!ret) {
-			val = oldval | oparg;
-			ret = put_user(val, uaddr);
-		}
+		tmp |= oparg;
 		break;
 	case FUTEX_OP_ANDN:
-		/* *(int *)UADDR2 &= ~OPARG; */
-		ret = get_user(oldval, uaddr);
-		if (!ret) {
-			val = oldval & ~oparg;
-			ret = put_user(val, uaddr);
-		}
+		tmp &= ~oparg;
 		break;
 	case FUTEX_OP_XOR:
-		/* *(int *)UADDR2 ^= OPARG; */
-		ret = get_user(oldval, uaddr);
-		if (!ret) {
-			val = oldval ^ oparg;
-			ret = put_user(val, uaddr);
-		}
+		tmp ^= oparg;
 		break;
 	default:
 		ret = -ENOSYS;
 	}
 
-	_futex_spin_unlock_irqrestore(uaddr, &flags);
+	if (ret == 0 && unlikely(put_user(tmp, uaddr) != 0))
+		ret = -EFAULT;
 
-	pagefault_enable();
+out_pagefault_enable:
+	_futex_spin_unlock(uaddr);
 
-	if (!ret) {
-		switch (cmp) {
-		case FUTEX_OP_CMP_EQ: ret = (oldval == cmparg); break;
-		case FUTEX_OP_CMP_NE: ret = (oldval != cmparg); break;
-		case FUTEX_OP_CMP_LT: ret = (oldval < cmparg); break;
-		case FUTEX_OP_CMP_GE: ret = (oldval >= cmparg); break;
-		case FUTEX_OP_CMP_LE: ret = (oldval <= cmparg); break;
-		case FUTEX_OP_CMP_GT: ret = (oldval > cmparg); break;
-		default: ret = -ENOSYS;
-		}
-	}
+	if (!ret)
+		*oval = oldval;
+
 	return ret;
 }
 
-/* Non-atomic version */
 static inline int
 futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 			      u32 oldval, u32 newval)
 {
-	int ret;
 	u32 val;
-	unsigned long flags;
 
 	/* futex.c wants to do a cmpxchg_inatomic on kernel NULL, which is
 	 * our gateway page, and causes no end of trouble...
 	 */
-	if (segment_eq(KERNEL_DS, get_fs()) && !uaddr)
+	if (uaccess_kernel() && !uaddr)
 		return -EFAULT;
 
-	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(u32)))
+	if (!access_ok(uaddr, sizeof(u32)))
 		return -EFAULT;
 
 	/* HPPA has no cmpxchg in hardware and therefore the
@@ -136,19 +98,21 @@ futex_atomic_cmpxchg_inatomic(u32 *uval, u32 __user *uaddr,
 	 * address. This should scale to a couple of CPUs.
 	 */
 
-	_futex_spin_lock_irqsave(uaddr, &flags);
+	_futex_spin_lock(uaddr);
+	if (unlikely(get_user(val, uaddr) != 0)) {
+		_futex_spin_unlock(uaddr);
+		return -EFAULT;
+	}
 
-	ret = get_user(val, uaddr);
-
-	if (!ret && val == oldval)
-		ret = put_user(newval, uaddr);
+	if (val == oldval && unlikely(put_user(newval, uaddr) != 0)) {
+		_futex_spin_unlock(uaddr);
+		return -EFAULT;
+	}
 
 	*uval = val;
+	_futex_spin_unlock(uaddr);
 
-	_futex_spin_unlock_irqrestore(uaddr, &flags);
-
-	return ret;
+	return 0;
 }
 
-#endif /*__KERNEL__*/
 #endif /*_ASM_PARISC_FUTEX_H*/

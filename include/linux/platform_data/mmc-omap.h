@@ -1,11 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * MMC definitions for OMAP2
  *
  * Copyright (C) 2006 Nokia Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #define OMAP_MMC_MAX_SLOTS	2
@@ -30,10 +27,6 @@ struct omap_mmc_platform_data {
 	int (*init)(struct device *dev);
 	void (*cleanup)(struct device *dev);
 	void (*shutdown)(struct device *dev);
-
-	/* To handle board related suspend/resume functionality for MMC */
-	int (*suspend)(struct device *dev, int slot);
-	int (*resume)(struct device *dev, int slot);
 
 	/* Return context loss count due to PM states changing */
 	int (*get_context_loss_count)(struct device *dev);
@@ -115,11 +108,13 @@ struct omap_mmc_platform_data {
 		const char *name;
 		u32 ocr_mask;
 
-		/* Card detection IRQs */
-		int card_detect_irq;
+		/* Card detection */
 		int (*card_detect)(struct device *dev, int slot);
 
 		unsigned int ban_openended:1;
 
 	} slots[OMAP_MMC_MAX_SLOTS];
 };
+
+extern void omap_mmc_notify_cover_event(struct device *dev, int slot,
+					int is_closed);

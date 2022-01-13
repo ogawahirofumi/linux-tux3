@@ -21,326 +21,155 @@
  *
  */
 
-#include <linux/printk.h>
-#include <linux/slab.h>
-#include "kfd_priv.h"
 #include "kfd_mqd_manager.h"
-#include "cik_regs.h"
-#include "../../radeon/cik_reg.h"
+#include "amdgpu_amdkfd.h"
+#include "kfd_device_queue_manager.h"
 
-inline void busy_wait(unsigned long ms)
+/* Mapping queue priority to pipe priority, indexed by queue priority */
+int pipe_priority_map[] = {
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_LOW,
+	KFD_PIPE_PRIORITY_CS_MEDIUM,
+	KFD_PIPE_PRIORITY_CS_MEDIUM,
+	KFD_PIPE_PRIORITY_CS_MEDIUM,
+	KFD_PIPE_PRIORITY_CS_MEDIUM,
+	KFD_PIPE_PRIORITY_CS_HIGH,
+	KFD_PIPE_PRIORITY_CS_HIGH,
+	KFD_PIPE_PRIORITY_CS_HIGH,
+	KFD_PIPE_PRIORITY_CS_HIGH,
+	KFD_PIPE_PRIORITY_CS_HIGH
+};
+
+struct kfd_mem_obj *allocate_hiq_mqd(struct kfd_dev *dev, struct queue_properties *q)
 {
-	while (time_before(jiffies, ms))
-		cpu_relax();
+	struct kfd_mem_obj *mqd_mem_obj = NULL;
+
+	mqd_mem_obj = kzalloc(sizeof(struct kfd_mem_obj), GFP_KERNEL);
+	if (!mqd_mem_obj)
+		return NULL;
+
+	mqd_mem_obj->gtt_mem = dev->dqm->hiq_sdma_mqd.gtt_mem;
+	mqd_mem_obj->gpu_addr = dev->dqm->hiq_sdma_mqd.gpu_addr;
+	mqd_mem_obj->cpu_ptr = dev->dqm->hiq_sdma_mqd.cpu_ptr;
+
+	return mqd_mem_obj;
 }
 
-static inline struct cik_mqd *get_mqd(void *mqd)
+struct kfd_mem_obj *allocate_sdma_mqd(struct kfd_dev *dev,
+					struct queue_properties *q)
 {
-	return (struct cik_mqd *)mqd;
+	struct kfd_mem_obj *mqd_mem_obj = NULL;
+	uint64_t offset;
+
+	mqd_mem_obj = kzalloc(sizeof(struct kfd_mem_obj), GFP_KERNEL);
+	if (!mqd_mem_obj)
+		return NULL;
+
+	offset = (q->sdma_engine_id *
+		dev->device_info->num_sdma_queues_per_engine +
+		q->sdma_queue_id) *
+		dev->dqm->mqd_mgrs[KFD_MQD_TYPE_SDMA]->mqd_size;
+
+	offset += dev->dqm->mqd_mgrs[KFD_MQD_TYPE_HIQ]->mqd_size;
+
+	mqd_mem_obj->gtt_mem = (void *)((uint64_t)dev->dqm->hiq_sdma_mqd.gtt_mem
+				+ offset);
+	mqd_mem_obj->gpu_addr = dev->dqm->hiq_sdma_mqd.gpu_addr + offset;
+	mqd_mem_obj->cpu_ptr = (uint32_t *)((uint64_t)
+				dev->dqm->hiq_sdma_mqd.cpu_ptr + offset);
+
+	return mqd_mem_obj;
 }
 
-static int init_mqd(struct mqd_manager *mm, void **mqd,
-		struct kfd_mem_obj **mqd_mem_obj, uint64_t *gart_addr,
-		struct queue_properties *q)
-{
-	uint64_t addr;
-	struct cik_mqd *m;
-	int retval;
-
-	BUG_ON(!mm || !q || !mqd);
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	retval = kfd2kgd->allocate_mem(mm->dev->kgd,
-					sizeof(struct cik_mqd),
-					256,
-					KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-					(struct kgd_mem **) mqd_mem_obj);
-
-	if (retval != 0)
-		return -ENOMEM;
-
-	m = (struct cik_mqd *) (*mqd_mem_obj)->cpu_ptr;
-	addr = (*mqd_mem_obj)->gpu_addr;
-
-	memset(m, 0, ALIGN(sizeof(struct cik_mqd), 256));
-
-	m->header = 0xC0310800;
-	m->compute_pipelinestat_enable = 1;
-	m->compute_static_thread_mgmt_se0 = 0xFFFFFFFF;
-	m->compute_static_thread_mgmt_se1 = 0xFFFFFFFF;
-	m->compute_static_thread_mgmt_se2 = 0xFFFFFFFF;
-	m->compute_static_thread_mgmt_se3 = 0xFFFFFFFF;
-
-	/*
-	 * Make sure to use the last queue state saved on mqd when the cp
-	 * reassigns the queue, so when queue is switched on/off (e.g over
-	 * subscription or quantum timeout) the context will be consistent
-	 */
-	m->cp_hqd_persistent_state =
-				DEFAULT_CP_HQD_PERSISTENT_STATE | PRELOAD_REQ;
-
-	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
-	m->cp_mqd_base_addr_lo        = lower_32_bits(addr);
-	m->cp_mqd_base_addr_hi        = upper_32_bits(addr);
-
-	m->cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE | IB_ATC_EN;
-	/* Although WinKFD writes this, I suspect it should not be necessary */
-	m->cp_hqd_ib_control = IB_ATC_EN | DEFAULT_MIN_IB_AVAIL_SIZE;
-
-	m->cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS |
-				QUANTUM_DURATION(10);
-
-	/*
-	 * Pipe Priority
-	 * Identifies the pipe relative priority when this queue is connected
-	 * to the pipeline. The pipe priority is against the GFX pipe and HP3D.
-	 * In KFD we are using a fixed pipe priority set to CS_MEDIUM.
-	 * 0 = CS_LOW (typically below GFX)
-	 * 1 = CS_MEDIUM (typically between HP3D and GFX
-	 * 2 = CS_HIGH (typically above HP3D)
-	 */
-	m->cp_hqd_pipe_priority = 1;
-	m->cp_hqd_queue_priority = 15;
-
-	*mqd = m;
-	if (gart_addr != NULL)
-		*gart_addr = addr;
-	retval = mm->update_mqd(mm, m, q);
-
-	return retval;
-}
-
-static void uninit_mqd(struct mqd_manager *mm, void *mqd,
+void free_mqd_hiq_sdma(struct mqd_manager *mm, void *mqd,
 			struct kfd_mem_obj *mqd_mem_obj)
 {
-	BUG_ON(!mm || !mqd);
-	kfd2kgd->free_mem(mm->dev->kgd, (struct kgd_mem *) mqd_mem_obj);
+	WARN_ON(!mqd_mem_obj->gtt_mem);
+	kfree(mqd_mem_obj);
 }
 
-static int load_mqd(struct mqd_manager *mm, void *mqd, uint32_t pipe_id,
-			uint32_t queue_id, uint32_t __user *wptr)
+void mqd_symmetrically_map_cu_mask(struct mqd_manager *mm,
+		const uint32_t *cu_mask, uint32_t cu_mask_count,
+		uint32_t *se_mask)
 {
-	return kfd2kgd->hqd_load(mm->dev->kgd, mqd, pipe_id, queue_id, wptr);
+	struct kfd_cu_info cu_info;
+	uint32_t cu_per_sh[KFD_MAX_NUM_SE][KFD_MAX_NUM_SH_PER_SE] = {0};
+	int i, se, sh, cu;
+	amdgpu_amdkfd_get_cu_info(mm->dev->kgd, &cu_info);
 
-}
+	if (cu_mask_count > cu_info.cu_active_number)
+		cu_mask_count = cu_info.cu_active_number;
 
-static int update_mqd(struct mqd_manager *mm, void *mqd,
-			struct queue_properties *q)
-{
-	struct cik_mqd *m;
-
-	BUG_ON(!mm || !q || !mqd);
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	m = get_mqd(mqd);
-	m->cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE |
-				DEFAULT_MIN_AVAIL_SIZE | PQ_ATC_EN;
-
-	/*
-	 * Calculating queue size which is log base 2 of actual queue size -1
-	 * dwords and another -1 for ffs
+	/* Exceeding these bounds corrupts the stack and indicates a coding error.
+	 * Returning with no CU's enabled will hang the queue, which should be
+	 * attention grabbing.
 	 */
-	m->cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int))
-								- 1 - 1;
-	m->cp_hqd_pq_base_lo = lower_32_bits((uint64_t)q->queue_address >> 8);
-	m->cp_hqd_pq_base_hi = upper_32_bits((uint64_t)q->queue_address >> 8);
-	m->cp_hqd_pq_rptr_report_addr_lo = lower_32_bits((uint64_t)q->read_ptr);
-	m->cp_hqd_pq_rptr_report_addr_hi = upper_32_bits((uint64_t)q->read_ptr);
-	m->cp_hqd_pq_doorbell_control = DOORBELL_EN |
-					DOORBELL_OFFSET(q->doorbell_off);
-
-	m->cp_hqd_vmid = q->vmid;
-
-	if (q->format == KFD_QUEUE_FORMAT_AQL) {
-		m->cp_hqd_iq_rptr = AQL_ENABLE;
-		m->cp_hqd_pq_control |= NO_UPDATE_RPTR;
+	if (cu_info.num_shader_engines > KFD_MAX_NUM_SE) {
+		pr_err("Exceeded KFD_MAX_NUM_SE, chip reports %d\n", cu_info.num_shader_engines);
+		return;
 	}
-
-	m->cp_hqd_active = 0;
-	q->is_active = false;
-	if (q->queue_size > 0 &&
-			q->queue_address != 0 &&
-			q->queue_percent > 0) {
-		m->cp_hqd_active = 1;
-		q->is_active = true;
+	if (cu_info.num_shader_arrays_per_engine > KFD_MAX_NUM_SH_PER_SE) {
+		pr_err("Exceeded KFD_MAX_NUM_SH, chip reports %d\n",
+			cu_info.num_shader_arrays_per_engine * cu_info.num_shader_engines);
+		return;
 	}
-
-	return 0;
-}
-
-static int destroy_mqd(struct mqd_manager *mm, void *mqd,
-			enum kfd_preempt_type type,
-			unsigned int timeout, uint32_t pipe_id,
-			uint32_t queue_id)
-{
-	return kfd2kgd->hqd_destroy(mm->dev->kgd, type, timeout,
-					pipe_id, queue_id);
-}
-
-static bool is_occupied(struct mqd_manager *mm, void *mqd,
-			uint64_t queue_address,	uint32_t pipe_id,
-			uint32_t queue_id)
-{
-
-	return kfd2kgd->hqd_is_occupied(mm->dev->kgd, queue_address,
-					pipe_id, queue_id);
-
-}
-
-/*
- * HIQ MQD Implementation, concrete implementation for HIQ MQD implementation.
- * The HIQ queue in Kaveri is using the same MQD structure as all the user mode
- * queues but with different initial values.
- */
-
-static int init_mqd_hiq(struct mqd_manager *mm, void **mqd,
-		struct kfd_mem_obj **mqd_mem_obj, uint64_t *gart_addr,
-		struct queue_properties *q)
-{
-	uint64_t addr;
-	struct cik_mqd *m;
-	int retval;
-
-	BUG_ON(!mm || !q || !mqd || !mqd_mem_obj);
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	retval = kfd2kgd->allocate_mem(mm->dev->kgd,
-					sizeof(struct cik_mqd),
-					256,
-					KFD_MEMPOOL_SYSTEM_WRITECOMBINE,
-					(struct kgd_mem **) mqd_mem_obj);
-
-	if (retval != 0)
-		return -ENOMEM;
-
-	m = (struct cik_mqd *) (*mqd_mem_obj)->cpu_ptr;
-	addr = (*mqd_mem_obj)->gpu_addr;
-
-	memset(m, 0, ALIGN(sizeof(struct cik_mqd), 256));
-
-	m->header = 0xC0310800;
-	m->compute_pipelinestat_enable = 1;
-	m->compute_static_thread_mgmt_se0 = 0xFFFFFFFF;
-	m->compute_static_thread_mgmt_se1 = 0xFFFFFFFF;
-	m->compute_static_thread_mgmt_se2 = 0xFFFFFFFF;
-	m->compute_static_thread_mgmt_se3 = 0xFFFFFFFF;
-
-	m->cp_hqd_persistent_state = DEFAULT_CP_HQD_PERSISTENT_STATE |
-					PRELOAD_REQ;
-	m->cp_hqd_quantum = QUANTUM_EN | QUANTUM_SCALE_1MS |
-				QUANTUM_DURATION(10);
-
-	m->cp_mqd_control             = MQD_CONTROL_PRIV_STATE_EN;
-	m->cp_mqd_base_addr_lo        = lower_32_bits(addr);
-	m->cp_mqd_base_addr_hi        = upper_32_bits(addr);
-
-	m->cp_hqd_ib_control = DEFAULT_MIN_IB_AVAIL_SIZE;
-
-	/*
-	 * Pipe Priority
-	 * Identifies the pipe relative priority when this queue is connected
-	 * to the pipeline. The pipe priority is against the GFX pipe and HP3D.
-	 * In KFD we are using a fixed pipe priority set to CS_MEDIUM.
-	 * 0 = CS_LOW (typically below GFX)
-	 * 1 = CS_MEDIUM (typically between HP3D and GFX
-	 * 2 = CS_HIGH (typically above HP3D)
+	/* Count active CUs per SH.
+	 *
+	 * Some CUs in an SH may be disabled.	HW expects disabled CUs to be
+	 * represented in the high bits of each SH's enable mask (the upper and lower
+	 * 16 bits of se_mask) and will take care of the actual distribution of
+	 * disabled CUs within each SH automatically.
+	 * Each half of se_mask must be filled only on bits 0-cu_per_sh[se][sh]-1.
+	 *
+	 * See note on Arcturus cu_bitmap layout in gfx_v9_0_get_cu_info.
 	 */
-	m->cp_hqd_pipe_priority = 1;
-	m->cp_hqd_queue_priority = 15;
+	for (se = 0; se < cu_info.num_shader_engines; se++)
+		for (sh = 0; sh < cu_info.num_shader_arrays_per_engine; sh++)
+			cu_per_sh[se][sh] = hweight32(cu_info.cu_bitmap[se % 4][sh + (se / 4)]);
 
-	*mqd = m;
-	if (gart_addr)
-		*gart_addr = addr;
-	retval = mm->update_mqd(mm, m, q);
-
-	return retval;
-}
-
-static int update_mqd_hiq(struct mqd_manager *mm, void *mqd,
-				struct queue_properties *q)
-{
-	struct cik_mqd *m;
-
-	BUG_ON(!mm || !q || !mqd);
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	m = get_mqd(mqd);
-	m->cp_hqd_pq_control = DEFAULT_RPTR_BLOCK_SIZE |
-				DEFAULT_MIN_AVAIL_SIZE |
-				PRIV_STATE |
-				KMD_QUEUE;
-
-	/*
-	 * Calculating queue size which is log base 2 of actual queue
-	 * size -1 dwords
+	/* Symmetrically map cu_mask to all SEs & SHs:
+	 * se_mask programs up to 2 SH in the upper and lower 16 bits.
+	 *
+	 * Examples
+	 * Assuming 1 SH/SE, 4 SEs:
+	 * cu_mask[0] bit0 -> se_mask[0] bit0
+	 * cu_mask[0] bit1 -> se_mask[1] bit0
+	 * ...
+	 * cu_mask[0] bit4 -> se_mask[0] bit1
+	 * ...
+	 *
+	 * Assuming 2 SH/SE, 4 SEs
+	 * cu_mask[0] bit0 -> se_mask[0] bit0 (SE0,SH0,CU0)
+	 * cu_mask[0] bit1 -> se_mask[1] bit0 (SE1,SH0,CU0)
+	 * ...
+	 * cu_mask[0] bit4 -> se_mask[0] bit16 (SE0,SH1,CU0)
+	 * cu_mask[0] bit5 -> se_mask[1] bit16 (SE1,SH1,CU0)
+	 * ...
+	 * cu_mask[0] bit8 -> se_mask[0] bit1 (SE0,SH0,CU1)
+	 * ...
+	 *
+	 * First ensure all CUs are disabled, then enable user specified CUs.
 	 */
-	m->cp_hqd_pq_control |= ffs(q->queue_size / sizeof(unsigned int))
-								- 1 - 1;
-	m->cp_hqd_pq_base_lo = lower_32_bits((uint64_t)q->queue_address >> 8);
-	m->cp_hqd_pq_base_hi = upper_32_bits((uint64_t)q->queue_address >> 8);
-	m->cp_hqd_pq_rptr_report_addr_lo = lower_32_bits((uint64_t)q->read_ptr);
-	m->cp_hqd_pq_rptr_report_addr_hi = upper_32_bits((uint64_t)q->read_ptr);
-	m->cp_hqd_pq_doorbell_control = DOORBELL_EN |
-					DOORBELL_OFFSET(q->doorbell_off);
+	for (i = 0; i < cu_info.num_shader_engines; i++)
+		se_mask[i] = 0;
 
-	m->cp_hqd_vmid = q->vmid;
-
-	m->cp_hqd_active = 0;
-	q->is_active = false;
-	if (q->queue_size > 0 &&
-			q->queue_address != 0 &&
-			q->queue_percent > 0) {
-		m->cp_hqd_active = 1;
-		q->is_active = true;
+	i = 0;
+	for (cu = 0; cu < 16; cu++) {
+		for (sh = 0; sh < cu_info.num_shader_arrays_per_engine; sh++) {
+			for (se = 0; se < cu_info.num_shader_engines; se++) {
+				if (cu_per_sh[se][sh] > cu) {
+					if (cu_mask[i / 32] & (1 << (i % 32)))
+						se_mask[se] |= 1 << (cu + sh * 16);
+					i++;
+					if (i == cu_mask_count)
+						return;
+				}
+			}
+		}
 	}
-
-	return 0;
 }
-
-struct mqd_manager *mqd_manager_init(enum KFD_MQD_TYPE type,
-					struct kfd_dev *dev)
-{
-	struct mqd_manager *mqd;
-
-	BUG_ON(!dev);
-	BUG_ON(type >= KFD_MQD_TYPE_MAX);
-
-	pr_debug("kfd: In func %s\n", __func__);
-
-	mqd = kzalloc(sizeof(struct mqd_manager), GFP_KERNEL);
-	if (!mqd)
-		return NULL;
-
-	mqd->dev = dev;
-
-	switch (type) {
-	case KFD_MQD_TYPE_CIK_CP:
-	case KFD_MQD_TYPE_CIK_COMPUTE:
-		mqd->init_mqd = init_mqd;
-		mqd->uninit_mqd = uninit_mqd;
-		mqd->load_mqd = load_mqd;
-		mqd->update_mqd = update_mqd;
-		mqd->destroy_mqd = destroy_mqd;
-		mqd->is_occupied = is_occupied;
-		break;
-	case KFD_MQD_TYPE_CIK_HIQ:
-		mqd->init_mqd = init_mqd_hiq;
-		mqd->uninit_mqd = uninit_mqd;
-		mqd->load_mqd = load_mqd;
-		mqd->update_mqd = update_mqd_hiq;
-		mqd->destroy_mqd = destroy_mqd;
-		mqd->is_occupied = is_occupied;
-		break;
-	default:
-		kfree(mqd);
-		return NULL;
-	}
-
-	return mqd;
-}
-
-/* SDMA queues should be implemented here when the cp will supports them */

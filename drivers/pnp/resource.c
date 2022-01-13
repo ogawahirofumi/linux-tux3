@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * resource.c - Contains functions for registering and analyzing resource information
  *
@@ -179,8 +180,9 @@ int pnp_check_port(struct pnp_dev *dev, struct resource *res)
 	/* check if the resource is already in use, skip if the
 	 * device is active because it itself may be in use */
 	if (!dev->active) {
-		if (__check_region(&ioport_resource, *port, length(port, end)))
+		if (!request_region(*port, length(port, end), "pnp"))
 			return 0;
+		release_region(*port, length(port, end));
 	}
 
 	/* check if the resource is reserved */
@@ -241,8 +243,9 @@ int pnp_check_mem(struct pnp_dev *dev, struct resource *res)
 	/* check if the resource is already in use, skip if the
 	 * device is active because it itself may be in use */
 	if (!dev->active) {
-		if (check_mem_region(*addr, length(addr, end)))
+		if (!request_mem_region(*addr, length(addr, end), "pnp"))
 			return 0;
+		release_mem_region(*addr, length(addr, end));
 	}
 
 	/* check if the resource is reserved */
@@ -537,7 +540,7 @@ struct pnp_resource *pnp_add_irq_resource(struct pnp_dev *dev, int irq,
 	res->start = irq;
 	res->end = irq;
 
-	dev_printk(KERN_DEBUG, &dev->dev, "%pR\n", res);
+	dev_dbg(&dev->dev, "%pR\n", res);
 	return pnp_res;
 }
 

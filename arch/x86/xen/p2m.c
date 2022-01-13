@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0
+
 /*
  * Xen leaves the responsibility for maintaining p2m mappings to the
  * guests themselves, but it must also access and update the p2m array
@@ -60,17 +62,18 @@
  */
 
 #include <linux/init.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/list.h>
 #include <linux/hash.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 
 #include <asm/cache.h>
 #include <asm/setup.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #include <asm/xen/page.h>
 #include <asm/xen/hypercall.h>
@@ -78,13 +81,15 @@
 #include <xen/balloon.h>
 #include <xen/grant_table.h>
 
-#include "p2m.h"
 #include "multicalls.h"
 #include "xen-ops.h"
 
-#define PMDS_PER_MID_PAGE	(P2M_MID_PER_PAGE / PTRS_PER_PTE)
+#define P2M_MID_PER_PAGE	(PAGE_SIZE / sizeof(unsigned long *))
+#define P2M_TOP_PER_PAGE	(PAGE_SIZE / sizeof(unsigned long **))
 
-static void __init m2p_override_init(void);
+#define MAX_P2M_PFN	(P2M_TOP_PER_PAGE * P2M_MID_PER_PAGE * P2M_PER_PAGE)
+
+#define PMDS_PER_MID_PAGE	(P2M_MID_PER_PAGE / PTRS_PER_PTE)
 
 unsigned long *xen_p2m_addr __read_mostly;
 EXPORT_SYMBOL_GPL(xen_p2m_addr);
@@ -92,6 +97,12 @@ unsigned long xen_p2m_size __read_mostly;
 EXPORT_SYMBOL_GPL(xen_p2m_size);
 unsigned long xen_max_p2m_pfn __read_mostly;
 EXPORT_SYMBOL_GPL(xen_max_p2m_pfn);
+
+#ifdef CONFIG_XEN_MEMORY_HOTPLUG_LIMIT
+#define P2M_LIMIT CONFIG_XEN_MEMORY_HOTPLUG_LIMIT
+#else
+#define P2M_LIMIT 0
+#endif
 
 static DEFINE_SPINLOCK(p2m_update_lock);
 
@@ -102,6 +113,15 @@ static unsigned long *p2m_missing;
 static unsigned long *p2m_identity;
 static pte_t *p2m_missing_pte;
 static pte_t *p2m_identity_pte;
+
+/*
+ * Hint at last populated PFN.
+ *
+ * Used to set HYPERVISOR_shared_info->arch.max_pfn so the toolstack
+ * can avoid scanning the whole P2M (which may be sized to account for
+ * hotplugged memory).
+ */
+static unsigned long xen_p2m_last_pfn;
 
 static inline unsigned p2m_top_index(unsigned long pfn)
 {
@@ -161,16 +181,23 @@ static void p2m_init_identity(unsigned long *p2m, unsigned long pfn)
 
 static void * __ref alloc_p2m_page(void)
 {
-	if (unlikely(!slab_is_available()))
-		return alloc_bootmem_align(PAGE_SIZE, PAGE_SIZE);
+	if (unlikely(!slab_is_available())) {
+		void *ptr = memblock_alloc(PAGE_SIZE, PAGE_SIZE);
 
-	return (void *)__get_free_page(GFP_KERNEL | __GFP_REPEAT);
+		if (!ptr)
+			panic("%s: Failed to allocate %lu bytes align=0x%lx\n",
+			      __func__, PAGE_SIZE, PAGE_SIZE);
+
+		return ptr;
+	}
+
+	return (void *)__get_free_page(GFP_KERNEL);
 }
 
 static void __ref free_p2m_page(void *p)
 {
 	if (unlikely(!slab_is_available())) {
-		free_bootmem((unsigned long)p, PAGE_SIZE);
+		memblock_free(p, PAGE_SIZE);
 		return;
 	}
 
@@ -194,7 +221,7 @@ void __ref xen_build_mfn_list_list(void)
 	unsigned int level, topidx, mididx;
 	unsigned long *mid_mfn_p;
 
-	if (xen_feature(XENFEAT_auto_translated_physmap))
+	if (xen_start_info->flags & SIF_VIRT_P2M_4TOOLS)
 		return;
 
 	/* Pre-initialize p2m_top_mfn to be completely missing */
@@ -250,23 +277,24 @@ void __ref xen_build_mfn_list_list(void)
 
 void xen_setup_mfn_list_list(void)
 {
-	if (xen_feature(XENFEAT_auto_translated_physmap))
-		return;
-
 	BUG_ON(HYPERVISOR_shared_info == &xen_dummy_shared_info);
 
-	HYPERVISOR_shared_info->arch.pfn_to_mfn_frame_list_list =
-		virt_to_mfn(p2m_top_mfn);
-	HYPERVISOR_shared_info->arch.max_pfn = xen_max_p2m_pfn;
+	if (xen_start_info->flags & SIF_VIRT_P2M_4TOOLS)
+		HYPERVISOR_shared_info->arch.pfn_to_mfn_frame_list_list = ~0UL;
+	else
+		HYPERVISOR_shared_info->arch.pfn_to_mfn_frame_list_list =
+			virt_to_mfn(p2m_top_mfn);
+	HYPERVISOR_shared_info->arch.max_pfn = xen_p2m_last_pfn;
+	HYPERVISOR_shared_info->arch.p2m_generation = 0;
+	HYPERVISOR_shared_info->arch.p2m_vaddr = (unsigned long)xen_p2m_addr;
+	HYPERVISOR_shared_info->arch.p2m_cr3 =
+		xen_pfn_to_cr3(virt_to_mfn(swapper_pg_dir));
 }
 
 /* Set up p2m_top to point to the domain-builder provided p2m pages */
 void __init xen_build_dynamic_phys_to_machine(void)
 {
 	unsigned long pfn;
-
-	 if (xen_feature(XENFEAT_auto_translated_physmap))
-		return;
 
 	xen_p2m_addr = (unsigned long *)xen_start_info->mfn_list;
 	xen_p2m_size = ALIGN(xen_start_info->nr_pages, P2M_PER_PAGE);
@@ -351,12 +379,8 @@ static void __init xen_rebuild_p2m_list(unsigned long *p2m)
 
 		if (type == P2M_TYPE_PFN || i < chunk) {
 			/* Use initial p2m page contents. */
-#ifdef CONFIG_X86_64
 			mfns = alloc_p2m_page();
 			copy_page(mfns, xen_p2m_addr + pfn);
-#else
-			mfns = xen_p2m_addr + pfn;
-#endif
 			ptep = populate_extra_pte((unsigned long)(p2m + pfn));
 			set_pte(ptep,
 				pfn_pte(PFN_DOWN(__pa(mfns)), PAGE_KERNEL));
@@ -387,9 +411,13 @@ static void __init xen_rebuild_p2m_list(unsigned long *p2m)
 void __init xen_vmalloc_p2m_tree(void)
 {
 	static struct vm_struct vm;
+	unsigned long p2m_limit;
 
+	xen_p2m_last_pfn = xen_max_p2m_pfn;
+
+	p2m_limit = (phys_addr_t)P2M_LIMIT * 1024 * 1024 * 1024 / PAGE_SIZE;
 	vm.flags = VM_ALLOC;
-	vm.size = ALIGN(sizeof(unsigned long) * xen_max_p2m_pfn,
+	vm.size = ALIGN(sizeof(unsigned long) * max(xen_max_p2m_pfn, p2m_limit),
 			PMD_SIZE * PMDS_PER_MID_PAGE);
 	vm_area_register_early(&vm, PMD_SIZE * PMDS_PER_MID_PAGE);
 	pr_notice("p2m virtual area at %p, size is %lx\n", vm.addr, vm.size);
@@ -402,8 +430,6 @@ void __init xen_vmalloc_p2m_tree(void)
 	xen_p2m_size = xen_max_p2m_pfn;
 
 	xen_inv_extra_mem();
-
-	m2p_override_init();
 }
 
 unsigned long get_phys_to_machine(unsigned long pfn)
@@ -437,7 +463,7 @@ EXPORT_SYMBOL_GPL(get_phys_to_machine);
  * Allocate new pmd(s). It is checked whether the old pmd is still in place.
  * If not, nothing is changed. This is okay as the only reason for allocating
  * a new pmd is to replace p2m_missing_pte or p2m_identity_pte by a individual
- * pmd. In case of PAE/x86-32 there are multiple pmds to allocate!
+ * pmd.
  */
 static pte_t *alloc_p2m_pmd(unsigned long addr, pte_t *pte_pg)
 {
@@ -473,8 +499,12 @@ static pte_t *alloc_p2m_pmd(unsigned long addr, pte_t *pte_pg)
 
 		ptechk = lookup_address(vaddr, &level);
 		if (ptechk == pte_pg) {
+			HYPERVISOR_shared_info->arch.p2m_generation++;
+			wmb(); /* Tools are synchronizing via p2m_generation. */
 			set_pmd(pmdp,
 				__pmd(__pa(pte_newpg[i]) | _KERNPG_TABLE));
+			wmb(); /* Tools are synchronizing via p2m_generation. */
+			HYPERVISOR_shared_info->arch.p2m_generation++;
 			pte_newpg[i] = NULL;
 		}
 
@@ -498,18 +528,15 @@ static pte_t *alloc_p2m_pmd(unsigned long addr, pte_t *pte_pg)
  * the new pages are installed with cmpxchg; if we lose the race then
  * simply free the page we allocated and use the one that's there.
  */
-static bool alloc_p2m(unsigned long pfn)
+int xen_alloc_p2m_entry(unsigned long pfn)
 {
-	unsigned topidx, mididx;
+	unsigned topidx;
 	unsigned long *top_mfn_p, *mid_mfn;
 	pte_t *ptep, *pte_pg;
 	unsigned int level;
 	unsigned long flags;
 	unsigned long addr = (unsigned long)(xen_p2m_addr + pfn);
 	unsigned long p2m_pfn;
-
-	topidx = p2m_top_index(pfn);
-	mididx = p2m_mid_index(pfn);
 
 	ptep = lookup_address(addr, &level);
 	BUG_ON(!ptep || level != PG_LEVEL_4K);
@@ -519,12 +546,13 @@ static bool alloc_p2m(unsigned long pfn)
 		/* PMD level is missing, allocate a new one */
 		ptep = alloc_p2m_pmd(addr, pte_pg);
 		if (!ptep)
-			return false;
+			return -ENOMEM;
 	}
 
-	if (p2m_top_mfn) {
+	if (p2m_top_mfn && pfn < MAX_P2M_PFN) {
+		topidx = p2m_top_index(pfn);
 		top_mfn_p = &p2m_top_mfn[topidx];
-		mid_mfn = ACCESS_ONCE(p2m_top_mfn_p[topidx]);
+		mid_mfn = READ_ONCE(p2m_top_mfn_p[topidx]);
 
 		BUG_ON(virt_to_mfn(mid_mfn) != *top_mfn_p);
 
@@ -536,7 +564,7 @@ static bool alloc_p2m(unsigned long pfn)
 
 			mid_mfn = alloc_p2m_page();
 			if (!mid_mfn)
-				return false;
+				return -ENOMEM;
 
 			p2m_mid_mfn_init(mid_mfn, p2m_missing);
 
@@ -554,7 +582,7 @@ static bool alloc_p2m(unsigned long pfn)
 		mid_mfn = NULL;
 	}
 
-	p2m_pfn = pte_pfn(ACCESS_ONCE(*ptep));
+	p2m_pfn = pte_pfn(READ_ONCE(*ptep));
 	if (p2m_pfn == PFN_DOWN(__pa(p2m_identity)) ||
 	    p2m_pfn == PFN_DOWN(__pa(p2m_missing))) {
 		/* p2m leaf page is missing */
@@ -562,20 +590,24 @@ static bool alloc_p2m(unsigned long pfn)
 
 		p2m = alloc_p2m_page();
 		if (!p2m)
-			return false;
+			return -ENOMEM;
 
 		if (p2m_pfn == PFN_DOWN(__pa(p2m_missing)))
 			p2m_init(p2m);
 		else
-			p2m_init_identity(p2m, pfn);
+			p2m_init_identity(p2m, pfn & ~(P2M_PER_PAGE - 1));
 
 		spin_lock_irqsave(&p2m_update_lock, flags);
 
 		if (pte_pfn(*ptep) == p2m_pfn) {
+			HYPERVISOR_shared_info->arch.p2m_generation++;
+			wmb(); /* Tools are synchronizing via p2m_generation. */
 			set_pte(ptep,
 				pfn_pte(PFN_DOWN(__pa(p2m)), PAGE_KERNEL));
+			wmb(); /* Tools are synchronizing via p2m_generation. */
+			HYPERVISOR_shared_info->arch.p2m_generation++;
 			if (mid_mfn)
-				mid_mfn[mididx] = virt_to_mfn(p2m);
+				mid_mfn[p2m_mid_index(pfn)] = virt_to_mfn(p2m);
 			p2m = NULL;
 		}
 
@@ -585,8 +617,15 @@ static bool alloc_p2m(unsigned long pfn)
 			free_p2m_page(p2m);
 	}
 
-	return true;
+	/* Expanded the p2m? */
+	if (pfn >= xen_p2m_last_pfn) {
+		xen_p2m_last_pfn = ALIGN(pfn + 1, P2M_PER_PAGE);
+		HYPERVISOR_shared_info->arch.max_pfn = xen_p2m_last_pfn;
+	}
+
+	return 0;
 }
+EXPORT_SYMBOL(xen_alloc_p2m_entry);
 
 unsigned long __init set_phys_range_identity(unsigned long pfn_s,
 				      unsigned long pfn_e)
@@ -595,9 +634,6 @@ unsigned long __init set_phys_range_identity(unsigned long pfn_s,
 
 	if (unlikely(pfn_s >= xen_p2m_size))
 		return 0;
-
-	if (unlikely(xen_feature(XENFEAT_auto_translated_physmap)))
-		return pfn_e - pfn_s;
 
 	if (pfn_s > pfn_e)
 		return 0;
@@ -616,15 +652,14 @@ bool __set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 	pte_t *ptep;
 	unsigned int level;
 
-	/* don't track P2M changes in autotranslate guests */
-	if (unlikely(xen_feature(XENFEAT_auto_translated_physmap)))
-		return true;
+	/* Only invalid entries allowed above the highest p2m covered frame. */
+	if (unlikely(pfn >= xen_p2m_size))
+		return mfn == INVALID_P2M_ENTRY;
 
-	if (unlikely(pfn >= xen_p2m_size)) {
-		BUG_ON(mfn != INVALID_P2M_ENTRY);
-		return true;
-	}
-
+	/*
+	 * The interface requires atomic updates on p2m elements.
+	 * xen_safe_write_ulong() is using an atomic store via asm().
+	 */
 	if (likely(!xen_safe_write_ulong(xen_p2m_addr + pfn, mfn)))
 		return true;
 
@@ -643,7 +678,10 @@ bool __set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 bool set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 {
 	if (unlikely(!__set_phys_to_machine(pfn, mfn))) {
-		if (!alloc_p2m(pfn))
+		int ret;
+
+		ret = xen_alloc_p2m_entry(pfn);
+		if (ret < 0)
 			return false;
 
 		return __set_phys_to_machine(pfn, mfn);
@@ -652,107 +690,31 @@ bool set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 	return true;
 }
 
-#define M2P_OVERRIDE_HASH_SHIFT	10
-#define M2P_OVERRIDE_HASH	(1 << M2P_OVERRIDE_HASH_SHIFT)
-
-static struct list_head *m2p_overrides;
-static DEFINE_SPINLOCK(m2p_override_lock);
-
-static void __init m2p_override_init(void)
-{
-	unsigned i;
-
-	m2p_overrides = alloc_bootmem_align(
-				sizeof(*m2p_overrides) * M2P_OVERRIDE_HASH,
-				sizeof(unsigned long));
-
-	for (i = 0; i < M2P_OVERRIDE_HASH; i++)
-		INIT_LIST_HEAD(&m2p_overrides[i]);
-}
-
-static unsigned long mfn_hash(unsigned long mfn)
-{
-	return hash_long(mfn, M2P_OVERRIDE_HASH_SHIFT);
-}
-
-/* Add an MFN override for a particular page */
-static int m2p_add_override(unsigned long mfn, struct page *page,
-			    struct gnttab_map_grant_ref *kmap_op)
-{
-	unsigned long flags;
-	unsigned long pfn;
-	unsigned long uninitialized_var(address);
-	unsigned level;
-	pte_t *ptep = NULL;
-
-	pfn = page_to_pfn(page);
-	if (!PageHighMem(page)) {
-		address = (unsigned long)__va(pfn << PAGE_SHIFT);
-		ptep = lookup_address(address, &level);
-		if (WARN(ptep == NULL || level != PG_LEVEL_4K,
-			 "m2p_add_override: pfn %lx not mapped", pfn))
-			return -EINVAL;
-	}
-
-	if (kmap_op != NULL) {
-		if (!PageHighMem(page)) {
-			struct multicall_space mcs =
-				xen_mc_entry(sizeof(*kmap_op));
-
-			MULTI_grant_table_op(mcs.mc,
-					GNTTABOP_map_grant_ref, kmap_op, 1);
-
-			xen_mc_issue(PARAVIRT_LAZY_MMU);
-		}
-	}
-	spin_lock_irqsave(&m2p_override_lock, flags);
-	list_add(&page->lru,  &m2p_overrides[mfn_hash(mfn)]);
-	spin_unlock_irqrestore(&m2p_override_lock, flags);
-
-	/* p2m(m2p(mfn)) == mfn: the mfn is already present somewhere in
-	 * this domain. Set the FOREIGN_FRAME_BIT in the p2m for the other
-	 * pfn so that the following mfn_to_pfn(mfn) calls will return the
-	 * pfn from the m2p_override (the backend pfn) instead.
-	 * We need to do this because the pages shared by the frontend
-	 * (xen-blkfront) can be already locked (lock_page, called by
-	 * do_read_cache_page); when the userspace backend tries to use them
-	 * with direct_IO, mfn_to_pfn returns the pfn of the frontend, so
-	 * do_blockdev_direct_IO is going to try to lock the same pages
-	 * again resulting in a deadlock.
-	 * As a side effect get_user_pages_fast might not be safe on the
-	 * frontend pages while they are being shared with the backend,
-	 * because mfn_to_pfn (that ends up being called by GUPF) will
-	 * return the backend pfn rather than the frontend pfn. */
-	pfn = mfn_to_pfn_no_overrides(mfn);
-	if (__pfn_to_mfn(pfn) == mfn)
-		set_phys_to_machine(pfn, FOREIGN_FRAME(mfn));
-
-	return 0;
-}
-
 int set_foreign_p2m_mapping(struct gnttab_map_grant_ref *map_ops,
 			    struct gnttab_map_grant_ref *kmap_ops,
 			    struct page **pages, unsigned int count)
 {
 	int i, ret = 0;
-	bool lazy = false;
 	pte_t *pte;
 
 	if (xen_feature(XENFEAT_auto_translated_physmap))
 		return 0;
 
-	if (kmap_ops &&
-	    !in_interrupt() &&
-	    paravirt_get_lazy_mode() == PARAVIRT_LAZY_NONE) {
-		arch_enter_lazy_mmu_mode();
-		lazy = true;
+	if (kmap_ops) {
+		ret = HYPERVISOR_grant_table_op(GNTTABOP_map_grant_ref,
+						kmap_ops, count);
+		if (ret)
+			goto out;
 	}
 
 	for (i = 0; i < count; i++) {
 		unsigned long mfn, pfn;
+		struct gnttab_unmap_grant_ref unmap[2];
+		int rc;
 
 		/* Do not add to override if the map failed. */
-		if (map_ops[i].status)
+		if (map_ops[i].status != GNTST_okay ||
+		    (kmap_ops && kmap_ops[i].status != GNTST_okay))
 			continue;
 
 		if (map_ops[i].flags & GNTMAP_contains_pte) {
@@ -764,208 +726,78 @@ int set_foreign_p2m_mapping(struct gnttab_map_grant_ref *map_ops,
 		}
 		pfn = page_to_pfn(pages[i]);
 
-		WARN_ON(PagePrivate(pages[i]));
-		SetPagePrivate(pages[i]);
-		set_page_private(pages[i], mfn);
-		pages[i]->index = pfn_to_mfn(pfn);
+		WARN(pfn_to_mfn(pfn) != INVALID_P2M_ENTRY, "page must be ballooned");
 
-		if (unlikely(!set_phys_to_machine(pfn, FOREIGN_FRAME(mfn)))) {
-			ret = -ENOMEM;
-			goto out;
-		}
+		if (likely(set_phys_to_machine(pfn, FOREIGN_FRAME(mfn))))
+			continue;
+
+		/*
+		 * Signal an error for this slot. This in turn requires
+		 * immediate unmapping.
+		 */
+		map_ops[i].status = GNTST_general_error;
+		unmap[0].host_addr = map_ops[i].host_addr,
+		unmap[0].handle = map_ops[i].handle;
+		map_ops[i].handle = INVALID_GRANT_HANDLE;
+		if (map_ops[i].flags & GNTMAP_device_map)
+			unmap[0].dev_bus_addr = map_ops[i].dev_bus_addr;
+		else
+			unmap[0].dev_bus_addr = 0;
 
 		if (kmap_ops) {
-			ret = m2p_add_override(mfn, pages[i], &kmap_ops[i]);
-			if (ret)
-				goto out;
+			kmap_ops[i].status = GNTST_general_error;
+			unmap[1].host_addr = kmap_ops[i].host_addr,
+			unmap[1].handle = kmap_ops[i].handle;
+			kmap_ops[i].handle = INVALID_GRANT_HANDLE;
+			if (kmap_ops[i].flags & GNTMAP_device_map)
+				unmap[1].dev_bus_addr = kmap_ops[i].dev_bus_addr;
+			else
+				unmap[1].dev_bus_addr = 0;
 		}
+
+		/*
+		 * Pre-populate both status fields, to be recognizable in
+		 * the log message below.
+		 */
+		unmap[0].status = 1;
+		unmap[1].status = 1;
+
+		rc = HYPERVISOR_grant_table_op(GNTTABOP_unmap_grant_ref,
+					       unmap, 1 + !!kmap_ops);
+		if (rc || unmap[0].status != GNTST_okay ||
+		    unmap[1].status != GNTST_okay)
+			pr_err_once("gnttab unmap failed: rc=%d st0=%d st1=%d\n",
+				    rc, unmap[0].status, unmap[1].status);
 	}
 
 out:
-	if (lazy)
-		arch_leave_lazy_mmu_mode();
-
 	return ret;
-}
-EXPORT_SYMBOL_GPL(set_foreign_p2m_mapping);
-
-static struct page *m2p_find_override(unsigned long mfn)
-{
-	unsigned long flags;
-	struct list_head *bucket;
-	struct page *p, *ret;
-
-	if (unlikely(!m2p_overrides))
-		return NULL;
-
-	ret = NULL;
-	bucket = &m2p_overrides[mfn_hash(mfn)];
-
-	spin_lock_irqsave(&m2p_override_lock, flags);
-
-	list_for_each_entry(p, bucket, lru) {
-		if (page_private(p) == mfn) {
-			ret = p;
-			break;
-		}
-	}
-
-	spin_unlock_irqrestore(&m2p_override_lock, flags);
-
-	return ret;
-}
-
-static int m2p_remove_override(struct page *page,
-			       struct gnttab_map_grant_ref *kmap_op,
-			       unsigned long mfn)
-{
-	unsigned long flags;
-	unsigned long pfn;
-	unsigned long uninitialized_var(address);
-	unsigned level;
-	pte_t *ptep = NULL;
-
-	pfn = page_to_pfn(page);
-
-	if (!PageHighMem(page)) {
-		address = (unsigned long)__va(pfn << PAGE_SHIFT);
-		ptep = lookup_address(address, &level);
-
-		if (WARN(ptep == NULL || level != PG_LEVEL_4K,
-			 "m2p_remove_override: pfn %lx not mapped", pfn))
-			return -EINVAL;
-	}
-
-	spin_lock_irqsave(&m2p_override_lock, flags);
-	list_del(&page->lru);
-	spin_unlock_irqrestore(&m2p_override_lock, flags);
-
-	if (kmap_op != NULL) {
-		if (!PageHighMem(page)) {
-			struct multicall_space mcs;
-			struct gnttab_unmap_and_replace *unmap_op;
-			struct page *scratch_page = get_balloon_scratch_page();
-			unsigned long scratch_page_address = (unsigned long)
-				__va(page_to_pfn(scratch_page) << PAGE_SHIFT);
-
-			/*
-			 * It might be that we queued all the m2p grant table
-			 * hypercalls in a multicall, then m2p_remove_override
-			 * get called before the multicall has actually been
-			 * issued. In this case handle is going to -1 because
-			 * it hasn't been modified yet.
-			 */
-			if (kmap_op->handle == -1)
-				xen_mc_flush();
-			/*
-			 * Now if kmap_op->handle is negative it means that the
-			 * hypercall actually returned an error.
-			 */
-			if (kmap_op->handle == GNTST_general_error) {
-				pr_warn("m2p_remove_override: pfn %lx mfn %lx, failed to modify kernel mappings",
-					pfn, mfn);
-				put_balloon_scratch_page();
-				return -1;
-			}
-
-			xen_mc_batch();
-
-			mcs = __xen_mc_entry(
-				sizeof(struct gnttab_unmap_and_replace));
-			unmap_op = mcs.args;
-			unmap_op->host_addr = kmap_op->host_addr;
-			unmap_op->new_addr = scratch_page_address;
-			unmap_op->handle = kmap_op->handle;
-
-			MULTI_grant_table_op(mcs.mc,
-				GNTTABOP_unmap_and_replace, unmap_op, 1);
-
-			mcs = __xen_mc_entry(0);
-			MULTI_update_va_mapping(mcs.mc, scratch_page_address,
-					pfn_pte(page_to_pfn(scratch_page),
-					PAGE_KERNEL_RO), 0);
-
-			xen_mc_issue(PARAVIRT_LAZY_MMU);
-
-			kmap_op->host_addr = 0;
-			put_balloon_scratch_page();
-		}
-	}
-
-	/* p2m(m2p(mfn)) == FOREIGN_FRAME(mfn): the mfn is already present
-	 * somewhere in this domain, even before being added to the
-	 * m2p_override (see comment above in m2p_add_override).
-	 * If there are no other entries in the m2p_override corresponding
-	 * to this mfn, then remove the FOREIGN_FRAME_BIT from the p2m for
-	 * the original pfn (the one shared by the frontend): the backend
-	 * cannot do any IO on this page anymore because it has been
-	 * unshared. Removing the FOREIGN_FRAME_BIT from the p2m entry of
-	 * the original pfn causes mfn_to_pfn(mfn) to return the frontend
-	 * pfn again. */
-	mfn &= ~FOREIGN_FRAME_BIT;
-	pfn = mfn_to_pfn_no_overrides(mfn);
-	if (__pfn_to_mfn(pfn) == FOREIGN_FRAME(mfn) &&
-			m2p_find_override(mfn) == NULL)
-		set_phys_to_machine(pfn, mfn);
-
-	return 0;
 }
 
 int clear_foreign_p2m_mapping(struct gnttab_unmap_grant_ref *unmap_ops,
-			      struct gnttab_map_grant_ref *kmap_ops,
+			      struct gnttab_unmap_grant_ref *kunmap_ops,
 			      struct page **pages, unsigned int count)
 {
 	int i, ret = 0;
-	bool lazy = false;
 
 	if (xen_feature(XENFEAT_auto_translated_physmap))
 		return 0;
-
-	if (kmap_ops &&
-	    !in_interrupt() &&
-	    paravirt_get_lazy_mode() == PARAVIRT_LAZY_NONE) {
-		arch_enter_lazy_mmu_mode();
-		lazy = true;
-	}
 
 	for (i = 0; i < count; i++) {
 		unsigned long mfn = __pfn_to_mfn(page_to_pfn(pages[i]));
 		unsigned long pfn = page_to_pfn(pages[i]);
 
-		if (mfn == INVALID_P2M_ENTRY || !(mfn & FOREIGN_FRAME_BIT)) {
+		if (mfn != INVALID_P2M_ENTRY && (mfn & FOREIGN_FRAME_BIT))
+			set_phys_to_machine(pfn, INVALID_P2M_ENTRY);
+		else
 			ret = -EINVAL;
-			goto out;
-		}
-
-		set_page_private(pages[i], INVALID_P2M_ENTRY);
-		WARN_ON(!PagePrivate(pages[i]));
-		ClearPagePrivate(pages[i]);
-		set_phys_to_machine(pfn, pages[i]->index);
-
-		if (kmap_ops)
-			ret = m2p_remove_override(pages[i], &kmap_ops[i], mfn);
-		if (ret)
-			goto out;
 	}
-
-out:
-	if (lazy)
-		arch_leave_lazy_mmu_mode();
-	return ret;
-}
-EXPORT_SYMBOL_GPL(clear_foreign_p2m_mapping);
-
-unsigned long m2p_find_override_pfn(unsigned long mfn, unsigned long pfn)
-{
-	struct page *p = m2p_find_override(mfn);
-	unsigned long ret = pfn;
-
-	if (p)
-		ret = page_to_pfn(p);
+	if (kunmap_ops)
+		ret = HYPERVISOR_grant_table_op(GNTTABOP_unmap_grant_ref,
+						kunmap_ops, count) ?: ret;
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(m2p_find_override_pfn);
 
 #ifdef CONFIG_XEN_DEBUG_FS
 #include <linux/debugfs.h>
@@ -997,26 +829,13 @@ static int p2m_dump_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int p2m_dump_open(struct inode *inode, struct file *filp)
-{
-	return single_open(filp, p2m_dump_show, NULL);
-}
-
-static const struct file_operations p2m_dump_fops = {
-	.open		= p2m_dump_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_ATTRIBUTE(p2m_dump);
 
 static struct dentry *d_mmu_debug;
 
 static int __init xen_p2m_debugfs(void)
 {
 	struct dentry *d_xen = xen_init_debugfs();
-
-	if (d_xen == NULL)
-		return -ENOMEM;
 
 	d_mmu_debug = debugfs_create_dir("mmu", d_xen);
 

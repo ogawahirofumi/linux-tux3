@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 
 /*
  * Directory operations for Coda filesystem
@@ -22,34 +23,11 @@
 #include <linux/uaccess.h>
 
 #include <linux/coda.h>
-#include <linux/coda_psdev.h>
+#include "coda_psdev.h"
 #include "coda_linux.h"
 #include "coda_cache.h"
 
 #include "coda_int.h"
-
-/* dir inode-ops */
-static int coda_create(struct inode *dir, struct dentry *new, umode_t mode, bool excl);
-static struct dentry *coda_lookup(struct inode *dir, struct dentry *target, unsigned int flags);
-static int coda_link(struct dentry *old_dentry, struct inode *dir_inode, 
-		     struct dentry *entry);
-static int coda_unlink(struct inode *dir_inode, struct dentry *entry);
-static int coda_symlink(struct inode *dir_inode, struct dentry *entry,
-			const char *symname);
-static int coda_mkdir(struct inode *dir_inode, struct dentry *entry, umode_t mode);
-static int coda_rmdir(struct inode *dir_inode, struct dentry *entry);
-static int coda_rename(struct inode *old_inode, struct dentry *old_dentry, 
-                       struct inode *new_inode, struct dentry *new_dentry);
-
-/* dir file-ops */
-static int coda_readdir(struct file *file, struct dir_context *ctx);
-
-/* dentry ops */
-static int coda_dentry_revalidate(struct dentry *de, unsigned int flags);
-static int coda_dentry_delete(const struct dentry *);
-
-/* support routines */
-static int coda_venus_readdir(struct file *, struct dir_context *);
 
 /* same as fs/bad_inode.c */
 static int coda_return_EIO(void)
@@ -57,38 +35,6 @@ static int coda_return_EIO(void)
 	return -EIO;
 }
 #define CODA_EIO_ERROR ((void *) (coda_return_EIO))
-
-const struct dentry_operations coda_dentry_operations =
-{
-	.d_revalidate	= coda_dentry_revalidate,
-	.d_delete	= coda_dentry_delete,
-};
-
-const struct inode_operations coda_dir_inode_operations =
-{
-	.create		= coda_create,
-	.lookup		= coda_lookup,
-	.link		= coda_link,
-	.unlink		= coda_unlink,
-	.symlink	= coda_symlink,
-	.mkdir		= coda_mkdir,
-	.rmdir		= coda_rmdir,
-	.mknod		= CODA_EIO_ERROR,
-	.rename		= coda_rename,
-	.permission	= coda_permission,
-	.getattr	= coda_getattr,
-	.setattr	= coda_setattr,
-};
-
-const struct file_operations coda_dir_operations = {
-	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
-	.iterate	= coda_readdir,
-	.open		= coda_open,
-	.release	= coda_release,
-	.fsync		= coda_fsync,
-};
-
 
 /* inode operations for directories */
 /* access routines: lookup, readlink, permission */
@@ -101,8 +47,8 @@ static struct dentry *coda_lookup(struct inode *dir, struct dentry *entry, unsig
 	int type = 0;
 
 	if (length > CODA_MAXNAMLEN) {
-		pr_err("name too long: lookup, %s (%*s)\n",
-		       coda_i2s(dir), (int)length, name);
+		pr_err("name too long: lookup, %s %zu\n",
+		       coda_i2s(dir), length);
 		return ERR_PTR(-ENAMETOOLONG);
 	}
 
@@ -127,7 +73,8 @@ static struct dentry *coda_lookup(struct inode *dir, struct dentry *entry, unsig
 }
 
 
-int coda_permission(struct inode *inode, int mask)
+int coda_permission(struct user_namespace *mnt_userns, struct inode *inode,
+		    int mask)
 {
 	int error;
 
@@ -164,7 +111,7 @@ static inline void coda_dir_update_mtime(struct inode *dir)
 	/* optimistically we can also act as if our nose bleeds. The
 	 * granularity of the mtime is coarse anyways so we might actually be
 	 * right most of the time. Note: we only do this for directories. */
-	dir->i_mtime = dir->i_ctime = CURRENT_TIME_SEC;
+	dir->i_mtime = dir->i_ctime = current_time(dir);
 #endif
 }
 
@@ -186,7 +133,8 @@ static inline void coda_dir_drop_nlink(struct inode *dir)
 }
 
 /* creation routines: create, mknod, mkdir, link, symlink */
-static int coda_create(struct inode *dir, struct dentry *de, umode_t mode, bool excl)
+static int coda_create(struct user_namespace *mnt_userns, struct inode *dir,
+		       struct dentry *de, umode_t mode, bool excl)
 {
 	int error;
 	const char *name=de->d_name.name;
@@ -218,7 +166,8 @@ err_out:
 	return error;
 }
 
-static int coda_mkdir(struct inode *dir, struct dentry *de, umode_t mode)
+static int coda_mkdir(struct user_namespace *mnt_userns, struct inode *dir,
+		      struct dentry *de, umode_t mode)
 {
 	struct inode *inode;
 	struct coda_vattr attrs;
@@ -256,7 +205,7 @@ err_out:
 static int coda_link(struct dentry *source_de, struct inode *dir_inode, 
 	  struct dentry *de)
 {
-	struct inode *inode = source_de->d_inode;
+	struct inode *inode = d_inode(source_de);
         const char * name = de->d_name.name;
 	int len = de->d_name.len;
 	int error;
@@ -279,7 +228,8 @@ static int coda_link(struct dentry *source_de, struct inode *dir_inode,
 }
 
 
-static int coda_symlink(struct inode *dir_inode, struct dentry *de,
+static int coda_symlink(struct user_namespace *mnt_userns,
+			struct inode *dir_inode, struct dentry *de,
 			const char *symname)
 {
 	const char *name = de->d_name.name;
@@ -321,7 +271,7 @@ static int coda_unlink(struct inode *dir, struct dentry *de)
 		return error;
 
 	coda_dir_update_mtime(dir);
-	drop_nlink(de->d_inode);
+	drop_nlink(d_inode(de));
 	return 0;
 }
 
@@ -334,8 +284,8 @@ static int coda_rmdir(struct inode *dir, struct dentry *de)
 	error = venus_rmdir(dir->i_sb, coda_i2f(dir), name, len);
 	if (!error) {
 		/* VFS may delete the child */
-		if (de->d_inode)
-			clear_nlink(de->d_inode);
+		if (d_really_is_positive(de))
+			clear_nlink(d_inode(de));
 
 		/* fix the link count of the parent */
 		coda_dir_drop_nlink(dir);
@@ -345,8 +295,9 @@ static int coda_rmdir(struct inode *dir, struct dentry *de)
 }
 
 /* rename */
-static int coda_rename(struct inode *old_dir, struct dentry *old_dentry,
-		       struct inode *new_dir, struct dentry *new_dentry)
+static int coda_rename(struct user_namespace *mnt_userns, struct inode *old_dir,
+		       struct dentry *old_dentry, struct inode *new_dir,
+		       struct dentry *new_dentry, unsigned int flags)
 {
 	const char *old_name = old_dentry->d_name.name;
 	const char *new_name = new_dentry->d_name.name;
@@ -354,51 +305,24 @@ static int coda_rename(struct inode *old_dir, struct dentry *old_dentry,
 	int new_length = new_dentry->d_name.len;
 	int error;
 
+	if (flags)
+		return -EINVAL;
+
 	error = venus_rename(old_dir->i_sb, coda_i2f(old_dir),
 			     coda_i2f(new_dir), old_length, new_length,
 			     (const char *) old_name, (const char *)new_name);
 	if (!error) {
-		if (new_dentry->d_inode) {
-			if (S_ISDIR(new_dentry->d_inode->i_mode)) {
+		if (d_really_is_positive(new_dentry)) {
+			if (d_is_dir(new_dentry)) {
 				coda_dir_drop_nlink(old_dir);
 				coda_dir_inc_nlink(new_dir);
 			}
-			coda_dir_update_mtime(old_dir);
-			coda_dir_update_mtime(new_dir);
-			coda_flag_inode(new_dentry->d_inode, C_VATTR);
-		} else {
-			coda_flag_inode(old_dir, C_VATTR);
-			coda_flag_inode(new_dir, C_VATTR);
+			coda_flag_inode(d_inode(new_dentry), C_VATTR);
 		}
+		coda_dir_update_mtime(old_dir);
+		coda_dir_update_mtime(new_dir);
 	}
 	return error;
-}
-
-
-/* file operations for directories */
-static int coda_readdir(struct file *coda_file, struct dir_context *ctx)
-{
-	struct coda_file_info *cfi;
-	struct file *host_file;
-	int ret;
-
-	cfi = CODA_FTOC(coda_file);
-	BUG_ON(!cfi || cfi->cfi_magic != CODA_MAGIC);
-	host_file = cfi->cfi_container;
-
-	if (host_file->f_op->iterate) {
-		struct inode *host_inode = file_inode(host_file);
-		mutex_lock(&host_inode->i_mutex);
-		ret = -ENOENT;
-		if (!IS_DEADDIR(host_inode)) {
-			ret = host_file->f_op->iterate(host_file, ctx);
-			file_accessed(host_file);
-		}
-		mutex_unlock(&host_inode->i_mutex);
-		return ret;
-	}
-	/* Venus: we must read Venus dirents from a file */
-	return coda_venus_readdir(coda_file, ctx);
 }
 
 static inline unsigned int CDT2DT(unsigned char cdt)
@@ -433,8 +357,7 @@ static int coda_venus_readdir(struct file *coda_file, struct dir_context *ctx)
 	ino_t ino;
 	int ret;
 
-	cfi = CODA_FTOC(coda_file);
-	BUG_ON(!cfi || cfi->cfi_magic != CODA_MAGIC);
+	cfi = coda_ftoc(coda_file);
 	host_file = cfi->cfi_container;
 
 	cii = ITOC(file_inode(coda_file));
@@ -446,9 +369,10 @@ static int coda_venus_readdir(struct file *coda_file, struct dir_context *ctx)
 		goto out;
 
 	while (1) {
+		loff_t pos = ctx->pos - 2;
+
 		/* read entries from the directory file */
-		ret = kernel_read(host_file, ctx->pos - 2, (char *)vdir,
-				  sizeof(*vdir));
+		ret = kernel_read(host_file, vdir, sizeof(*vdir), &pos);
 		if (ret < 0) {
 			pr_err("%s: read dir %s failed %d\n",
 			       __func__, coda_f2s(&cii->c_fid), ret);
@@ -495,6 +419,38 @@ out:
 	return 0;
 }
 
+/* file operations for directories */
+static int coda_readdir(struct file *coda_file, struct dir_context *ctx)
+{
+	struct coda_file_info *cfi;
+	struct file *host_file;
+	int ret;
+
+	cfi = coda_ftoc(coda_file);
+	host_file = cfi->cfi_container;
+
+	if (host_file->f_op->iterate || host_file->f_op->iterate_shared) {
+		struct inode *host_inode = file_inode(host_file);
+		ret = -ENOENT;
+		if (!IS_DEADDIR(host_inode)) {
+			if (host_file->f_op->iterate_shared) {
+				inode_lock_shared(host_inode);
+				ret = host_file->f_op->iterate_shared(host_file, ctx);
+				file_accessed(host_file);
+				inode_unlock_shared(host_inode);
+			} else {
+				inode_lock(host_inode);
+				ret = host_file->f_op->iterate(host_file, ctx);
+				file_accessed(host_file);
+				inode_unlock(host_inode);
+			}
+		}
+		return ret;
+	}
+	/* Venus: we must read Venus dirents from a file */
+	return coda_venus_readdir(coda_file, ctx);
+}
+
 /* called when a cache lookup succeeds */
 static int coda_dentry_revalidate(struct dentry *de, unsigned int flags)
 {
@@ -504,13 +460,13 @@ static int coda_dentry_revalidate(struct dentry *de, unsigned int flags)
 	if (flags & LOOKUP_RCU)
 		return -ECHILD;
 
-	inode = de->d_inode;
+	inode = d_inode(de);
 	if (!inode || is_root_inode(inode))
 		goto out;
 	if (is_bad_inode(inode))
 		goto bad;
 
-	cii = ITOC(de->d_inode);
+	cii = ITOC(d_inode(de));
 	if (!(cii->c_flags & (C_PURGE | C_FLUSH)))
 		goto out;
 
@@ -540,15 +496,20 @@ out:
  */
 static int coda_dentry_delete(const struct dentry * dentry)
 {
-	int flags;
+	struct inode *inode;
+	struct coda_inode_info *cii;
 
-	if (!dentry->d_inode) 
+	if (d_really_is_negative(dentry)) 
 		return 0;
 
-	flags = (ITOC(dentry->d_inode)->c_flags) & C_PURGE;
-	if (is_bad_inode(dentry->d_inode) || flags) {
+	inode = d_inode(dentry);
+	if (!inode || is_bad_inode(inode))
 		return 1;
-	}
+
+	cii = ITOC(inode);
+	if (cii->c_flags & C_PURGE)
+		return 1;
+
 	return 0;
 }
 
@@ -603,3 +564,32 @@ int coda_revalidate_inode(struct inode *inode)
 	}
 	return 0;
 }
+
+const struct dentry_operations coda_dentry_operations = {
+	.d_revalidate	= coda_dentry_revalidate,
+	.d_delete	= coda_dentry_delete,
+};
+
+const struct inode_operations coda_dir_inode_operations = {
+	.create		= coda_create,
+	.lookup		= coda_lookup,
+	.link		= coda_link,
+	.unlink		= coda_unlink,
+	.symlink	= coda_symlink,
+	.mkdir		= coda_mkdir,
+	.rmdir		= coda_rmdir,
+	.mknod		= CODA_EIO_ERROR,
+	.rename		= coda_rename,
+	.permission	= coda_permission,
+	.getattr	= coda_getattr,
+	.setattr	= coda_setattr,
+};
+
+const struct file_operations coda_dir_operations = {
+	.llseek		= generic_file_llseek,
+	.read		= generic_read_dir,
+	.iterate	= coda_readdir,
+	.open		= coda_open,
+	.release	= coda_release,
+	.fsync		= coda_fsync,
+};

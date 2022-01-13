@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Common support for CompuLab CM-T3x30 CoMs
  */
@@ -16,7 +17,6 @@
 		ti,model = "cm-t35";
 
 		ti,mcbsp = <&mcbsp2>;
-		ti,codec = <&twl_audio>;
 	};
 };
 
@@ -50,7 +50,8 @@
 #include "omap-gpmc-smsc911x.dtsi"
 
 &gpmc {
-	ranges = <5 0 0x2c000000 0x01000000>;
+	ranges = <5 0 0x2c000000 0x01000000>, /* CM-T3x30 SMSC9x Eth */
+		 <0 0 0x00000000 0x01000000>; /* CM-T3x NAND */
 
 	smsc1: ethernet@gpmc {
 		compatible = "smsc,lan9221", "smsc,lan9115";
