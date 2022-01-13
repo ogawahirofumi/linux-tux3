@@ -238,6 +238,14 @@ unsigned long page_address_in_vma(struct page *, struct vm_area_struct *);
 int folio_mkclean(struct folio *);
 
 /*
+ * Make clone page for page forking.
+ *
+ * Note: only clones page state so other state such as buffer_heads
+ * must be cloned by caller.
+ */
+struct page *pagefork_clone_page(struct page *oldpage);
+
+/*
  * Changes the PTES of shared mappings except the PTE in orig_vma.
  */
 int page_pagefork_file(struct vm_area_struct *orig_vma, struct page *oldpage,

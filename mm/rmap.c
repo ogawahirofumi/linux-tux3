@@ -1006,6 +1006,68 @@ int folio_mkclean(struct folio *folio)
 }
 EXPORT_SYMBOL_GPL(folio_mkclean);
 
+/*
+ * Make clone page for page forking. (Based on migrate_page_copy())
+ *
+ * Note: only clones page state so other state such as buffer_heads
+ * must be cloned by caller.
+ *
+ * FIXME: memcg and page accounting may be broken, need to
+ * rethink/verify code?
+ */
+struct page *pagefork_clone_page(struct page *oldpage)
+{
+	struct address_space *mapping = oldpage->mapping;
+	gfp_t gfp_mask = mapping_gfp_mask(mapping) & ~__GFP_FS;
+	struct page *newpage = __page_cache_alloc(gfp_mask);
+	int cpupid;
+
+	newpage->mapping = oldpage->mapping;
+	newpage->index = oldpage->index;
+	copy_highpage(newpage, oldpage);
+
+	/* FIXME: right? */
+	BUG_ON(PageSwapCache(oldpage));
+	BUG_ON(PageSwapBacked(oldpage));
+	BUG_ON(PageHuge(oldpage));
+	if (PageError(oldpage))
+		SetPageError(newpage);
+	if (PageReferenced(oldpage))
+		SetPageReferenced(newpage);
+	if (PageUptodate(oldpage))
+		SetPageUptodate(newpage);
+	if (PageActive(oldpage))
+		SetPageActive(newpage);
+	if (PageMappedToDisk(oldpage))
+		SetPageMappedToDisk(newpage);
+
+	/*
+	 * Copy NUMA information to the new page, to prevent over-eager
+	 * future migrations of this same page.
+	 */
+	cpupid = page_cpupid_xchg_last(oldpage, -1);
+	page_cpupid_xchg_last(newpage, cpupid);
+
+	/* FIXME: is this right way? */
+	if (TestClearPageMlocked(oldpage)) {
+		int nr_pages = thp_nr_pages(oldpage);
+
+		/* Holding pmd lock, no change in irq context: __mod is safe */
+		__mod_zone_page_state(page_zone(oldpage), NR_MLOCK, -nr_pages);
+		SetPageMlocked(newpage);
+		__mod_zone_page_state(page_zone(newpage), NR_MLOCK, nr_pages);
+	}
+
+	folio_migrate_ksm(page_folio(newpage), page_folio(oldpage));
+
+	/* Lock newpage before visible via ->i_pages */
+	BUG_ON(PageLocked(newpage));
+	__SetPageLocked(newpage);
+
+	return newpage;
+}
+EXPORT_SYMBOL_GPL(pagefork_clone_page);
+
 struct pagefork_arg {
 	struct vm_area_struct *exclude_vma;
 	struct page *newpage;

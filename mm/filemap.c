@@ -120,8 +120,9 @@
  *   ->tasklist_lock            (memory_failure, collect_procs_ao)
  */
 
-static void page_cache_delete(struct address_space *mapping,
-				   struct page *page, void *shadow)
+static void __page_cache_delete(struct address_space *mapping,
+				struct page *page, void *shadow,
+				bool is_pagefork)
 {
 	XA_STATE(xas, &mapping->i_pages, page->index);
 	unsigned int nr = 1;
@@ -141,13 +142,21 @@ static void page_cache_delete(struct address_space *mapping,
 	xas_store(&xas, shadow);
 	xas_init_marks(&xas);
 
-	page->mapping = NULL;
+	/* FIXME: backend is assuming page->mapping is available */
+	if (!is_pagefork)
+		page->mapping = NULL;
 	/* Leave page->index set: truncation lookup relies upon it */
 	mapping->nrpages -= nr;
 }
 
-static void unaccount_page_cache_page(struct address_space *mapping,
-				      struct page *page)
+static void page_cache_delete(struct address_space *mapping,
+				   struct page *page, void *shadow)
+{
+	__page_cache_delete(mapping, page, shadow, false);
+}
+
+static void __unaccount_page_cache_page(struct address_space *mapping,
+					struct page *page, bool is_pagefork)
 {
 	int nr;
 
@@ -203,6 +212,14 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 	}
 
 	/*
+	 * If pagefork page, the following dirty accounting
+	 * (NR_FILE_DIRTY, WB_RECLAIMABLE, etc.) is done by writeback
+	 * path. So, we don't need to do.
+	 */
+	if (is_pagefork)
+		return;
+
+	/*
 	 * At this point page must be either written or cleaned by
 	 * truncate.  Dirty page here signals a bug and loss of
 	 * unwritten data.
@@ -214,6 +231,12 @@ static void unaccount_page_cache_page(struct address_space *mapping,
 	 */
 	if (WARN_ON_ONCE(PageDirty(page)))
 		account_page_cleaned(page, mapping, inode_to_wb(mapping->host));
+}
+
+static inline void unaccount_page_cache_page(struct address_space *mapping,
+					     struct page *page)
+{
+	__unaccount_page_cache_page(mapping, page, false);
 }
 
 /*
@@ -1016,6 +1039,91 @@ int filemap_add_folio(struct address_space *mapping, struct folio *folio,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(filemap_add_folio);
+
+/*
+ * Atomically replace oldpage with newpage.
+ *
+ * Similar to buffer_migrate_page() and replace_page_cache_page(),
+ * but the oldpage is for writeout.
+ */
+int pagefork_replace_page_cache(struct page *oldpage, struct page *newpage)
+{
+	struct address_space *mapping = oldpage->mapping;
+	struct zone *oldzone = page_zone(oldpage);
+	struct zone *newzone = page_zone(newpage);
+	XA_STATE(xas, &mapping->i_pages, oldpage->index);
+	int olddirty;
+
+	VM_BUG_ON_PAGE(!PageLocked(oldpage), oldpage);
+	VM_BUG_ON_PAGE(!PageLocked(newpage), newpage);
+
+	/* Get refcount for ->i_pages */
+	get_page(newpage);
+
+	/* Replace page in ->i_pages */
+	xas_lock_irq(&xas);
+	xas_load(&xas);
+	/* PAGECACHE_TAG_DIRTY represents the view of frontend. Clear it. */
+	olddirty = PageDirty(oldpage);
+	if (olddirty)
+		xas_clear_mark(&xas, PAGECACHE_TAG_DIRTY);
+	/* The refcount to newpage is used for ->i_pages */
+	xas_store(&xas, newpage);
+	xas_unlock(&xas);
+	/* Leave irq disabled to prevent preemption while updating stats */
+
+	/*
+	 * If moved to a different zone then also account
+	 * the page for that zone. Other VM counters will be
+	 * taken care of when we establish references to the
+	 * new page and drop references to the old page.
+	 */
+	if (newzone != oldzone) {
+		__dec_node_state(oldzone->zone_pgdat, NR_FILE_PAGES);
+		__inc_node_state(newzone->zone_pgdat, NR_FILE_PAGES);
+		if (olddirty && mapping_can_writeback(mapping)) {
+			__dec_node_state(oldzone->zone_pgdat, NR_FILE_DIRTY);
+			__dec_zone_state(oldzone, NR_ZONE_WRITE_PENDING);
+			__inc_node_state(newzone->zone_pgdat, NR_FILE_DIRTY);
+			__inc_zone_state(newzone, NR_ZONE_WRITE_PENDING);
+		}
+	}
+	local_irq_enable();
+
+	/* mem_cgroup codes must not be called under tree_lock */
+	mem_cgroup_migrate(page_folio(oldpage), page_folio(newpage));
+
+	/* Release refcount for ->i_pages */
+	put_page(oldpage);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pagefork_replace_page_cache);
+
+/*
+ * Delete page from page cache, leaving page->mapping unchanged.
+ *
+ * Similar to delete_from_page_cache(), but the deleted page is for writeout.
+ */
+void pagefork_delete_from_page_cache(struct page *page)
+{
+	struct address_space *mapping = page->mapping;
+
+	spin_lock(&mapping->host->i_lock);
+	/* Delete page from ->i_pages */
+	xa_lock_irq(&mapping->i_pages);
+	trace_mm_filemap_delete_from_page_cache(page);
+	__unaccount_page_cache_page(mapping, page, true);
+	/* FIXME: backend is assuming page->mapping is available */
+	__page_cache_delete(mapping, page, NULL, true);
+	xa_unlock_irq(&mapping->i_pages);
+	if (mapping_shrinkable(mapping))
+		inode_add_lru(mapping->host);
+	spin_unlock(&mapping->host->i_lock);
+
+	page_cache_free_page(mapping, page);
+}
+EXPORT_SYMBOL_GPL(pagefork_delete_from_page_cache);
 
 #ifdef CONFIG_NUMA
 struct folio *filemap_alloc_folio(gfp_t gfp, unsigned int order)
