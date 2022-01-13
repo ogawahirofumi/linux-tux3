@@ -209,6 +209,8 @@ void writeback_inodes_sb(struct super_block *, enum wb_reason reason);
 void writeback_inodes_sb_nr(struct super_block *, unsigned long nr,
 							enum wb_reason reason);
 void try_to_writeback_inodes_sb(struct super_block *sb, enum wb_reason reason);
+void writeback_queue_work_sb(struct super_block *sb,
+			     struct wb_writeback_work *work);
 void sync_inodes_sb(struct super_block *);
 void wakeup_flusher_threads(enum wb_reason reason);
 void wakeup_flusher_threads_bdi(struct backing_dev_info *bdi,

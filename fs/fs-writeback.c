@@ -2694,6 +2694,46 @@ void try_to_writeback_inodes_sb(struct super_block *sb, enum wb_reason reason)
 EXPORT_SYMBOL(try_to_writeback_inodes_sb);
 
 /**
+ * writeback_queue_work_sb -	schedule writeback work from given super_block
+ * @sb: the superblock
+ * @work: work item to queue
+ *
+ * Schedule writeback work on this super_block. This usually used to
+ * interact with sb->s_op->writeback callback. The caller must
+ * guarantee to @work is not freed while bdi flusher is using (for
+ * example, be safe against umount).
+ */
+void writeback_queue_work_sb(struct super_block *sb,
+			     struct wb_writeback_work *work)
+{
+	struct backing_dev_info *bdi = sb->s_bdi;
+
+	if (bdi == &noop_backing_dev_info)
+		return;
+
+	/* Allow only following fields to use. */
+	*work = (struct wb_writeback_work){
+		.sb			= sb,
+		.sync_mode		= work->sync_mode,
+		.tagged_writepages	= work->tagged_writepages,
+		.done			= work->done,
+		.nr_pages		= work->nr_pages,
+		.reason			= work->reason,
+	};
+
+#if 0
+	/*
+	 * FIXME: this is sleepable, so tux3 can't use in delta_put().
+	 * To support cgroup writeback, need to think.
+	 */
+	bdi_split_work_to_wbs(bdi, work, false);
+#else
+	wb_queue_work(&bdi->wb, work);
+#endif
+}
+EXPORT_SYMBOL(writeback_queue_work_sb);
+
+/**
  * sync_inodes_sb	-	sync sb inode pages
  * @sb: the superblock
  *
