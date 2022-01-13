@@ -1006,6 +1006,134 @@ int folio_mkclean(struct folio *folio)
 }
 EXPORT_SYMBOL_GPL(folio_mkclean);
 
+struct pagefork_arg {
+	struct vm_area_struct *exclude_vma;
+	struct page *newpage;
+	int count;
+};
+
+static bool page_pagefork_one(struct page *oldpage, struct vm_area_struct *vma,
+			      unsigned long address, void *arg)
+{
+	struct pagefork_arg *pagefork_arg = arg;
+	struct page *newpage = pagefork_arg->newpage;
+	struct page_vma_mapped_walk pvmw = {
+		.page = oldpage,
+		.vma = vma,
+		.address = address,
+		.flags = PVMW_SYNC,
+	};
+	struct mmu_notifier_range range;
+
+	/* FIXME: need memcg handling? */
+
+	/*
+	 * We have to assume the worse case ie pmd for invalidation. Note that
+	 * the page can not be free from this function.
+	 */
+	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, vma->vm_mm,
+				address, min(vma->vm_end,
+					     address + page_size(oldpage)));
+	mmu_notifier_invalidate_range_start(&range);
+
+	while (page_vma_mapped_walk(&pvmw)) {
+		pte_t oldptval, ptval, *pte;
+
+		if (!pvmw.pte) {
+			/* unexpected pmd-mapped page? */
+			WARN_ON_ONCE(1);
+			continue;
+		}
+
+		address = pvmw.address;
+		pte = pvmw.pte;
+
+		flush_cache_page(vma, address, pte_pfn(*pte));
+		oldptval = ptep_clear_flush_notify(vma, address, pte);
+
+		/* Take refcount for PTE */
+		get_page(newpage);
+
+		/*
+		 * vm_page_prot doesn't have writable bit, so page fault will
+		 * be occurred immediately after returned from this page fault
+		 * again. And second time of page fault will be resolved with
+		 * forked page was set here.
+		 */
+		ptval = mk_pte(newpage, vma->vm_page_prot);
+#if 0
+		/* FIXME: we should check following too? Otherwise, we would
+		 * get additional read-only => write fault at least */
+		if (pte_write)
+			ptval = pte_mkwrite(ptval);
+		if (pte_dirty(oldptval))
+			ptval = pte_mkdirty(ptval);
+		if (pte_young(oldptval))
+			ptval = pte_mkyoung(ptval);
+#endif
+		set_pte_at_notify(vma->vm_mm, address, pte, ptval);
+
+		/* Caller should migrate mlock flag */
+		BUG_ON(PageMlocked(oldpage));
+		/* Update rmap accounting */
+		page_remove_rmap(oldpage, false);
+		page_add_file_rmap(newpage, false);
+
+		/* no need to invalidate: a not-present page won't be cached */
+		update_mmu_cache(vma, address, pte);
+
+		/* Release refcount for PTE */
+		put_page(oldpage);
+		pagefork_arg->count++;
+	}
+
+	mmu_notifier_invalidate_range_end(&range);
+
+	return true;
+}
+
+static bool invalid_pagefork_vma(struct vm_area_struct *vma, void *arg)
+{
+	struct pagefork_arg *pagefork_arg = arg;
+
+	/*
+	 * The exclude_vma's PTE is handled by caller. (e.g. ->page_mkwrite)
+	 */
+	if (vma == pagefork_arg->exclude_vma)
+		return true;
+	if (!(vma->vm_flags & VM_SHARED))
+		return true;
+
+	return false;
+}
+
+/* Change old page in PTEs to new page exclude orig_vma */
+int page_pagefork_file(struct vm_area_struct *orig_vma, struct page *oldpage,
+		       struct page *newpage)
+{
+	struct pagefork_arg pagefork_arg = {
+		.exclude_vma = orig_vma,
+		.newpage = newpage,
+		.count = 0,
+	};
+	struct rmap_walk_control rwc = {
+		.arg = &pagefork_arg,
+		.rmap_one = page_pagefork_one,
+		.invalid_vma = invalid_pagefork_vma,
+	};
+
+	BUG_ON(!PageLocked(oldpage));
+	BUG_ON(!PageLocked(newpage));
+	BUG_ON(PageKsm(oldpage) || PageAnon(oldpage));
+	BUG_ON(page_mapping(oldpage) == NULL);
+
+	if (page_mapped(oldpage))
+		rmap_walk(oldpage, &rwc);
+
+	return pagefork_arg.count;
+}
+EXPORT_SYMBOL_GPL(page_pagefork_file);
+
 /**
  * page_move_anon_rmap - move a page to our anon_vma
  * @page:	the page to move to our anon_vma
