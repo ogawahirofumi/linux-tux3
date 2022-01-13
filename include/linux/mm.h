@@ -2758,6 +2758,10 @@ struct vm_unmapped_area_info {
 extern unsigned long vm_unmapped_area(struct vm_unmapped_area_info *info);
 
 /* truncate.c */
+void generic_truncatepage_partial(struct address_space *mapping,
+				  struct page *page, unsigned int start,
+				  unsigned int len);
+void generic_truncatepage(struct address_space *mapping, struct page *page);
 extern void truncate_inode_pages(struct address_space *, loff_t);
 extern void truncate_inode_pages_range(struct address_space *,
 				       loff_t lstart, loff_t lend);

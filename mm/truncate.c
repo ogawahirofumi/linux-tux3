@@ -230,6 +230,63 @@ int truncate_inode_page(struct address_space *mapping, struct page *page)
 	return 0;
 }
 
+void generic_truncatepage(struct address_space *mapping, struct page *page)
+{
+	wait_on_page_writeback(page);
+	truncate_inode_page(mapping, page);
+}
+EXPORT_SYMBOL(generic_truncatepage);
+
+static void truncatepages_batch(struct address_space *mapping,
+				struct pagevec *pvec)
+{
+	if (!mapping->a_ops->truncatepages) {
+		unsigned int i;
+		for (i = 0; i < pagevec_count(pvec); i++)
+			truncate_cleanup_page(pvec->pages[i]);
+		delete_from_page_cache_batch(mapping, pvec);
+	} else {
+		mapping->a_ops->truncatepages(mapping, pvec->pages,
+					      pagevec_count(pvec));
+	}
+}
+
+static void truncatepage(struct address_space *mapping, struct page *page)
+{
+	if (!mapping->a_ops->truncatepages)
+		generic_truncatepage(mapping, page);
+	else
+		mapping->a_ops->truncatepages(mapping, &page, 1);
+}
+
+void generic_truncatepage_partial(struct address_space *mapping,
+				  struct page *page, unsigned int start,
+				  unsigned int len)
+{
+	wait_on_page_writeback(page);
+	zero_user_segment(page, start, start + len);
+	if (page_has_private(page))
+		do_invalidatepage(page, start, len);
+}
+EXPORT_SYMBOL(generic_truncatepage_partial);
+
+static void truncatepage_partial(struct address_space *mapping, pgoff_t index,
+				 unsigned int start, unsigned int len)
+{
+	struct page *page = find_lock_page(mapping, index);
+	if (!page)
+		return;
+
+	if (!mapping->a_ops->truncatepage_partial)
+		generic_truncatepage_partial(mapping, page, start, len);
+	else
+		mapping->a_ops->truncatepage_partial(mapping, page, start, len);
+
+	cleancache_invalidate_page(mapping, page);
+	unlock_page(page);
+	put_page(page);
+}
+
 /*
  * Used to get rid of pages on hardware memory corruption.
  */
@@ -331,9 +388,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 			&pvec, indices)) {
 		index = indices[pagevec_count(&pvec) - 1] + 1;
 		truncate_exceptional_pvec_entries(mapping, &pvec, indices);
-		for (i = 0; i < pagevec_count(&pvec); i++)
-			truncate_cleanup_page(pvec.pages[i]);
-		delete_from_page_cache_batch(mapping, &pvec);
+		truncatepages_batch(mapping, &pvec);
 		for (i = 0; i < pagevec_count(&pvec); i++)
 			unlock_page(pvec.pages[i]);
 		pagevec_release(&pvec);
@@ -341,37 +396,18 @@ void truncate_inode_pages_range(struct address_space *mapping,
 	}
 
 	if (partial_start) {
-		struct page *page = find_lock_page(mapping, start - 1);
-		if (page) {
-			unsigned int top = PAGE_SIZE;
-			if (start > end) {
-				/* Truncation within a single page */
-				top = partial_end;
-				partial_end = 0;
-			}
-			wait_on_page_writeback(page);
-			zero_user_segment(page, partial_start, top);
-			cleancache_invalidate_page(mapping, page);
-			if (page_has_private(page))
-				do_invalidatepage(page, partial_start,
-						  top - partial_start);
-			unlock_page(page);
-			put_page(page);
+		unsigned int top = PAGE_SIZE;
+		if (start > end) {
+			/* Truncation within a single page */
+			top = partial_end;
+			partial_end = 0;
 		}
+		truncatepage_partial(mapping, start - 1,
+				     partial_start, top - partial_start);
 	}
-	if (partial_end) {
-		struct page *page = find_lock_page(mapping, end);
-		if (page) {
-			wait_on_page_writeback(page);
-			zero_user_segment(page, 0, partial_end);
-			cleancache_invalidate_page(mapping, page);
-			if (page_has_private(page))
-				do_invalidatepage(page, 0,
-						  partial_end);
-			unlock_page(page);
-			put_page(page);
-		}
-	}
+	if (partial_end)
+		truncatepage_partial(mapping, end, 0, partial_end);
+
 	/*
 	 * If the truncation happened within a single page no pages
 	 * will be released, just zeroed, so we can bail out now.
@@ -403,8 +439,7 @@ void truncate_inode_pages_range(struct address_space *mapping,
 
 			lock_page(page);
 			WARN_ON(page_to_index(page) != index);
-			wait_on_page_writeback(page);
-			truncate_inode_page(mapping, page);
+			truncatepage(mapping, page);
 			unlock_page(page);
 		}
 		truncate_exceptional_pvec_entries(mapping, &pvec, indices);

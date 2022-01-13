@@ -393,6 +393,11 @@ struct address_space_operations {
 
 	/* Unfortunately this kludge is needed for FIBMAP. Don't use it */
 	sector_t (*bmap)(struct address_space *, sector_t);
+	void (*truncatepages)(struct address_space *mapping,
+			      struct page *pages[], unsigned int nr);
+	void (*truncatepage_partial)(struct address_space *mapping,
+				     struct page *page, unsigned int start,
+				     unsigned int len);
 	void (*invalidatepage) (struct page *, unsigned int, unsigned int);
 	int (*releasepage) (struct page *, gfp_t);
 	void (*freepage)(struct page *);
