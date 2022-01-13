@@ -2512,6 +2512,7 @@ void __folio_mark_dirty(struct folio *folio, struct address_space *mapping,
 	}
 	xa_unlock_irqrestore(&mapping->i_pages, flags);
 }
+EXPORT_SYMBOL_GPL(__folio_mark_dirty);
 
 /**
  * filemap_dirty_folio - Mark a folio dirty for filesystems which do not use buffer_heads.
