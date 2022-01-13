@@ -540,6 +540,7 @@ struct vm_fault {
 	};
 
 	struct page *cow_page;		/* Page handler may use for COW fault */
+	struct page *forked_oldpage;	/* PageFork oldpage by page_mkwrite() */
 	struct page *page;		/* ->fault handlers should return a
 					 * page here, unless VM_FAULT_NOPAGE
 					 * is set (which is also implied by

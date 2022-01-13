@@ -2844,7 +2844,6 @@ static gfp_t __get_fault_gfp_mask(struct vm_area_struct *vma)
 static vm_fault_t do_page_mkwrite(struct vm_fault *vmf)
 {
 	vm_fault_t ret;
-	struct page *page = vmf->page;
 	unsigned int old_flags = vmf->flags;
 
 	vmf->flags = FAULT_FLAG_WRITE|FAULT_FLAG_MKWRITE;
@@ -2859,14 +2858,14 @@ static vm_fault_t do_page_mkwrite(struct vm_fault *vmf)
 	if (unlikely(ret & (VM_FAULT_ERROR | VM_FAULT_NOPAGE)))
 		return ret;
 	if (unlikely(!(ret & VM_FAULT_LOCKED))) {
-		lock_page(page);
-		if (!page->mapping) {
-			unlock_page(page);
+		lock_page(vmf->page);
+		if (!vmf->page->mapping) {
+			unlock_page(vmf->page);
 			return 0; /* retry */
 		}
 		ret |= VM_FAULT_LOCKED;
 	} else
-		VM_BUG_ON_PAGE(!PageLocked(page), page);
+		VM_BUG_ON_PAGE(!PageLocked(vmf->page), vmf->page);
 	return ret;
 }
 
@@ -2943,10 +2942,30 @@ static inline void wp_page_reuse(struct vm_fault *vmf)
 		page_cpupid_xchg_last(page, (1 << LAST_CPUPID_SHIFT) - 1);
 
 	flush_cache_page(vma, vmf->address, pte_pfn(vmf->orig_pte));
-	entry = pte_mkyoung(vmf->orig_pte);
-	entry = maybe_mkwrite(pte_mkdirty(entry), vma);
-	if (ptep_set_access_flags(vma, vmf->address, vmf->pte, entry, 1))
+	if (!vmf->forked_oldpage) {
+		entry = pte_mkyoung(vmf->orig_pte);
+		entry = maybe_mkwrite(pte_mkdirty(entry), vma);
+		if (ptep_set_access_flags(vma, vmf->address, vmf->pte,
+					  entry, 1))
+			update_mmu_cache(vma, vmf->address, vmf->pte);
+	} else {
+		/*
+		 * FIXME: forked_oldpage is unlocked if page-forked.
+		 * Do we need to lock to replace PTE?
+		 */
+		/* Similar to do_set_pte(), but no account. */
+		entry = mk_pte(vmf->page, vma->vm_page_prot);
+		entry = pte_mkyoung(entry);
+		entry = maybe_mkwrite(pte_mkdirty(entry), vma);
+		get_page(vmf->page);	/* Add refcount for PTE */
+		page_add_file_rmap(vmf->page, false);
+		set_pte_at(vma->vm_mm, vmf->address, vmf->pte, entry);
 		update_mmu_cache(vma, vmf->address, vmf->pte);
+
+		page_remove_rmap(vmf->forked_oldpage, false);
+		put_page(vmf->forked_oldpage); /* Remove refcount for PTE */
+		put_page(vmf->forked_oldpage);
+	}
 	pte_unmap_unlock(vmf->pte, vmf->ptl);
 	count_vm_event(PGREUSE);
 }
@@ -3196,6 +3215,8 @@ static vm_fault_t wp_page_shared(struct vm_fault *vmf)
 		if (unlikely(tmp & (VM_FAULT_ERROR | VM_FAULT_NOPAGE))) {
 			unlock_page(vmf->page);
 			put_page(vmf->page);
+			if (vmf->forked_oldpage)
+				put_page(vmf->forked_oldpage);
 			return tmp;
 		}
 	} else {
@@ -4232,6 +4253,8 @@ static vm_fault_t do_shared_fault(struct vm_fault *vmf)
 			put_page(vmf->page);
 			return tmp;
 		}
+		if (vmf->forked_oldpage)
+			put_page(vmf->forked_oldpage);
 	}
 
 	ret |= finish_fault(vmf);
