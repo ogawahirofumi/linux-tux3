@@ -101,7 +101,7 @@ struct kmem_cache {
 	void (*ctor)(void *);		/* Called on object slot creation */
 };
 
-void kfree(const void *);
+void kfree(const void *objp);
 
 struct kmem_cache *kmem_cache_create(const char *name, unsigned int size,
 			unsigned int align, slab_flags_t flags,
@@ -111,8 +111,8 @@ struct kmem_cache *kmem_cache_create_usercopy(const char *name,
 			slab_flags_t flags,
 			unsigned int useroffset, unsigned int usersize,
 			void (*ctor)(void *));
-void kmem_cache_destroy(struct kmem_cache *);
-void kmem_cache_free(struct kmem_cache *, void *);
+void kmem_cache_destroy(struct kmem_cache *s);
+void kmem_cache_free(struct kmem_cache *, void *s);
 
 #define KMEM_CACHE(__struct, __flags)					\
 		kmem_cache_create(#__struct, sizeof(struct __struct),	\
@@ -129,15 +129,15 @@ void kmem_cache_free(struct kmem_cache *, void *);
 			offsetof(struct __struct, __field),		\
 			sizeof_field(struct __struct, __field), NULL)
 
-void *__kmalloc(size_t size, gfp_t flags);
-void *kmem_cache_alloc(struct kmem_cache *, gfp_t);
+void *__kmalloc(size_t size, gfp_t flags) __alloc_size(1);
+void *kmem_cache_alloc(struct kmem_cache *s, gfp_t flags) __malloc;
 
-static inline void *kmalloc(size_t size, gfp_t flags)
+static inline __alloc_size(1) void *kmalloc(size_t size, gfp_t flags)
 {
 	return __kmalloc(size, flags);
 }
 
-static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags)
+static inline __alloc_size(1, 2) void *kmalloc_array(size_t n, size_t size, gfp_t flags)
 {
 	size_t bytes;
 
@@ -146,7 +146,7 @@ static inline void *kmalloc_array(size_t n, size_t size, gfp_t flags)
 	return __kmalloc(bytes, flags);
 }
 
-static inline void *kcalloc(size_t n, size_t size, gfp_t flags)
+static inline __alloc_size(1, 2) void *kcalloc(size_t n, size_t size, gfp_t flags)
 {
 	return kmalloc_array(n, size, flags | __GFP_ZERO);
 }
@@ -159,7 +159,7 @@ static inline void *kmem_cache_zalloc(struct kmem_cache *k, gfp_t flags)
 	return kmem_cache_alloc(k, flags | __GFP_ZERO);
 }
 
-static inline void *kzalloc(size_t size, gfp_t flags)
+static inline __alloc_size(1) void *kzalloc(size_t size, gfp_t flags)
 {
 	return kmalloc(size, flags | __GFP_ZERO);
 }
