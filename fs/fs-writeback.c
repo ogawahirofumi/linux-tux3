@@ -37,25 +37,6 @@
 #define MIN_WRITEBACK_PAGES	(4096UL >> (PAGE_SHIFT - 10))
 
 /*
- * Passed into wb_writeback(), essentially a subset of writeback_control
- */
-struct wb_writeback_work {
-	long nr_pages;
-	struct super_block *sb;
-	enum writeback_sync_modes sync_mode;
-	unsigned int tagged_writepages:1;
-	unsigned int for_kupdate:1;
-	unsigned int range_cyclic:1;
-	unsigned int for_background:1;
-	unsigned int for_sync:1;	/* sync(2) WB_SYNC_ALL writeback */
-	unsigned int auto_free:1;	/* free on completion */
-	enum wb_reason reason;		/* why was writeback initiated? */
-
-	struct list_head list;		/* pending work list */
-	struct wb_completion *done;	/* set if the caller waits */
-};
-
-/*
  * If an inode is constantly having its pages dirtied, but then the
  * updates stop dirtytime_expire_interval seconds in the past, it's
  * possible for the worst case time between when an inode has its
@@ -1316,6 +1297,39 @@ void sb_clear_inode_writeback(struct inode *inode)
 }
 
 /*
+ * Remove inode from writeback list if clean.
+ */
+void inode_writeback_done(struct inode *inode)
+{
+	struct bdi_writeback *wb;
+
+	wb = inode_to_wb_and_lock_list(inode);
+	spin_lock(&inode->i_lock);
+	if (!(inode->i_state & I_DIRTY))
+		inode_cgwb_move_to_attached(inode, wb);
+	spin_unlock(&inode->i_lock);
+	spin_unlock(&wb->list_lock);
+}
+EXPORT_SYMBOL_GPL(inode_writeback_done);
+
+/*
+ * Add inode to writeback dirty list with current time.
+ */
+void inode_writeback_touch(struct inode *inode)
+{
+	struct bdi_writeback *wb;
+
+	wb = inode_to_wb_and_lock_list(inode);
+	spin_lock(&inode->i_lock);
+	inode->dirtied_when = jiffies;
+	inode_io_list_move_locked(inode, wb, &wb->b_dirty);
+	inode->i_state &= ~I_SYNC_QUEUED;
+	spin_unlock(&inode->i_lock);
+	spin_unlock(&wb->list_lock);
+}
+EXPORT_SYMBOL_GPL(inode_writeback_touch);
+
+/*
  * Redirty an inode: set its when-it-was dirtied timestamp and move it to the
  * furthest end of its superblock's dirty-inode list.
  *
@@ -1786,9 +1800,9 @@ static long writeback_chunk_size(struct bdi_writeback *wb,
  * unlock and relock that for each inode it ends up doing
  * IO for.
  */
-static long writeback_sb_inodes(struct super_block *sb,
-				struct bdi_writeback *wb,
-				struct wb_writeback_work *work)
+static long generic_writeback_sb_inodes(struct super_block *sb,
+					struct bdi_writeback *wb,
+					struct wb_writeback_work *work)
 {
 	struct writeback_control wbc = {
 		.sync_mode		= work->sync_mode,
@@ -1927,6 +1941,22 @@ static long writeback_sb_inodes(struct super_block *sb,
 		}
 	}
 	return wrote;
+}
+
+static long writeback_sb_inodes(struct super_block *sb,
+				struct bdi_writeback *wb,
+				struct wb_writeback_work *work)
+{
+	if (sb->s_op->writeback) {
+		long ret;
+
+		spin_unlock(&wb->list_lock);
+		ret = sb->s_op->writeback(sb, wb, work);
+		spin_lock(&wb->list_lock);
+		return ret;
+	}
+
+	return generic_writeback_sb_inodes(sb, wb, work);
 }
 
 static long __writeback_inodes_wb(struct bdi_writeback *wb,

@@ -2191,6 +2191,8 @@ extern loff_t vfs_dedupe_file_range_one(struct file *src_file, loff_t src_pos,
 					loff_t len, unsigned int remap_flags);
 
 
+struct bdi_writeback;
+struct wb_writeback_work;
 struct super_operations {
    	struct inode *(*alloc_inode)(struct super_block *sb);
 	void (*destroy_inode)(struct inode *);
@@ -2201,6 +2203,8 @@ struct super_operations {
 	int (*drop_inode) (struct inode *);
 	void (*evict_inode) (struct inode *);
 	void (*put_super) (struct super_block *);
+	long (*writeback)(struct super_block *super, struct bdi_writeback *wb,
+			  struct wb_writeback_work *work);
 	int (*sync_fs)(struct super_block *sb, int wait);
 	int (*freeze_super) (struct super_block *);
 	int (*freeze_fs) (struct super_block *);
