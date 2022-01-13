@@ -3,6 +3,7 @@
 #define LIBKLIB_LIST_H
 
 /* List ops from include/linux/list.h */
+#include <libklib/container_of.h>
 #include <libklib/compiler.h>
 #include <libklib/barrier.h>
 #include <libklib/build_bug.h>
